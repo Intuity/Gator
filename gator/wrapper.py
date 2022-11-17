@@ -17,6 +17,7 @@ import click
 import plotly.graph_objects as pg
 import psutil
 
+from .db import Attribute, Database, LogEntry, ProcStat
 from .server import Server
 
 class Wrapper:
@@ -82,13 +83,13 @@ class Wrapper:
     def monitor(self) -> None:
         """ Track the logging and process statistics as the job runs """
         # STDOUT/STDERR monitoring
-        def _stdio(proc, pipe, queue):
+        def _stdio(proc, pipe, db, severity):
             while proc.poll() is None:
                 line = pipe.readline()
                 if len(line) > 0:
-                    queue.put((time.time(), line.rstrip()))
+                    db.push_log(LogEntry(int(time.time()), severity, line.rstrip()))
         # Process stats monitor
-        def _proc_stats(proc, stats_q, interval):
+        def _proc_stats(proc, db, interval):
             ps = psutil.Process(pid=proc.pid)
             elapsed = 0
             while proc.poll() is None:
@@ -104,95 +105,63 @@ class Wrapper:
                     cpu_perc = ps.cpu_percent()
                     mem_stat = ps.memory_info()
                     rss, vms = mem_stat.rss, mem_stat.vms
-                    io_count = ps.io_counters() if hasattr(ps, "io_counters") else None
+                    # io_count = ps.io_counters() if hasattr(ps, "io_counters") else None
                     for child in ps.children(recursive=True):
                         nproc    += 1
                         cpu_perc += child.cpu_percent()
                         mem_stat  = child.memory_info()
                         rss      += mem_stat.rss
                         vms      += mem_stat.vms
-                        if io_count is not None:
-                            io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
-                    stats_q.put((time.time(), nproc, cpu_perc, rss, vms, io_count))
+                        # if io_count is not None:
+                        #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
+                    db.push_statistics(ProcStat(time.time(), nproc, cpu_perc, rss, vms))
+        # Create database
+        self.tracking.mkdir(parents=True, exist_ok=True)
+        db = Database(self.tracking / f"{self.proc.pid}.db")
+        # Setup test attributes
+        db.push_attribute(Attribute("cmd",   " ".join(self.cmd)))
+        db.push_attribute(Attribute("cwd",   self.cwd.as_posix()))
+        db.push_attribute(Attribute("host",  socket.gethostname()))
+        db.push_attribute(Attribute("pid",   str(self.proc.pid)))
+        db.push_attribute(Attribute("start", str(int(time.time()))))
         # Create threads
-        stdout_q = Queue()
-        stderr_q = Queue()
-        out_thread = Thread(target=_stdio, args=(self.proc, self.proc.stdout, stdout_q))
-        err_thread = Thread(target=_stdio, args=(self.proc, self.proc.stderr, stderr_q))
-        stats_q = Queue()
-        ps_thread = Thread(target=_proc_stats, args=(self.proc, stats_q, self.interval))
+        out_thread = Thread(target=_stdio, args=(self.proc, self.proc.stdout, db, "INFO"))
+        err_thread = Thread(target=_stdio, args=(self.proc, self.proc.stderr, db, "ERROR"))
+        ps_thread = Thread(target=_proc_stats, args=(self.proc, db, self.interval))
         # Start threads
         out_thread.start()
         err_thread.start()
         ps_thread.start()
         # Wait for process to end
-        self.tracking.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.tracking / f"{self.proc.pid}.db") as db:
-            with closing(db.cursor()) as cursor:
-                # Create the basic tables
-                cursor.execute("CREATE TABLE log (timestamp, stderr, message)")
-                cursor.execute("CREATE TABLE stats (timestamp, nproc, total_cpu, total_mem, total_vmem)")
-                cursor.execute("CREATE TABLE attrs (name, value)")
-                # Setup basic attributes
-                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("cmd",   " ".join(self.cmd)))
-                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("cwd",   self.cwd.as_posix()))
-                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("host",  socket.gethostname()))
-                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("pid",   str(self.proc.pid)))
-                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("start", str(int(time.time()))))
-            def _read_queues():
-                with closing(db.cursor()) as cursor:
-                    while not stdout_q.empty() or not stderr_q.empty():
-                        if not stdout_q.empty() and (stdout := stdout_q.get_nowait()):
-                            stamp, message = stdout
-                            cursor.execute("INSERT INTO log VALUES (?, ?, ?)",
-                                           (stamp, False, message))
-                            print(f"STDOUT: {message}")
-                        if not stderr_q.empty() and (stderr := stderr_q.get_nowait()):
-                            stamp, message = stderr
-                            cursor.execute("INSERT INTO log VALUES (?, ?, ?)",
-                                           (stamp, True, message))
-                            print(f"STDERR: {message}")
-                    if not stats_q.empty() and (stats := stats_q.get_nowait()):
-                        stamp, nproc, cpu, rss, vms, _io = stats
-                        cursor.execute("INSERT INTO stats VALUES (?, ?, ?, ?, ?)",
-                                       (stamp, nproc, cpu, rss, vms))
-            # Process queues until process completes
-            while (retcode := self.proc.poll()) is None:
-                _read_queues()
-                time.sleep(0.1)
-            # Capture the return code
-            self.code = retcode
-            # Wait for the threads to complete
-            out_thread.join()
-            err_thread.join()
-            ps_thread.join()
-            # Flush queues
-            _read_queues()
-            # Write final attributes
-            with closing(db.cursor()) as cursor:
-                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("end",  str(time.time())))
-                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("exit", str(self.code)))
-            # If plotting enabled, draw the plot
-            if self.plotting:
-                with closing(db.cursor()) as cursor:
-                    req = cursor.execute("SELECT * FROM stats ORDER BY timestamp ASC")
-                    series = defaultdict(list)
-                    dates = []
-                    for (stamp, nproc, cpu, rss, vms) in req.fetchall():
-                        dates.append(datetime.fromtimestamp(stamp))
-                        series["Processes"].append(nproc)
-                        series["CPU %"].append(cpu)
-                        series["RSS (MB)"].append(rss / (1024**3))
-                        series["VMS (MB)"].append(vms / (1024**3))
-                    fig = pg.Figure()
-                    for key, vals in series.items():
-                        fig.add_trace(pg.Scatter(x   =dates,
-                                                 y   =vals,
-                                                 mode="lines",
-                                                 name=key))
-                    fig.update_layout(title=f"Resource Usage for {self.proc.pid}",
-                                      xaxis_title="Time")
-                    fig.write_image(self.plotting.as_posix(), format="png")
+        while (retcode := self.proc.poll()) is None:
+            time.sleep(0.1)
+        self.code = retcode
+        # Insert final attributes
+        db.push_attribute(Attribute("end",  str(time.time())))
+        db.push_attribute(Attribute("exit", str(self.code)))
+        # Stop the database
+        db.stop()
+        # # If plotting enabled, draw the plot
+        # if self.plotting:
+        #     with closing(db.cursor()) as cursor:
+        #         req = cursor.execute("SELECT * FROM stats ORDER BY timestamp ASC")
+        #         series = defaultdict(list)
+        #         dates = []
+        #         for (stamp, nproc, cpu, rss, vms) in req.fetchall():
+        #             dates.append(datetime.fromtimestamp(stamp))
+        #             series["Processes"].append(nproc)
+        #             series["CPU %"].append(cpu)
+        #             series["RSS (MB)"].append(rss / (1024**3))
+        #             series["VMS (MB)"].append(vms / (1024**3))
+        #         fig = pg.Figure()
+        #         for key, vals in series.items():
+        #             fig.add_trace(pg.Scatter(x   =dates,
+        #                                         y   =vals,
+        #                                         mode="lines",
+        #                                         name=key))
+        #         fig.update_layout(title=f"Resource Usage for {self.proc.pid}",
+        #                             xaxis_title="Time")
+        #         fig.write_image(self.plotting.as_posix(), format="png")
 
 
 @click.command()
