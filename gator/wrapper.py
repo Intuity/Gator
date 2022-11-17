@@ -17,16 +17,21 @@ import click
 import plotly.graph_objects as pg
 import psutil
 
+from .server import Server
+
 class Wrapper:
     """ Wraps a single process and tracks logging & process statistics """
 
     def __init__(self,
                  *cmd     : List[str],
+                 id       : Optional[str] = None,
+                 parent   : Optional[str] = None,
                  env      : Optional[Dict[str, str]] = None,
                  cwd      : Path = Path.cwd(),
                  tracking : Path = Path.cwd() / "tracking",
                  interval : int  = 5,
-                 plotting : Optional[Path] = None) -> None:
+                 plotting : Optional[Path] = None,
+                 port     : Optional[int] = None) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
@@ -42,6 +47,7 @@ class Wrapper:
                          more frequent the higher the resource usage of the
                          wrapper process will be. Defaults to 5 seconds.
         :param plotting: Plot the resource usage once the job completes.
+        :param port:     Optional port number to launch the server on.
         """
         self.cmd = cmd
         self.env = env or copy(os.environ)
@@ -51,6 +57,8 @@ class Wrapper:
         self.plotting = plotting
         self.proc = None
         self.code = None
+        self.server = Server(port=port)
+        self.env["GATOR_PARENT"] = f"{socket.gethostname()}:{self.server.port}"
         self.launch()
         self.monitor()
 
@@ -130,7 +138,7 @@ class Wrapper:
                 cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("cwd",   self.cwd.as_posix()))
                 cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("host",  socket.gethostname()))
                 cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("pid",   str(self.proc.pid)))
-                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("start", str(time.time())))
+                cursor.execute("INSERT INTO attrs VALUES (?, ?)", ("start", str(int(time.time()))))
             def _read_queues():
                 with closing(db.cursor()) as cursor:
                     while not stdout_q.empty() or not stderr_q.empty():
@@ -188,21 +196,33 @@ class Wrapper:
 
 
 @click.command()
+@click.option("--gator-id",       default=None, type=str, help="Job identifier")
+@click.option("--gator-parent",   default=None, type=str, help="Parent's server")
+@click.option("--gator-port",     default=None, type=int, help="Port number for server")
 @click.option("--gator-interval", default=5,    type=int, help="Polling interval")
 @click.option("--gator-tracking", default=None, type=str, help="Tracking directory")
 @click.option("--gator-plotting", default=None, type=str, help="Plot the results")
 @click.argument("command", nargs=-1)
-def launch(gator_interval, gator_tracking, gator_plotting, command):
+def launch(gator_id, gator_parent, gator_port, gator_interval, gator_tracking, gator_plotting, command):
     if len(command) == 0:
         with click.Context(launch) as ctx:
             click.echo(launch.get_help(ctx))
             sys.exit(0)
     kwargs = {}
+    if gator_port is not None:
+        kwargs["port"] = int(gator_port)
     if gator_tracking is not None:
         kwargs["tracking"] = Path(gator_tracking)
     if gator_plotting is not None:
         kwargs["plotting"] = Path(gator_plotting)
-    Wrapper(*command, **kwargs, interval=gator_interval)
+    Wrapper(*command,
+            **kwargs,
+            id=gator_id,
+            parent=gator_parent,
+            interval=gator_interval)
 
 if __name__ == "__main__":
-    launch(prog_name="wrapper")
+    launch(prog_name="wrapper", default_map={
+        f"gator_{k[6:].lower()}": v
+        for k, v in os.environ.items() if k.startswith("GATOR_")
+    })
