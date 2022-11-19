@@ -5,7 +5,7 @@ import sys
 import time
 from collections import defaultdict
 from copy import copy
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Thread
 from typing import Dict, List, Optional
@@ -64,9 +64,9 @@ class Wrapper:
         self.launch()
         Logger.info(f"Wrapper '{self.id}' monitoring child PID {self.proc.pid}")
         self.monitor()
-        self.db.stop()
         Logger.info(f"Wrapper '{self.id}' child PID {self.proc.pid} finished")
-        Parent.complete(self.id, self.code)
+        Parent.complete(self.id, self.code, *self.msg_counts())
+        self.db.stop()
 
     def launch(self) -> int:
         """
@@ -84,6 +84,11 @@ class Wrapper:
                                      bufsize=1,
                                      universal_newlines=True,
                                      close_fds=True)
+
+    def msg_counts(self):
+        wrn_count = self.db.query("SELECT COUNT(timestamp) FROM logging WHERE severity = \"WARNING\"")
+        err_count = self.db.query("SELECT COUNT(timestamp) FROM logging WHERE severity = \"ERROR\"")
+        return wrn_count[0][0], err_count[0][0]
 
     def monitor(self) -> None:
         """ Track the logging and process statistics as the job runs """
@@ -141,8 +146,12 @@ class Wrapper:
         err_thread.start()
         ps_thread.start()
         # Wait for process to end
+        last = datetime.now()
         while (retcode := self.proc.poll()) is None:
             time.sleep(0.1)
+            if ((curr := datetime.now()) - last) > timedelta(seconds=1):
+                Parent.update(self.id, *self.msg_counts())
+                last = curr
         self.code = retcode
         # Insert final attributes
         self.db.push_attribute(Attribute("end",  str(time.time())))

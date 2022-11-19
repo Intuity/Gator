@@ -1,9 +1,7 @@
-import os
 import logging
 import time
 
 import click
-import requests
 
 from .parent import Parent
 

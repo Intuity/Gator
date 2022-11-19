@@ -18,6 +18,7 @@ class Server:
         self.app.post("/log")(self.log)
         self.app.post("/child")(self.child_start)
         self.app.post("/child/complete")(self.child_complete)
+        self.app.post("/child/update")(self.child_update)
         self.__port = port
         self.lock = Lock()
         self.lock.acquire()
@@ -69,7 +70,7 @@ class Server:
         """
         Register a child process with the parent's server.
 
-        Example: { "child_id": "sub_123", "server": "somehost:1234" }
+        Example: { "id": "sub_123", "server": "somehost:1234" }
         """
         data     = request.json
         child_id = data.get("id",     None)
@@ -81,11 +82,25 @@ class Server:
         """
         Mark that a child process has completed.
 
-        Example: { "child_id": "sub_123", "server": "somehost:1234" }
+        Example: { "id": "sub_123", "code": 0 }
         """
         data      = request.json
-        child_id  = data.get("id",   None)
-        exit_code = data.get("code", None)
-        print(f"Child {child_id} completed with exit code {exit_code}")
+        child_id  = data.get("id",      None)
+        exit_code = data.get("code",    None)
+        errors   = data.get("errors",   None)
+        warnings = data.get("warnings", None)
+        print(f"Child {child_id} completed with {exit_code=}, {warnings=}, {errors=}")
         return jsonify({ "result": "success" })
 
+    def child_update(self):
+        """
+        Child can report error and warning counts.
+
+        Example: { "id": "sub_123", "errors": 1, "warnings": 3 }
+        """
+        data     = request.json
+        child_id = data.get("id",       None)
+        errors   = data.get("errors",   None)
+        warnings = data.get("warnings", None)
+        print(f"Child {child_id} - {errors=}, {warnings=}")
+        return jsonify({ "result": "success" })
