@@ -28,10 +28,10 @@ done
 wait
 
 # Run a high intensity process
-echo "Running high intensity calculation"
-a=0
-b=1234
-for i in $(seq 1000000); do
-    a=$(($a + $b))
-done
-echo "Result: $a"
+# echo "Running high intensity calculation"
+# a=0
+# b=1234
+# for i in $(seq 1000000); do
+#     a=$(($a + $b))
+# done
+# echo "Result: $a"
