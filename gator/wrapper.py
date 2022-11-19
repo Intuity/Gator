@@ -1,15 +1,12 @@
 import os
 import socket
 import subprocess
-import sqlite3
 import sys
 import time
 from collections import defaultdict
-from contextlib import closing
 from copy import copy
 from datetime import datetime
 from pathlib import Path
-from queue import Queue
 from threading import Thread
 from typing import Dict, List, Optional
 
@@ -139,29 +136,24 @@ class Wrapper:
         # Insert final attributes
         db.push_attribute(Attribute("end",  str(time.time())))
         db.push_attribute(Attribute("exit", str(self.code)))
+        # If plotting enabled, draw the plot
+        if self.plotting:
+            series = defaultdict(list)
+            dates = []
+            for (stamp, nproc, cpu, rss, vms) in db.query("SELECT * FROM pstats ORDER BY timestamp ASC"):
+                dates.append(datetime.fromtimestamp(stamp))
+                series["Processes"].append(nproc)
+                series["CPU %"].append(cpu)
+                series["Memory (MB)"].append(rss / (1024**3))
+                series["VMemory (MB)"].append(vms / (1024**3))
+            fig = pg.Figure()
+            for key, vals in series.items():
+                fig.add_trace(pg.Scatter(x=dates, y=vals, mode="lines", name=key))
+            fig.update_layout(title=f"Resource Usage for {self.proc.pid}",
+                              xaxis_title="Time")
+            fig.write_image(self.plotting.as_posix(), format="png")
         # Stop the database
         db.stop()
-        # # If plotting enabled, draw the plot
-        # if self.plotting:
-        #     with closing(db.cursor()) as cursor:
-        #         req = cursor.execute("SELECT * FROM stats ORDER BY timestamp ASC")
-        #         series = defaultdict(list)
-        #         dates = []
-        #         for (stamp, nproc, cpu, rss, vms) in req.fetchall():
-        #             dates.append(datetime.fromtimestamp(stamp))
-        #             series["Processes"].append(nproc)
-        #             series["CPU %"].append(cpu)
-        #             series["RSS (MB)"].append(rss / (1024**3))
-        #             series["VMS (MB)"].append(vms / (1024**3))
-        #         fig = pg.Figure()
-        #         for key, vals in series.items():
-        #             fig.add_trace(pg.Scatter(x   =dates,
-        #                                         y   =vals,
-        #                                         mode="lines",
-        #                                         name=key))
-        #         fig.update_layout(title=f"Resource Usage for {self.proc.pid}",
-        #                             xaxis_title="Time")
-        #         fig.write_image(self.plotting.as_posix(), format="png")
 
 
 @click.command()

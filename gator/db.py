@@ -3,6 +3,7 @@ import sqlite3
 import time
 from collections import namedtuple
 from contextlib import closing
+from itertools import count
 from pathlib import Path
 from queue import Queue, Empty
 from threading import Thread
@@ -10,17 +11,22 @@ from threading import Thread
 Attribute = namedtuple("Attribute", ("name", "value"))
 LogEntry  = namedtuple("LogEntry",  ("time", "severity", "message"))
 ProcStat  = namedtuple("ProcStat",  ("time", "nproc", "cpu", "mem", "vmem"))
+Query     = namedtuple("Query",     ("id", "query"))
+Response  = namedtuple("Response",  ("id", "data"))
 
 class Database:
 
     INTERVAL = 0.05
 
     def __init__(self, path : Path):
-        self.path      = path
-        self.attrs_q   = Queue()
-        self.logging_q = Queue()
-        self.pstats_q  = Queue()
+        self.path       = path
+        self.attrs_q    = Queue()
+        self.logging_q  = Queue()
+        self.pstats_q   = Queue()
+        self.query_q    = Queue()
+        self.response_q = Queue()
         # Launch a thread to run the database
+        self.query_id  = count()
         self.stop_flag = False
         self.thread    = Thread(target=self.__run)
         self.thread.start()
@@ -38,9 +44,17 @@ class Database:
     def push_statistics(self, stats : ProcStat) -> None:
         self.pstats_q.put(stats)
 
+    def query(self, query):
+        id = next(self.query_id)
+        self.query_q.put(Query(id, query))
+        response = self.response_q.get(block=True)
+        assert response.id == id, f"Expected query ID '{id}', got '{response.id}'"
+        return response.data
+
     def __run(self):
         logger = logging.Logger(name="db", level=logging.DEBUG)
         logger.addHandler(logging.StreamHandler())
+        queues = [self.attrs_q, self.logging_q, self.pstats_q, self.query_q]
         with sqlite3.connect(self.path.as_posix()) as db:
             # Create tables
             with closing(db.cursor()) as cursor:
@@ -49,7 +63,7 @@ class Database:
                 cursor.execute("CREATE TABLE pstats (timestamp, nproc, total_cpu, total_mem, total_vmem)")
             # Monitor queues until stopped and flushed
             def _all_empty():
-                return self.attrs_q.empty() and self.logging_q.empty() and self.pstats_q.empty()
+                return all((x.empty() for x in queues))
             while not self.stop_flag or not _all_empty():
                 # If queues are empty, sleep for a bit
                 if _all_empty():
@@ -57,6 +71,13 @@ class Database:
                     continue
                 # Digest any entries
                 with closing(db.cursor()) as cursor:
+                    # Queries
+                    try:
+                        while query := self.query_q.get_nowait():
+                            data = list(cursor.execute(query.query).fetchall())
+                            self.response_q.put(Response(query.id, data))
+                    except Empty:
+                        pass
                     # Attributes
                     try:
                         while entry := self.attrs_q.get_nowait():
@@ -70,7 +91,7 @@ class Database:
                             cursor.execute("INSERT INTO logging VALUES (?, ?, ?)", entry)
                     except Empty:
                         pass
-                    # Process Statistics
+                    # Statistics
                     try:
                         while entry := self.pstats_q.get_nowait():
                             cursor.execute("INSERT INTO pstats VALUES (?, ?, ?, ?, ?)", entry)
