@@ -3,12 +3,16 @@ import socket
 import time
 from contextlib import closing
 from threading import Lock, Thread
+from typing import Optional
 
 from flask import cli, Flask, jsonify, request
 
+from .db import Database
+
 class Server:
 
-    def __init__(self, port=None):
+    def __init__(self, port : Optional[int]=None, db : Database = None):
+        self.db = db
         self.app = Flask("gator")
         self.app.route("/")(self.root)
         self.app.post("/log")(self.log)
@@ -43,11 +47,8 @@ class Server:
 
     def log(self):
         data      = request.json
-        timestamp = data.get("timestamp", int(time.time()))
-        verbosity = data.get("verbosity", "INFO").strip().upper()
+        timestamp = data.get("timestamp", time.time())
+        severity  = data.get("severity", "INFO").strip().upper()
         message   = data.get("message", "N/A").strip()
-        if (level := logging._nameToLevel.get(verbosity, None)) is not None:
-            logging.log(level, f"[{timestamp}] {message}")
-            return jsonify({ "result": "success" })
-        else:
-            return jsonify({ "result": "bad_verbosity" })
+        self.db.push_log(severity, message, int(timestamp))
+        return jsonify({"result": "success"})

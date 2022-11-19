@@ -1,60 +1,61 @@
 import logging
 import sqlite3
-import time
 from collections import namedtuple
 from contextlib import closing
 from itertools import count
 from pathlib import Path
 from queue import Queue, Empty
 from threading import Thread
+from time import time
+from typing import Any, List, Optional
+
+from rich.logging import RichHandler
 
 Attribute = namedtuple("Attribute", ("name", "value"))
 LogEntry  = namedtuple("LogEntry",  ("time", "severity", "message"))
 ProcStat  = namedtuple("ProcStat",  ("time", "nproc", "cpu", "mem", "vmem"))
 Query     = namedtuple("Query",     ("id", "query"))
 Response  = namedtuple("Response",  ("id", "data"))
+Stop      = namedtuple("Stop",      ("timestamp", ))
 
 class Database:
 
-    INTERVAL = 0.05
-
     def __init__(self, path : Path):
         self.path       = path
-        self.attrs_q    = Queue()
-        self.logging_q  = Queue()
-        self.pstats_q   = Queue()
-        self.query_q    = Queue()
+        self.request_q  = Queue()
         self.response_q = Queue()
         # Launch a thread to run the database
         self.query_id  = count()
-        self.stop_flag = False
         self.thread    = Thread(target=self.__run)
         self.thread.start()
 
     def stop(self):
-        self.stop_flag = True
+        self.request_q.put(Stop(time()))
         self.thread.join()
 
     def push_attribute(self, attr : Attribute) -> None:
-        self.attrs_q.put(attr)
+        assert isinstance(attr, Attribute)
+        self.request_q.put(attr)
 
-    def push_log(self, entry : LogEntry) -> None:
-        self.logging_q.put(entry)
+    def push_log(self, severity : str, message : str, stamp : Optional[int] = None) -> None:
+        stamp = stamp or int(time())
+        self.request_q.put(LogEntry(stamp, severity, message))
 
     def push_statistics(self, stats : ProcStat) -> None:
-        self.pstats_q.put(stats)
+        assert isinstance(stats, ProcStat)
+        self.request_q.put(stats)
 
-    def query(self, query):
+    def query(self, query : str) -> List[Any]:
+        assert isinstance(query, str)
         id = next(self.query_id)
-        self.query_q.put(Query(id, query))
+        self.request_q.put(Query(id, query))
         response = self.response_q.get(block=True)
         assert response.id == id, f"Expected query ID '{id}', got '{response.id}'"
         return response.data
 
     def __run(self):
         logger = logging.Logger(name="db", level=logging.DEBUG)
-        logger.addHandler(logging.StreamHandler())
-        queues = [self.attrs_q, self.logging_q, self.pstats_q, self.query_q]
+        logger.addHandler(RichHandler())
         with sqlite3.connect(self.path.as_posix()) as db:
             # Create tables
             with closing(db.cursor()) as cursor:
@@ -62,38 +63,29 @@ class Database:
                 cursor.execute("CREATE TABLE logging (timestamp, severity, message)")
                 cursor.execute("CREATE TABLE pstats (timestamp, nproc, total_cpu, total_mem, total_vmem)")
             # Monitor queues until stopped and flushed
-            def _all_empty():
-                return all((x.empty() for x in queues))
-            while not self.stop_flag or not _all_empty():
-                # If queues are empty, sleep for a bit
-                if _all_empty():
-                    time.sleep(self.INTERVAL)
-                    continue
-                # Digest any entries
+            stop_monitor = False
+            while not stop_monitor:
+                req = self.request_q.get(block=True)
                 with closing(db.cursor()) as cursor:
-                    # Queries
-                    try:
-                        while query := self.query_q.get_nowait():
-                            data = list(cursor.execute(query.query).fetchall())
-                            self.response_q.put(Response(query.id, data))
-                    except Empty:
-                        pass
-                    # Attributes
-                    try:
-                        while entry := self.attrs_q.get_nowait():
-                            cursor.execute("INSERT INTO attrs VALUES (?, ?)", entry)
-                    except Empty:
-                        pass
-                    # Logging
-                    try:
-                        while entry := self.logging_q.get_nowait():
-                            logger.log(logging._nameToLevel.get(entry.severity.upper(), "INFO"), f"[{entry.time}] {entry.message}")
-                            cursor.execute("INSERT INTO logging VALUES (?, ?, ?)", entry)
-                    except Empty:
-                        pass
-                    # Statistics
-                    try:
-                        while entry := self.pstats_q.get_nowait():
-                            cursor.execute("INSERT INTO pstats VALUES (?, ?, ?, ?, ?)", entry)
-                    except Empty:
-                        pass
+                    while True:
+                        if isinstance(req, Query):
+                            data = list(cursor.execute(req.query).fetchall())
+                            self.response_q.put(Response(req.id, data))
+                        elif isinstance(req, Attribute):
+                            cursor.execute("INSERT INTO attrs VALUES (?, ?)", req)
+                        elif isinstance(req, LogEntry):
+                            logger.log(logging._nameToLevel.get(req.severity.upper(), "INFO"),
+                                       req.message)
+                            cursor.execute("INSERT INTO logging VALUES (?, ?, ?)", req)
+                        elif isinstance(req, ProcStat):
+                            cursor.execute("INSERT INTO pstats VALUES (?, ?, ?, ?, ?)", req)
+                        elif isinstance(req, Stop):
+                            stop_monitor = True
+                            break
+                        else:
+                            logger.error(f"Bad queued request of type '{type(req).__name__}'")
+                        # Attempt to dequeue next extra
+                        try:
+                            req = self.request_q.get_nowait()
+                        except Empty:
+                            break

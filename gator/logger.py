@@ -16,10 +16,10 @@ class Logger:
             cls.INST = cls()
         return cls.INST
 
-    def _log(self, verbosity, message):
+    def _log(self, severity, message):
         resp = requests.post("http://" + self.parent + "/log",
                              json={"timestamp": time.time(),
-                                   "verbosity": verbosity.upper(),
+                                   "severity" : severity.upper(),
                                    "message"  : message})
         if resp.json().get("result", None) != "success":
             print(f"Failed to log via {self.parent}")
@@ -41,10 +41,10 @@ class Logger:
         return Logger.instance()._log("ERROR", message)
 
 @click.command()
-@click.option("-v", "--verbosity", type=str, default="INFO", help="Verbosity level")
+@click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
 @click.argument("message")
-def logger(verbosity, message):
-    Logger.instance()._log(verbosity, message)
+def logger(severity, message):
+    Logger.instance()._log(severity, message)
 
 if __name__ == "__main__":
     logger(prog_name="logger")

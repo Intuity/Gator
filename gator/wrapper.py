@@ -48,6 +48,8 @@ class Wrapper:
         :param port:     Optional port number to launch the server on.
         """
         self.cmd = cmd
+        self.id = id or os.getpid()
+        self.parent = parent
         self.env = env or copy(os.environ)
         self.cwd = cwd
         self.tracking = tracking
@@ -55,10 +57,12 @@ class Wrapper:
         self.plotting = plotting
         self.proc = None
         self.code = None
-        self.server = Server(port=port)
+        self.db = Database(self.tracking / f"{self.id}.db")
+        self.server = Server(port=port, db=self.db)
         self.env["GATOR_PARENT"] = f"{socket.gethostname()}:{self.server.port}"
         self.launch()
         self.monitor()
+        self.db.stop()
 
     def launch(self) -> int:
         """
@@ -84,7 +88,7 @@ class Wrapper:
             while proc.poll() is None:
                 line = pipe.readline()
                 if len(line) > 0:
-                    db.push_log(LogEntry(int(time.time()), severity, line.rstrip()))
+                    db.push_log(severity, line.rstrip(), int(time.time()))
         # Process stats monitor
         def _proc_stats(proc, db, interval):
             ps = psutil.Process(pid=proc.pid)
@@ -114,17 +118,16 @@ class Wrapper:
                     db.push_statistics(ProcStat(time.time(), nproc, cpu_perc, rss, vms))
         # Create database
         self.tracking.mkdir(parents=True, exist_ok=True)
-        db = Database(self.tracking / f"{self.proc.pid}.db")
         # Setup test attributes
-        db.push_attribute(Attribute("cmd",   " ".join(self.cmd)))
-        db.push_attribute(Attribute("cwd",   self.cwd.as_posix()))
-        db.push_attribute(Attribute("host",  socket.gethostname()))
-        db.push_attribute(Attribute("pid",   str(self.proc.pid)))
-        db.push_attribute(Attribute("start", str(int(time.time()))))
+        self.db.push_attribute(Attribute("cmd",   " ".join(self.cmd)))
+        self.db.push_attribute(Attribute("cwd",   self.cwd.as_posix()))
+        self.db.push_attribute(Attribute("host",  socket.gethostname()))
+        self.db.push_attribute(Attribute("pid",   str(self.proc.pid)))
+        self.db.push_attribute(Attribute("start", str(int(time.time()))))
         # Create threads
-        out_thread = Thread(target=_stdio, args=(self.proc, self.proc.stdout, db, "INFO"))
-        err_thread = Thread(target=_stdio, args=(self.proc, self.proc.stderr, db, "ERROR"))
-        ps_thread = Thread(target=_proc_stats, args=(self.proc, db, self.interval))
+        out_thread = Thread(target=_stdio, args=(self.proc, self.proc.stdout, self.db, "INFO"))
+        err_thread = Thread(target=_stdio, args=(self.proc, self.proc.stderr, self.db, "ERROR"))
+        ps_thread = Thread(target=_proc_stats, args=(self.proc, self.db, self.interval))
         # Start threads
         out_thread.start()
         err_thread.start()
@@ -134,13 +137,13 @@ class Wrapper:
             time.sleep(0.1)
         self.code = retcode
         # Insert final attributes
-        db.push_attribute(Attribute("end",  str(time.time())))
-        db.push_attribute(Attribute("exit", str(self.code)))
+        self.db.push_attribute(Attribute("end",  str(time.time())))
+        self.db.push_attribute(Attribute("exit", str(self.code)))
         # If plotting enabled, draw the plot
         if self.plotting:
             series = defaultdict(list)
             dates = []
-            for (stamp, nproc, cpu, rss, vms) in db.query("SELECT * FROM pstats ORDER BY timestamp ASC"):
+            for (stamp, nproc, cpu, rss, vms) in self.db.query("SELECT * FROM pstats ORDER BY timestamp ASC"):
                 dates.append(datetime.fromtimestamp(stamp))
                 series["Processes"].append(nproc)
                 series["CPU %"].append(cpu)
@@ -152,8 +155,6 @@ class Wrapper:
             fig.update_layout(title=f"Resource Usage for {self.proc.pid}",
                               xaxis_title="Time")
             fig.write_image(self.plotting.as_posix(), format="png")
-        # Stop the database
-        db.stop()
 
 
 @click.command()
