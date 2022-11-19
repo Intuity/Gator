@@ -14,7 +14,9 @@ import click
 import plotly.graph_objects as pg
 import psutil
 
-from .db import Attribute, Database, LogEntry, ProcStat
+from .db import Attribute, Database, ProcStat
+from .logger import Logger
+from .parent import Parent
 from .server import Server
 
 class Wrapper:
@@ -23,7 +25,6 @@ class Wrapper:
     def __init__(self,
                  *cmd     : List[str],
                  id       : Optional[str] = None,
-                 parent   : Optional[str] = None,
                  env      : Optional[Dict[str, str]] = None,
                  cwd      : Path = Path.cwd(),
                  tracking : Path = Path.cwd() / "tracking",
@@ -49,7 +50,6 @@ class Wrapper:
         """
         self.cmd = cmd
         self.id = id or os.getpid()
-        self.parent = parent
         self.env = env or copy(os.environ)
         self.cwd = cwd
         self.tracking = tracking
@@ -59,10 +59,14 @@ class Wrapper:
         self.code = None
         self.db = Database(self.tracking / f"{self.id}.db")
         self.server = Server(port=port, db=self.db)
-        self.env["GATOR_PARENT"] = f"{socket.gethostname()}:{self.server.port}"
+        Parent.register(self.id, self.server.address)
+        self.env["GATOR_PARENT"] = self.server.address
         self.launch()
+        Logger.info(f"Wrapper '{self.id}' monitoring child PID {self.proc.pid}")
         self.monitor()
         self.db.stop()
+        Logger.info(f"Wrapper '{self.id}' child PID {self.proc.pid} finished")
+        Parent.complete(self.id, self.code)
 
     def launch(self) -> int:
         """
@@ -108,11 +112,15 @@ class Wrapper:
                     rss, vms = mem_stat.rss, mem_stat.vms
                     # io_count = ps.io_counters() if hasattr(ps, "io_counters") else None
                     for child in ps.children(recursive=True):
+                        try:
+                            c_cpu_perc = child.cpu_percent()
+                            c_mem_stat   = child.memory_info()
+                        except psutil.ZombieProcess:
+                            continue
                         nproc    += 1
-                        cpu_perc += child.cpu_percent()
-                        mem_stat  = child.memory_info()
-                        rss      += mem_stat.rss
-                        vms      += mem_stat.vms
+                        cpu_perc += c_cpu_perc
+                        rss      += c_mem_stat.rss
+                        vms      += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
                     db.push_statistics(ProcStat(time.time(), nproc, cpu_perc, rss, vms))
@@ -177,10 +185,11 @@ def launch(gator_id, gator_parent, gator_port, gator_interval, gator_tracking, g
         kwargs["tracking"] = Path(gator_tracking)
     if gator_plotting is not None:
         kwargs["plotting"] = Path(gator_plotting)
+    if gator_parent is not None:
+        Parent.parent = gator_parent
     Wrapper(*command,
             **kwargs,
             id=gator_id,
-            parent=gator_parent,
             interval=gator_interval)
 
 if __name__ == "__main__":

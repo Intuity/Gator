@@ -24,6 +24,8 @@ class Database:
         self.path       = path
         self.request_q  = Queue()
         self.response_q = Queue()
+        # Ensure path's parent folder exists
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         # Launch a thread to run the database
         self.query_id  = count()
         self.thread    = Thread(target=self.__run)
@@ -56,6 +58,7 @@ class Database:
     def __run(self):
         logger = logging.Logger(name="db", level=logging.DEBUG)
         logger.addHandler(RichHandler())
+        self.path.unlink(missing_ok=True)
         with sqlite3.connect(self.path.as_posix()) as db:
             # Create tables
             with closing(db.cursor()) as cursor:
