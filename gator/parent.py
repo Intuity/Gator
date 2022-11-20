@@ -19,16 +19,15 @@ class _Parent:
                 print(f"Failed to post to route '{route}' via '{self.parent}'")
             return data
         else:
-            print(f"Post to '{route}': {kwargs}")
             return {}
 
     def register(self, id, server):
-        self.post("child", id=id, server=server)
+        self.post(f"children/{id}", server=server)
 
     def complete(self, id, exit_code, warnings, errors):
-        self.post("child/complete", id=id, code=exit_code, warnings=warnings, errors=errors)
+        self.post(f"children/{id}/complete", code=exit_code, warnings=warnings, errors=errors)
 
     def update(self, id, warnings, errors):
-        self.post("child/update", id=id, warnings=warnings, errors=errors)
+        self.post(f"children/{id}/update", warnings=warnings, errors=errors)
 
 Parent = _Parent()

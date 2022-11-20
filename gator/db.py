@@ -20,8 +20,9 @@ Stop      = namedtuple("Stop",      ("timestamp", ))
 
 class Database:
 
-    def __init__(self, path : Path):
+    def __init__(self, path : Path, quiet : bool = False):
         self.path       = path
+        self.quiet      = quiet
         self.request_q  = Queue()
         self.response_q = Queue()
         # Ensure path's parent folder exists
@@ -77,8 +78,9 @@ class Database:
                         elif isinstance(req, Attribute):
                             cursor.execute("INSERT INTO attrs VALUES (?, ?)", req)
                         elif isinstance(req, LogEntry):
-                            logger.log(logging._nameToLevel.get(req.severity.upper(), "INFO"),
-                                       req.message)
+                            if not self.quiet:
+                                logger.log(logging._nameToLevel.get(req.severity.upper(), "INFO"),
+                                           req.message)
                             cursor.execute("INSERT INTO logging VALUES (?, ?, ?)", req)
                         elif isinstance(req, ProcStat):
                             cursor.execute("INSERT INTO pstats VALUES (?, ?, ?, ?, ?)", req)

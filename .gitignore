@@ -1,3 +1,4 @@
 tracking
 venv
 __pycache__
+res*.png

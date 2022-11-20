@@ -1,5 +1,6 @@
 import logging
 import socket
+import string
 import time
 from contextlib import closing
 from threading import Lock, Thread
@@ -12,17 +13,15 @@ from .db import Database
 class Server:
 
     def __init__(self, port : Optional[int]=None, db : Database = None):
+        all_chars = string.ascii_letters + string.digits
         self.db = db
         self.app = Flask("gator")
         self.app.route("/")(self.root)
-        self.app.post("/log")(self.log)
-        self.app.post("/child")(self.child_start)
-        self.app.post("/child/complete")(self.child_complete)
-        self.app.post("/child/update")(self.child_update)
+        self.register_post("/log", self.handle_log)
         self.__port = port
         self.lock = Lock()
         self.lock.acquire()
-        Thread(target=self.__run, daemon=True).start()
+        self.thread = None
 
     @property
     def port(self):
@@ -33,6 +32,16 @@ class Server:
     @property
     def address(self):
         return f"{socket.gethostname()}:{self.port}"
+
+    def register_get(self, route, handler) -> None:
+        self.app.get("/" + route.strip("/"))(handler)
+
+    def register_post(self, route, handler) -> None:
+        self.app.post("/" + route.strip("/"))(handler)
+
+    def start(self):
+        self.thread = Thread(target=self.__run, daemon=True)
+        self.thread.start()
 
     def __run(self):
         # If no port number provided, choose a random one
@@ -53,7 +62,7 @@ class Server:
         """ Identify Gator and the tool version """
         return jsonify({ "tool": "gator", "version": 0.1 })
 
-    def log(self):
+    def handle_log(self):
         """
         Service remote logging request from a child process.
 
@@ -65,42 +74,3 @@ class Server:
         message   = data.get("message", "N/A").strip()
         self.db.push_log(severity, message, int(timestamp))
         return jsonify({"result": "success"})
-
-    def child_start(self):
-        """
-        Register a child process with the parent's server.
-
-        Example: { "id": "sub_123", "server": "somehost:1234" }
-        """
-        data     = request.json
-        child_id = data.get("id",     None)
-        server   = data.get("server", None)
-        print(f"Child {child_id} registered with server {server}")
-        return jsonify({ "result": "success" })
-
-    def child_complete(self):
-        """
-        Mark that a child process has completed.
-
-        Example: { "id": "sub_123", "code": 0 }
-        """
-        data      = request.json
-        child_id  = data.get("id",      None)
-        exit_code = data.get("code",    None)
-        errors   = data.get("errors",   None)
-        warnings = data.get("warnings", None)
-        print(f"Child {child_id} completed with {exit_code=}, {warnings=}, {errors=}")
-        return jsonify({ "result": "success" })
-
-    def child_update(self):
-        """
-        Child can report error and warning counts.
-
-        Example: { "id": "sub_123", "errors": 1, "warnings": 3 }
-        """
-        data     = request.json
-        child_id = data.get("id",       None)
-        errors   = data.get("errors",   None)
-        warnings = data.get("warnings", None)
-        print(f"Child {child_id} - {errors=}, {warnings=}")
-        return jsonify({ "result": "success" })

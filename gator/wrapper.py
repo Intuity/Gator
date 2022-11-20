@@ -30,7 +30,8 @@ class Wrapper:
                  tracking : Path = Path.cwd() / "tracking",
                  interval : int  = 5,
                  plotting : Optional[Path] = None,
-                 port     : Optional[int] = None) -> None:
+                 port     : Optional[int] = None,
+                 quiet    : bool = False) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
@@ -57,8 +58,9 @@ class Wrapper:
         self.plotting = plotting
         self.proc = None
         self.code = None
-        self.db = Database(self.tracking / f"{self.id}.db")
+        self.db = Database(self.tracking / f"{self.id}.db", quiet=quiet)
         self.server = Server(port=port, db=self.db)
+        self.server.start()
         Parent.register(self.id, self.server.address)
         self.env["GATOR_PARENT"] = self.server.address
         self.launch()
@@ -181,8 +183,9 @@ class Wrapper:
 @click.option("--gator-interval", default=5,    type=int, help="Polling interval")
 @click.option("--gator-tracking", default=None, type=str, help="Tracking directory")
 @click.option("--gator-plotting", default=None, type=str, help="Plot the results")
+@click.option("--gator-quiet",    default=False, count=True, help="Silence local logging")
 @click.argument("command", nargs=-1)
-def launch(gator_id, gator_parent, gator_port, gator_interval, gator_tracking, gator_plotting, command):
+def launch(gator_id, gator_parent, gator_port, gator_interval, gator_tracking, gator_plotting, gator_quiet, command):
     if len(command) == 0:
         with click.Context(launch) as ctx:
             click.echo(launch.get_help(ctx))
@@ -199,7 +202,8 @@ def launch(gator_id, gator_parent, gator_port, gator_interval, gator_tracking, g
     Wrapper(*command,
             **kwargs,
             id=gator_id,
-            interval=gator_interval)
+            interval=gator_interval,
+            quiet=gator_quiet)
 
 if __name__ == "__main__":
     launch(prog_name="wrapper", default_map={
