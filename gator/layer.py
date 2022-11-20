@@ -1,6 +1,4 @@
 import os
-import socket
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from enum import auto, Enum
@@ -13,6 +11,7 @@ from threading import Lock
 
 from .db import Database
 from .server import Server
+from .scheduler import Scheduler, Task
 
 class State(Enum):
     LAUNCHED = auto()
@@ -21,13 +20,15 @@ class State(Enum):
 
 @dataclass
 class Child:
-    id       : str      = "N/A"
-    state    : State    = State.LAUNCHED
-    server   : str      = ""
-    warnings : int      = 0
-    errors   : int      = 0
-    exitcode : int      = 0
-    updated  : datetime = datetime.min
+    id        : str      = "N/A"
+    state     : State    = State.LAUNCHED
+    server    : str      = ""
+    warnings  : int      = 0
+    errors    : int      = 0
+    exitcode  : int      = 0
+    started   : datetime = datetime.min
+    updated   : datetime = datetime.min
+    completed : datetime = datetime.min
 
 class Layer:
     """ Layer of the process tree """
@@ -42,8 +43,9 @@ class Layer:
         self.parent   = parent
         self.tracking = tracking
         # Track children
-        self.children = {}
-        self.lock     = Lock()
+        self.children  = {}
+        self.lock      = Lock()
+        self.scheduler = None
         # Setup database and server
         self.db     = Database(self.tracking / f"{self.id}.db", quiet)
         self.server = Server(port, self.db)
@@ -61,12 +63,14 @@ class Layer:
         self.lock.acquire()
         state = {}
         for child in self.children.values():
-            state[child.id] = { "state"   : child.state.name,
-                                "server"  : child.server,
-                                "warnings": child.warnings,
-                                "errors"  : child.errors,
-                                "exitcode": child.exitcode,
-                                "updated" : child.updated.isoformat() }
+            state[child.id] = { "state"    : child.state.name,
+                                "server"   : child.server,
+                                "warnings" : child.warnings,
+                                "errors"   : child.errors,
+                                "exitcode" : child.exitcode,
+                                "started"  : child.started.isoformat(),
+                                "updated"  : child.updated.isoformat(),
+                                "completed": child.completed.isoformat() }
         self.lock.release()
         return state
 
@@ -85,6 +89,7 @@ class Layer:
                 print(f"Duplicate start detected for child '{child.id}'")
             child.server  = server
             child.state   = State.STARTED
+            child.started = datetime.now()
             child.updated = datetime.now()
             self.lock.release()
             return jsonify({ "result": "success" })
@@ -125,11 +130,12 @@ class Layer:
             child = self.children[child_id]
             if child.state is State.COMPLETE:
                 print(f"Duplicate completion detected for child '{child.id}'")
-            child.state    = State.COMPLETE
-            child.warnings = data.get("warnings", 0)
-            child.errors   = data.get("errors",   0)
-            child.exitcode = data.get("code",     0)
-            child.updated  = datetime.now()
+            child.state     = State.COMPLETE
+            child.warnings  = data.get("warnings", 0)
+            child.errors    = data.get("errors",   0)
+            child.exitcode  = data.get("code",     0)
+            child.updated   = datetime.now()
+            child.completed = datetime.now()
             self.lock.release()
             return jsonify({ "result": "success" })
         else:
@@ -138,29 +144,15 @@ class Layer:
 
     def launch(self):
         # TODO: Currently using a fixed subprocess set
-        print("Launch tasks")
-        procs = []
+        self.lock.acquire()
+        tasks = []
         for idx in range(5):
             child_id = f"sub_{idx}"
-            self.lock.acquire()
             self.children[child_id] = Child(child_id)
-            self.lock.release()
-            procs.append(subprocess.Popen(["python3", "-m", "gator.wrapper",
-                                                      "--gator-interval", "1",
-                                                      "--gator-plotting", f"res_{idx}.png",
-                                                      "--gator-parent", f"{socket.gethostname()}:{self.server.port}",
-                                                      "--gator-id", child_id,
-                                                      "sleep", str(10 * idx)],
-                                                    #   "./test_sh.sh",
-                                                    #   "10"],
-                                          stdout=subprocess.DEVNULL,
-                                          stderr=subprocess.DEVNULL))
-        # Wait for subprocesses to complete
-        print(f"Wait for {len(procs)} tasks")
-        for proc in procs:
-            proc.wait()
-        print("All tasks complete")
-
+            tasks.append(Task(child_id, ["sleep", str(10 * (idx + 1))]))
+        self.lock.release()
+        self.scheduler = Scheduler(tasks, self.server.address)
+        self.scheduler.wait_for_all()
 
 @click.command()
 @click.option("--gator-id",       default=None,  type=str,   help="Job identifier")
