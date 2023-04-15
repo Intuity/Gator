@@ -83,7 +83,8 @@ class Database:
                                            req.message)
                             cursor.execute("INSERT INTO logging VALUES (?, ?, ?)", req)
                         elif isinstance(req, ProcStat):
-                            cursor.execute("INSERT INTO pstats VALUES (?, ?, ?, ?, ?)", req)
+                            cursor.execute("INSERT INTO pstats VALUES (?, ?, ?, ?, ?)",
+                                           [int(req[0].timestamp()), *req[1:]])
                         elif isinstance(req, Stop):
                             stop_monitor = True
                             break
