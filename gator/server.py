@@ -1,6 +1,5 @@
 import logging
 import socket
-import string
 import time
 from contextlib import closing
 from threading import Lock, Thread
@@ -13,7 +12,6 @@ from .db import Database
 class Server:
 
     def __init__(self, port : Optional[int]=None, db : Database = None):
-        all_chars = string.ascii_letters + string.digits
         self.db = db
         self.app = Flask("gator")
         self.app.route("/")(self.root)

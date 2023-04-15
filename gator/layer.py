@@ -3,15 +3,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import auto, Enum
 from pathlib import Path
-from typing import Optional
+from typing import Union
 
-import click
 from flask import jsonify, request
 from threading import Lock
 
 from .db import Database
+from .logger import Logger
+from .parent import Parent
 from .server import Server
-from .scheduler import Scheduler, Task
+from .scheduler import Scheduler
+from .specs import Job, JobGroup, Spec
 
 class State(Enum):
     LAUNCHED = auto()
@@ -20,6 +22,7 @@ class State(Enum):
 
 @dataclass
 class Child:
+    spec      : Union[Job, JobGroup]
     id        : str      = "N/A"
     state     : State    = State.LAUNCHED
     server    : str      = ""
@@ -34,29 +37,33 @@ class Layer:
     """ Layer of the process tree """
 
     def __init__(self,
-                 id       : Optional[str] = None,
-                 parent   : Optional[str] = None,
-                 port     : Optional[int] = None,
+                 spec     : JobGroup,
                  tracking : Path = Path.cwd() / "tracking",
                  quiet    : bool = False) -> None:
-        self.id       = id or os.getpid()
-        self.parent   = parent
+        self.spec     = spec
         self.tracking = tracking
+        # Setup database and server
+        self.db     = Database(self.tracking / f"{self.id}.db", quiet)
+        self.server = Server(self.spec.port, self.db)
+        self.server.register_get("/children", self._list_children)
+        self.server.register_get("/children/<child_id>", self._child_query)
+        self.server.register_post("/children/<child_id>", self._child_started)
+        self.server.register_post("/children/<child_id>/update", self._child_updated)
+        self.server.register_post("/children/<child_id>/complete", self._child_completed)
+        self.server.start()
+        Parent.register(self.spec.id, self.server.address)
         # Track children
         self.children  = {}
         self.lock      = Lock()
         self.scheduler = None
         # Setup database and server
-        self.db     = Database(self.tracking / f"{self.id}.db", quiet)
-        self.server = Server(port, self.db)
-        self.server.register_get("/children", self._list_children)
-        self.server.register_post("/children/<child_id>", self._child_started)
-        self.server.register_post("/children/<child_id>/update", self._child_updated)
-        self.server.register_post("/children/<child_id>/complete", self._child_completed)
-        self.server.start()
-        print(f"Layer server running on address {self.server.address}")
+        Logger.info(f"Layer '{self.id}' launching sub-jobs")
         self.launch()
         self.db.stop()
+
+    @property
+    def id(self) -> str:
+        return self.spec.id or str(os.getpid())
 
     def _list_children(self):
         """ List all of the children of this layer """
@@ -74,6 +81,16 @@ class Layer:
         self.lock.release()
         return state
 
+    def _child_query(self, child_id : str):
+        if child_id in self.children:
+            return jsonify({
+                "result": "success",
+                "spec"  : Spec.dump(self.children[child_id].spec)
+            })
+        else:
+            Logger.error(f"Unknown child '{child_id}'")
+            return jsonify({ "result": "error" })
+
     def _child_started(self, child_id):
         """
         Register a child process with the parent's server.
@@ -86,7 +103,7 @@ class Layer:
             self.lock.acquire()
             child = self.children[child_id]
             if child.state is not State.LAUNCHED:
-                print(f"Duplicate start detected for child '{child.id}'")
+                Logger.error(f"Duplicate start detected for child '{child.id}'")
             child.server  = server
             child.state   = State.STARTED
             child.started = datetime.now()
@@ -94,7 +111,7 @@ class Layer:
             self.lock.release()
             return jsonify({ "result": "success" })
         else:
-            print(f"Unknown child '{child_id}'")
+            Logger.error(f"Unknown child '{child_id}'")
             return jsonify({ "result": "error" })
 
     def _child_updated(self, child_id):
@@ -143,33 +160,14 @@ class Layer:
             return jsonify({ "result": "error" })
 
     def launch(self):
-        # TODO: Currently using a fixed subprocess set
         self.lock.acquire()
-        tasks = []
-        for idx in range(5):
-            child_id = f"sub_{idx}"
-            self.children[child_id] = Child(child_id)
-            tasks.append(Task(child_id, ["sleep", str(10 * (idx + 1))]))
+        for idx, job in enumerate(self.spec.jobs):
+            if not isinstance(job, (Job, JobGroup)):
+                print(f"Unexpected job object type {type(job).__name__}")
+                continue
+            job.id = f"T{idx}" + (f"_{job.id}" if job.id else "")
+            self.children[job.id] = Child(spec=job, id=job.id)
         self.lock.release()
-        self.scheduler = Scheduler(tasks, self.server.address)
+        self.scheduler = Scheduler(tasks=list(self.children.keys()),
+                                   parent=self.server.address)
         self.scheduler.wait_for_all()
-
-@click.command()
-@click.option("--gator-id",       default=None,  type=str,   help="Job identifier")
-@click.option("--gator-parent",   default=None,  type=str,   help="Parent's server")
-@click.option("--gator-port",     default=None,  type=int,   help="Port number for server")
-@click.option("--gator-tracking", default=None,  type=str,   help="Tracking directory")
-@click.option("--gator-quiet",    default=False, count=True, help="Silence local logging")
-def layer(gator_id, gator_parent, gator_port, gator_tracking, gator_quiet):
-    kwargs = {}
-    if gator_port is not None:
-        kwargs["port"] = int(gator_port)
-    if gator_tracking is not None:
-        kwargs["tracking"] = Path(gator_tracking)
-    Layer(gator_id, gator_parent, **kwargs, quiet=gator_quiet)
-
-if __name__ == "__main__":
-    layer(prog_name="layer", default_map={
-        f"gator_{k[6:].lower()}": v
-        for k, v in os.environ.items() if k.startswith("GATOR_")
-    })

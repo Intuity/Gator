@@ -1,1 +1,1 @@
-pip install click plotly psutil pandas kaleido requests flask rich
+pip install click plotly psutil pandas kaleido requests flask rich tabulate pyyaml

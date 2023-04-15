@@ -2,8 +2,12 @@ import logging
 import time
 
 import click
+from rich.logging import RichHandler
 
 from .parent import Parent
+
+local_logger = logging.Logger(name="db", level=logging.DEBUG)
+local_logger.addHandler(RichHandler())
 
 class Logger:
 
@@ -14,7 +18,7 @@ class Logger:
                                severity =severity.upper(),
                                message  =message)
         else:
-            logging.log(logging._nameToLevel.get(severity, None), message)
+            local_logger.log(logging._nameToLevel.get(severity, None), message)
 
     @staticmethod
     def debug(message):

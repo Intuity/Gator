@@ -1,37 +1,35 @@
 import os
 import socket
 import subprocess
-import sys
 import time
 from collections import defaultdict
 from copy import copy
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Thread
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-import click
 import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
 from .db import Attribute, Database, ProcStat
-from .job_spec import JobSpec, parse_spec
 from .logger import Logger
 from .parent import Parent
 from .server import Server
+from .specs import Job, Spec
 
 
 class Wrapper:
     """ Wraps a single process and tracks logging & process statistics """
 
     def __init__(self,
-                 spec     : JobSpec,
+                 spec     : Job,
                  tracking : Path = Path.cwd() / "tracking",
                  interval : int  = 5,
                  plotting : Optional[Path] = None,
-                 quiet    : bool = False) -> None:
+                 quiet    : bool = False,
+                 summary  : bool = False) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
@@ -47,18 +45,21 @@ class Wrapper:
                          more frequent the higher the resource usage of the
                          wrapper process will be. Defaults to 5 seconds.
         :param plotting: Plot the resource usage once the job completes.
-        :param port:     Optional port number to launch the server on.
+        :param summary:  Display a tabulated summary of resource usage
         """
         self.spec = spec
         self.tracking = tracking
         self.interval = interval
         self.plotting = plotting
+        self.summary = summary
         self.proc = None
         self.code = None
+        # Setup database and server
         self.db = Database(self.tracking / f"{self.id}.db", quiet=quiet)
-        self.server = Server(port=self.spec.port, db=self.db)
+        self.server = Server(port=self.port, db=self.db)
         self.server.start()
         Parent.register(self.id, self.server.address)
+        # Launch the job
         self.launch()
         Logger.info(f"Wrapper '{self.id}' monitoring child PID {self.proc.pid}")
         self.monitor()
@@ -68,7 +69,7 @@ class Wrapper:
 
     @property
     def id(self) -> str:
-        return self.spec.id or f"{socket.gethostname()}_{os.getpid()}_{int(datetime.now().timestamp())}"
+        return self.spec.id
 
     @property
     def env(self) -> Dict[str, str]:
@@ -78,7 +79,11 @@ class Wrapper:
 
     @property
     def cwd(self) -> Path:
-        return Path(self.spec.cwd or os.getcwd())
+        return Path((self.spec.cwd if self.spec else None) or os.getcwd())
+
+    @property
+    def port(self) -> Path:
+        return self.spec.port if self.spec else None
 
     def launch(self) -> int:
         """
@@ -105,14 +110,18 @@ class Wrapper:
     def monitor(self) -> None:
         """ Track the logging and process statistics as the job runs """
         # STDOUT/STDERR monitoring
-        def _stdio(proc, pipe, db, severity):
-            while proc.poll() is None:
+        def _stdio(pipe, db, severity):
+            while True:
                 line = pipe.readline()
                 if len(line) > 0:
                     db.push_log(severity, line.rstrip(), int(time.time()))
         # Process stats monitor
         def _proc_stats(proc, db, interval):
-            ps = psutil.Process(pid=proc.pid)
+            # Catch NoSuchProcess in case it exits before monitoring can start
+            try:
+                ps = psutil.Process(pid=proc.pid)
+            except psutil.NoSuchProcess:
+                return
             elapsed = 0
             while proc.poll() is None:
                 # Capture statistics
@@ -150,9 +159,9 @@ class Wrapper:
         self.db.push_attribute(Attribute("pid",   str(self.proc.pid)))
         self.db.push_attribute(Attribute("start", int((started_at := datetime.now()).timestamp())))
         # Create threads
-        out_thread = Thread(target=_stdio, args=(self.proc, self.proc.stdout, self.db, "INFO"))
-        err_thread = Thread(target=_stdio, args=(self.proc, self.proc.stderr, self.db, "ERROR"))
-        ps_thread = Thread(target=_proc_stats, args=(self.proc, self.db, self.interval))
+        out_thread = Thread(target=_stdio, args=(self.proc.stdout, self.db, "INFO"), daemon=True)
+        err_thread = Thread(target=_stdio, args=(self.proc.stderr, self.db, "ERROR"), daemon=True)
+        ps_thread = Thread(target=_proc_stats, args=(self.proc, self.db, self.interval), daemon=True)
         # Start threads
         out_thread.start()
         err_thread.start()
@@ -189,63 +198,13 @@ class Wrapper:
                               xaxis_title="Time")
             fig.write_image(self.plotting.as_posix(), format="png")
         # Summarise process usage
-        max_nproc = max(map(lambda x: x.nproc, data))
-        max_cpu   = max(map(lambda x: x.cpu, data))
-        max_mem   = max(map(lambda x: x.mem, data))
-        print(tabulate([[f"Summary of process {self.proc.pid}"],
-                        ["Max Processes",           max_nproc],
-                        ["Max CPU %",               f"{max_cpu * 100:.1f}"],
-                        ["Max Memory Usage (MB)",   f"{max_mem / 1024**3:.2f}"],
-                        ["Total Runtime (H:MM:SS)", str(stopped_at - started_at).split(".")[0]]],
-                        tablefmt="simple_grid"))
-
-
-@click.command()
-@click.option("--gator-id",       default=None,  type=str, help="Job identifier")
-@click.option("--gator-parent",   default=None,  type=str, help="Parent's server")
-@click.option("--gator-port",     default=None,  type=int, help="Port number for server")
-@click.option("--gator-interval", default=5,     type=int, help="Polling interval", show_default=True)
-@click.option("--gator-tracking", default=None,  type=click.Path(), help="Tracking directory")
-@click.option("--gator-plotting", default=None,  type=click.Path(), help="Plot the results")
-@click.option("--gator-quiet",    default=False, count=True, help="Silence local logging")
-@click.option("--gator-spec",     default=None,  type=click.Path(), help="Process specification")
-@click.argument("command", nargs=-1)
-def launch(gator_id,
-           gator_parent,
-           gator_port,
-           gator_interval,
-           gator_tracking,
-           gator_plotting,
-           gator_quiet,
-           gator_spec,
-           command):
-    if len(command) == 0 and not gator_spec:
-        with click.Context(launch) as ctx:
-            click.echo(launch.get_help(ctx))
-            sys.exit(0)
-    kwargs = {}
-    if gator_tracking is not None:
-        kwargs["tracking"] = Path(gator_tracking)
-    if gator_plotting is not None:
-        kwargs["plotting"] = Path(gator_plotting)
-    # If a job specification has been provided, parse it
-    if gator_spec:
-        spec = parse_spec(Path(gator_spec))
-    else:
-        spec = JobSpec(id=gator_id,
-                       parent=gator_parent,
-                       port=gator_port,
-                       command=command[0],
-                       args=command[1:])
-    if spec.parent is not None:
-        Parent.parent = spec.parent
-    Wrapper(spec,
-            **kwargs,
-            interval=gator_interval,
-            quiet=gator_quiet)
-
-if __name__ == "__main__":
-    launch(prog_name="wrapper", default_map={
-        f"gator_{k[6:].lower()}": v
-        for k, v in os.environ.items() if k.startswith("GATOR_")
-    })
+        if self.summary:
+            max_nproc = max(map(lambda x: x.nproc, data)) if data else 0
+            max_cpu   = max(map(lambda x: x.cpu, data)) if data else 0
+            max_mem   = max(map(lambda x: x.mem, data)) if data else 0
+            print(tabulate([[f"Summary of process {self.proc.pid}"],
+                            ["Max Processes",           max_nproc],
+                            ["Max CPU %",               f"{max_cpu * 100:.1f}"],
+                            ["Max Memory Usage (MB)",   f"{max_mem / 1024**3:.2f}"],
+                            ["Total Runtime (H:MM:SS)", str(stopped_at - started_at).split(".")[0]]],
+                            tablefmt="simple_grid"))

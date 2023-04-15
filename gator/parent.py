@@ -1,6 +1,10 @@
 import os
+import sys
+from typing import Dict
 
 import requests
+
+from .specs import Spec
 
 class _Parent:
 
@@ -11,15 +15,28 @@ class _Parent:
     def linked(self):
         return self.parent is not None
 
-    def post(self, route, **kwargs):
+    def get(self, route) -> Dict:
+        if self.linked:
+            resp = requests.get(f"http://{self.parent}/{route}")
+            data = resp.json()
+            if data.get("result", None) != "success":
+                print(f"Failed to GET from route '{route}' via '{self.parent}'", file=sys.stderr)
+            return data
+        else:
+            return {}
+
+    def post(self, route, **kwargs) -> Dict:
         if self.linked:
             resp = requests.post(f"http://{self.parent}/{route}", json=kwargs)
             data = resp.json()
             if data.get("result", None) != "success":
-                print(f"Failed to post to route '{route}' via '{self.parent}'")
+                print(f"Failed to post to route '{route}' via '{self.parent}'", file=sys.stderr)
             return data
         else:
             return {}
+
+    def spec(self, id):
+        return Spec.parse_str(self.get(f"children/{id}").get("spec", ""))
 
     def register(self, id, server):
         self.post(f"children/{id}", server=server)
