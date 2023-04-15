@@ -14,22 +14,23 @@
 
 import os
 import sys
-from typing import Dict
+from typing import Dict, Optional, Union
 
 import requests
 
 from .specs import Spec
 
 class _Parent:
+    """ API wrapper to interface with the parent layer's server """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.parent = os.environ.get("GATOR_PARENT", None)
 
     @property
-    def linked(self):
+    def linked(self) -> bool:
         return self.parent is not None
 
-    def get(self, route) -> Dict:
+    def get(self, route : str) -> Dict[str, str]:
         if self.linked:
             resp = requests.get(f"http://{self.parent}/{route}")
             data = resp.json()
@@ -39,26 +40,30 @@ class _Parent:
         else:
             return {}
 
-    def post(self, route, **kwargs) -> Dict:
+    def post(self, route : str, **kwargs : Dict[str, Union[str, int]]) -> Dict[str, str]:
         if self.linked:
             resp = requests.post(f"http://{self.parent}/{route}", json=kwargs)
             data = resp.json()
             if data.get("result", None) != "success":
-                print(f"Failed to post to route '{route}' via '{self.parent}'", file=sys.stderr)
+                print(f"Failed to POST to route '{route}' via '{self.parent}'", file=sys.stderr)
             return data
         else:
             return {}
 
-    def spec(self, id):
-        return Spec.parse_str(self.get(f"children/{id}").get("spec", ""))
+    def spec(self, id : str) -> Optional[Spec]:
+        if spec_str := self.get(f"children/{id}").get("spec", None):
+            return Spec.parse_str(spec_str)
+        else:
+            return None
 
-    def register(self, id, server):
+    def register(self, id : str, server : str) -> None:
         self.post(f"children/{id}", server=server)
 
-    def complete(self, id, exit_code, warnings, errors):
+    def update(self, id : str, warnings : int, errors : int) -> None:
+        self.post(f"children/{id}/update", warnings=warnings, errors=errors)
+
+    def complete(self, id : str, exit_code : int, warnings : int, errors : int) -> None:
         self.post(f"children/{id}/complete", code=exit_code, warnings=warnings, errors=errors)
 
-    def update(self, id, warnings, errors):
-        self.post(f"children/{id}/update", warnings=warnings, errors=errors)
 
 Parent = _Parent()
