@@ -14,6 +14,7 @@
 
 import os
 import sys
+from pathlib import Path
 from typing import Dict, Optional, Union
 
 import requests
@@ -23,14 +24,23 @@ from .specs import Spec
 class _Parent:
     """ API wrapper to interface with the parent layer's server """
 
+    CHILDREN = Path("children")
+
     def __init__(self) -> None:
         self.parent = os.environ.get("GATOR_PARENT", None)
 
     @property
     def linked(self) -> bool:
+        """ Checks if a parent server has been configured """
         return self.parent is not None
 
-    def get(self, route : str) -> Dict[str, str]:
+    def get(self, route : Path) -> Dict[str, str]:
+        """
+        Perform a GET request on a route supported by the parent server.
+
+        :param route:   Relative route to query
+        :returns:       Dictionary of the response data from the server
+        """
         if self.linked:
             resp = requests.get(f"http://{self.parent}/{route}")
             data = resp.json()
@@ -40,9 +50,17 @@ class _Parent:
         else:
             return {}
 
-    def post(self, route : str, **kwargs : Dict[str, Union[str, int]]) -> Dict[str, str]:
+    def post(self, route : Path, **kwargs : Dict[str, Union[str, int]]) -> Dict[str, str]:
+        """
+        Perform a POST request on a route supported by the parent server,
+        attaching a JSON encoded dictionary of the keyword arguments to the query.
+
+        :param route:       Relative route to query
+        :param **kwargs:    Keyword arguments to send in the query
+        :returns:           Dictionary of the response data from the server
+        """
         if self.linked:
-            resp = requests.post(f"http://{self.parent}/{route}", json=kwargs)
+            resp = requests.post(f"http://{self.parent}/{route.as_posix()}", json=kwargs)
             data = resp.json()
             if data.get("result", None) != "success":
                 print(f"Failed to POST to route '{route}' via '{self.parent}'", file=sys.stderr)
@@ -51,19 +69,51 @@ class _Parent:
             return {}
 
     def spec(self, id : str) -> Optional[Spec]:
-        if spec_str := self.get(f"children/{id}").get("spec", None):
+        """
+        Retrieve the Job or JobGroup specification for the provided child ID
+        from the server.
+
+        :param id:  Identifier of the child provided by the host layer
+        :returns:   Either a Job, JobGroup, or None
+        """
+        if spec_str := self.get(self.CHILDREN / id).get("spec", None):
             return Spec.parse_str(spec_str)
         else:
             return None
 
     def register(self, id : str, server : str) -> None:
-        self.post(f"children/{id}", server=server)
+        """
+        Register this instance with the host layer, providing the URI to this
+        layer's server.
+
+        :param id:      Identifier of this child provided by the host layer
+        :param server:  Root URI of the server in this layer
+        """
+        self.post(self.CHILDREN / id, server=server)
 
     def update(self, id : str, warnings : int, errors : int) -> None:
-        self.post(f"children/{id}/update", warnings=warnings, errors=errors)
+        """
+        Update the count of warnings and errors logged into this process by any
+        children (processes or other layers).
+
+        :param id:          Identifier of this child provided by the host layer
+        :param warnings:    Number of warnings logged to this layer
+        :param errors:      Number of errors logged to this layer
+        """
+        self.post(self.CHILDREN / id / "update", warnings=warnings, errors=errors)
 
     def complete(self, id : str, exit_code : int, warnings : int, errors : int) -> None:
-        self.post(f"children/{id}/complete", code=exit_code, warnings=warnings, errors=errors)
+        """
+        Send the final counts of warnings and errors logged into this layer by
+        any children (processes or other layers) and mark this stage done
+        including its exit code.
+
+        :param id:          Identifier of this child provided by the host layer
+        :param exit_code:   Exit code collected by this layer
+        :param warnings:    Number of warnings logged to this layer
+        :param errors:      Number of errors logged to this layer
+        """
+        self.post(self.CHILDREN / id / "complete", code=exit_code, warnings=warnings, errors=errors)
 
 
 Parent = _Parent()
