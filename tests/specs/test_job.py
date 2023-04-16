@@ -41,7 +41,29 @@ def test_spec_job_named():
     assert job.command == "echo"
     assert job.args == ["String to print"]
 
-def test_spec_job_parse():
+def test_spec_job_parse(tmp_path):
+    """ Parse a specification from a YAML file """
+    spec_file = tmp_path / "job.yaml"
+    spec_file.write_text(
+        "!Job:\n"
+        "  id: id_123\n"
+        "  env:\n"
+        "    key_a: 2345\n"
+        "    key_b: False\n"
+        "  cwd: /path/to/working/dir\n"
+        "  command: echo\n"
+        "  args:\n"
+        "    - String to print\n"
+    )
+    job = Spec.parse(spec_file)
+    assert isinstance(job, Job)
+    assert job.id == "id_123"
+    assert job.env == { "key_a": 2345, "key_b": False }
+    assert job.cwd == "/path/to/working/dir"
+    assert job.command == "echo"
+    assert job.args == ["String to print"]
+
+def test_spec_job_parse_str():
     """ Parse a specification from a YAML string """
     spec_str = (
         "!Job:\n"
