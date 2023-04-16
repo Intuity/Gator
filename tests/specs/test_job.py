@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from gator.specs.job import Job
 from gator.specs import Spec
+from gator.specs.job import Job
 
 def test_spec_job_positional():
     """ A job should preserve all positional arguments provided to it """
@@ -63,7 +63,7 @@ def test_spec_job_parse():
     assert job.args == ["String to print"]
 
 def test_spec_job_dump():
-    """ Dump a specifcation to a YAML string """
+    """ Dump a specification to a YAML string """
     job = Job(id     ="id_123",
               env    ={ "key_a": 2345, "key_b": False },
               cwd    ="/path/to/working/dir",
