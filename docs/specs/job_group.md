@@ -1,5 +1,3 @@
-# !JobGroup
-
 A `!JobGroup` can specify a collection of jobs to be executed by Gator, each
 grouping can contain instances of [!Job](job.md) or nested `JobGroup` layers:
 

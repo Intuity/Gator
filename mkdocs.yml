@@ -1,6 +1,12 @@
 site_name: Gator
 theme:
   name: material
+  logo: assets/mascot_black.svg
+  palette:
+    scheme: slate
+    primary: amber
+markdown_extensions:
+  - attr_list
 nav:
   - Welcome: "index.md"
   - "YAML Specification":

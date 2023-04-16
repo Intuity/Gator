@@ -1,5 +1,3 @@
-# !Job
-
 A `!Job` specifies a single action to perform along with the environment that it
 should be executed within:
 
