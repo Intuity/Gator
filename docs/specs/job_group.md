@@ -5,12 +5,12 @@ grouping can contain instances of [!Job](job.md) or nested `JobGroup` layers:
 !JobGroup:
   id  : top
   jobs:
-    - !Job
-      id     : job_a
-      command: echo
-      args   :
-       - "This is job A"
-    - !JobGroup
+    - !Job:
+        id     : job_a
+        command: echo
+        args   :
+         - "This is job A"
+    - !JobGroup:
         id  : inner
         jobs:
           - !Job
