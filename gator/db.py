@@ -148,9 +148,15 @@ class Database:
         with sqlite3.connect(path.as_posix()) as db:
             # Create tables
             with closing(db.cursor()) as cursor:
-                cursor.execute("CREATE TABLE attrs (name, value)")
-                cursor.execute("CREATE TABLE logging (timestamp, severity, message)")
-                cursor.execute("CREATE TABLE pstats (timestamp, nproc, total_cpu, total_mem, total_vmem)")
+                cursor.execute("CREATE TABLE attrs (name TEXT, value TEXT)")
+                cursor.execute("CREATE TABLE logging (timestamp INTEGER, "
+                                                      "severity INTEGER, "
+                                                      "message TEXT)")
+                cursor.execute("CREATE TABLE pstats (timestamp INTEGER, "
+                                                     "nproc INTEGER, "
+                                                     "total_cpu INTEGER, "
+                                                     "total_mem INTEGER, "
+                                                     "total_vmem INTEGER)")
             # Monitor queues until stopped and flushed
             stop_monitor = False
             while not stop_monitor:

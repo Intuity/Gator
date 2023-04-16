@@ -17,45 +17,76 @@ import socket
 import time
 from contextlib import closing
 from threading import Lock, Thread
-from typing import Optional
+from typing import Callable, Optional
 
 from flask import cli, Flask, jsonify, request
 
 from .db import Database
 
 class Server:
+    """ Wrapper around Flask that exposes a local server with customisable routes """
 
-    def __init__(self, port : Optional[int]=None, db : Database = None):
+    def __init__(self,
+                 port : Optional[int] = None,
+                 db : Database = None) -> None:
         self.db = db
-        self.app = Flask("gator")
-        self.app.route("/")(self.root)
-        self.register_post("/log", self.handle_log)
         self.__port = port
+        # Create a flask app and register "/" (GET) and "/log" (POST) routes
+        self.app = Flask("gator")
+        self.register_get("/", self.root)
+        self.register_post("/log", self.handle_log)
+        # Create a lock which is held until server thread starts
         self.lock = Lock()
         self.lock.acquire()
         self.thread = None
 
     @property
-    def port(self):
-        self.lock.acquire()
-        self.lock.release()
+    def port(self) -> int:
+        """ Return the allocated port number """
+        # If no port is known, wait for the server to start and be allocated one
+        if self.__port is None:
+            self.lock.acquire()
+            self.lock.release()
         return self.__port
 
     @property
-    def address(self):
+    def address(self) -> str:
+        """ Returns the URI of the server """
         return f"{socket.gethostname()}:{self.port}"
 
-    def register_get(self, route, handler) -> None:
+    # ==========================================================================
+    # Route Registration
+    # ==========================================================================
+
+    def register_get(self, route : str, handler : Callable) -> None:
+        """
+        Register a GET route with the Flask app
+
+        :param route:   Route to register
+        :param handler: Callback method when route is accessed
+        """
         self.app.get("/" + route.strip("/"))(handler)
 
-    def register_post(self, route, handler) -> None:
+    def register_post(self, route : str, handler : Callable) -> None:
+        """
+        Register a POST route with the Flask app
+
+        :param route:   Route to register
+        :param handler: Callback method when route is accessed
+        """
         self.app.post("/" + route.strip("/"))(handler)
 
-    def start(self):
+    # ==========================================================================
+    # Server Thread Management
+    # ==========================================================================
+
+    def start(self) -> None:
+        """ Start the Flask server on a background thread """
         self.thread = Thread(target=self.__run, daemon=True)
         self.thread.start()
 
-    def __run(self):
+    def __run(self) -> None:
+        """ Server process run under thread """
         # If no port number provided, choose a random one
         if self.__port is None:
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
@@ -65,10 +96,14 @@ class Server:
         # Hide Flask launch messages
         logging.getLogger('werkzeug').disabled = True
         cli.show_server_banner = lambda *_: None
-        # Release lock
+        # Release lock to unblock port number retrieval
         self.lock.release()
         # Launch Flask server
         self.app.run(host="0.0.0.0", port=self.__port, debug=False, use_reloader=False)
+
+    # ==========================================================================
+    # Standard Routes
+    # ==========================================================================
 
     def root(self):
         """ Identify Gator and the tool version """
