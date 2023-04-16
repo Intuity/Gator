@@ -1,1 +1,8 @@
 site_name: Gator
+theme:
+  name: material
+nav:
+  - Welcome: "index.md"
+  - "YAML Specification":
+    - "!Job": "specs/job.md"
+    - "!JobGroup": "specs/job_group.md"

@@ -1,3 +1,3 @@
-# Welcome to the Gator Documentation
+# Welcome
 
 Documentation for the Gator job runner
