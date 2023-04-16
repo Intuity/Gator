@@ -34,3 +34,16 @@ jobs:
     - name: Run tests
       run: |
         poetry run pytest
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
+      with:
+        name: pytest-cov
+        path: htmlcov
+    - name: Build documentation
+      run: |
+        poetry run mkdocs build
+    - name: Archive documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: docs
+        path: site
