@@ -107,7 +107,7 @@ class Server:
 
     def root(self):
         """ Identify Gator and the tool version """
-        return jsonify({ "tool": "gator", "version": 0.1 })
+        return jsonify({ "tool": "gator", "version": "1.0" })
 
     def handle_log(self):
         """
