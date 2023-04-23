@@ -1,0 +1,14 @@
+// Import all of Bootstrap's CSS
+@import "~bootstrap/scss/bootstrap";
+
+.sidebar {
+    position: fixed;
+    display: block !important;
+    top: 56px;
+    bottom: 0;
+    left: 0;
+}
+
+nav > ol.breadcrumb {
+    margin: 0;
+}
