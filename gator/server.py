@@ -14,14 +14,15 @@
 
 import logging
 import socket
-import time
 from contextlib import closing
+from datetime import datetime
 from threading import Lock, Thread
 from typing import Callable, Optional
 
-from flask import cli, Flask, jsonify, request
+from flask import cli, Flask, request
 
-from .db import Database
+from .common.db import Database
+from .types import LogEntry, LogSeverity
 
 class Server:
     """ Wrapper around Flask that exposes a local server with customisable routes """
@@ -107,7 +108,7 @@ class Server:
 
     def root(self):
         """ Identify Gator and the tool version """
-        return jsonify({ "tool": "gator", "version": "1.0" })
+        return { "tool": "gator", "version": "1.0" }
 
     def handle_log(self):
         """
@@ -116,8 +117,9 @@ class Server:
         Example: { "timestamp": 12345678, "severity": "ERROR", "message": "Hello!" }
         """
         data      = request.json
-        timestamp = data.get("timestamp", time.time())
+        timestamp = datetime.fromtimestamp(data.get("timestamp", datetime.now().timestamp()))
         severity  = data.get("severity", "INFO").strip().upper()
-        message   = data.get("message", "N/A").strip()
-        self.db.push_log(severity, message, int(timestamp))
-        return jsonify({"result": "success"})
+        self.db.push_logentry(LogEntry(timestamp=timestamp,
+                                       severity =getattr(LogSeverity, severity, LogSeverity.INFO),
+                                       message  =data.get("message", "N/A").strip()))
+        return {"result": "success"}
