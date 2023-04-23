@@ -1,6 +1,8 @@
 // import { useState } from 'react'
 // import * as bootstrap from "bootstrap"
 
+import mascot from "./assets/mascot_white.svg?url"
+
 function Breadcrumb ({ }) {
     return (
         <nav aria-label="breadcrumb">
@@ -39,7 +41,7 @@ export default function App() {
             <header className="navbar navbar-dark bg-dark sticky-top shadow">
                 <div className="container-fluid">
                     <a className="navbar-brand" href="#">
-                        <img src="./assets/mascot_white.svg"
+                        <img src={mascot}
                             height="24"
                             className="d-inline-block align-text-top"
                             style={{ marginRight: "5px" }} />

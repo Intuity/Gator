@@ -17,12 +17,19 @@ import socket
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, request
+from flask import Flask, render_template, request
+import uwsgi
 
 from ..common.db import Database
 from ..types import Attribute
 
-hub = Flask("gator-hub")
+react_dir = uwsgi.opt["react_root"].decode("utf-8")
+print(f"Static content: {react_dir}")
+
+hub = Flask("gator-hub",
+            static_url_path="/assets",
+            static_folder=f"{react_dir}/assets",
+            template_folder=react_dir)
 
 # Local SQLite database
 @dataclasses.dataclass
@@ -39,17 +46,21 @@ db.push_attribute(Attribute("last_start", datetime.now().isoformat()))
 db.push_attribute(Attribute("running_on", socket.gethostname()))
 
 @hub.get("/")
-def root():
+def html_root():
+    return render_template("index.html")
+
+@hub.get("/api")
+def api_root():
     return { "tool"   : "gator-hub",
              "version": "1.0" }
 
-@hub.post("/register")
+@hub.post("/api/register")
 def register():
     data = request.json
     db.push(reg := Registration(id=data["id"], server_url=data["url"]))
     print(f"Process registered {reg.id}, {reg.server_url}")
     return { "result": "success" }
 
-@hub.get("/jobs")
+@hub.get("/api/jobs")
 def jobs():
     return [vars(x) for x in db.get(Registration)]
