@@ -1,7 +1,9 @@
-// import { useState } from 'react'
+import { ReactElement, useEffect, useState } from 'react'
 // import * as bootstrap from "bootstrap"
 
 import mascot from "./assets/mascot_white.svg?url"
+
+interface ApiJob { id: string, server_url: string, timestamp: Number }
 
 function Breadcrumb ({ }) {
     return (
@@ -14,12 +16,14 @@ function Breadcrumb ({ }) {
     );
 }
 
-function Job ({ }) {
+function Job ({ job } : { job : ApiJob }) {
     return (
-        <td>
-            <strong>Job ID</strong><br />
-            <small>peterbirch - 18:14 22/04/23</small>
-        </td>
+        <tr>
+            <td>
+                <strong>{job.id}</strong><br />
+                <small>peterbirch - 18:14 22/04/23</small>
+            </td>
+        </tr>
     );
 }
 
@@ -34,7 +38,17 @@ function Message ({ }) {
 }
 
 export default function App() {
-    // const [count, setCount] = useState(0)
+    const [jobs, setJobs] = useState([])
+
+    useEffect(() => {
+        fetch("/api/jobs")
+            .then((response) => response.json())
+            .then((data) => setJobs(data))
+            .catch((err) => console.error(err.message))
+    }, []);
+
+    let job_elems : ReactElement[] = [];
+    jobs.forEach((job) => job_elems.push(<Job job={job} />))
 
     return (
         <>
@@ -55,11 +69,7 @@ export default function App() {
                 <div className="row">
                     <nav className="col-2 bg-light sidebar">
                         <table className="table table-sm">
-                            <tbody>
-                                <tr>
-                                    <Job />
-                                </tr>
-                            </tbody>
+                            <tbody>{job_elems}</tbody>
                         </table>
                     </nav>
                     <main className="col-10" style={{ marginLeft: "auto" }}>
