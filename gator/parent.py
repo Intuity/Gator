@@ -12,61 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import sys
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Optional
 
-import requests
-
+from .common.api import API
 from .specs import Spec
 
-class _Parent:
+class _Parent(API):
     """ API wrapper to interface with the parent layer's server """
 
+    ENV_VAR  = "GATOR_PARENT"
     CHILDREN = Path("children")
-
-    def __init__(self) -> None:
-        self.parent = os.environ.get("GATOR_PARENT", None)
-
-    @property
-    def linked(self) -> bool:
-        """ Checks if a parent server has been configured """
-        return self.parent is not None
-
-    def get(self, route : Path) -> Dict[str, str]:
-        """
-        Perform a GET request on a route supported by the parent server.
-
-        :param route:   Relative route to query
-        :returns:       Dictionary of the response data from the server
-        """
-        if self.linked:
-            resp = requests.get(f"http://{self.parent}/{route}")
-            data = resp.json()
-            if data.get("result", None) != "success":
-                print(f"Failed to GET from route '{route}' via '{self.parent}'", file=sys.stderr)
-            return data
-        else:
-            return {}
-
-    def post(self, route : Path, **kwargs : Dict[str, Union[str, int]]) -> Dict[str, str]:
-        """
-        Perform a POST request on a route supported by the parent server,
-        attaching a JSON encoded dictionary of the keyword arguments to the query.
-
-        :param route:       Relative route to query
-        :param **kwargs:    Keyword arguments to send in the query
-        :returns:           Dictionary of the response data from the server
-        """
-        if self.linked:
-            resp = requests.post(f"http://{self.parent}/{route.as_posix()}", json=kwargs)
-            data = resp.json()
-            if data.get("result", None) != "success":
-                print(f"Failed to POST to route '{route}' via '{self.parent}'", file=sys.stderr)
-            return data
-        else:
-            return {}
 
     def spec(self, id : str) -> Optional[Spec]:
         """
@@ -114,6 +70,5 @@ class _Parent:
         :param errors:      Number of errors logged to this layer
         """
         self.post(self.CHILDREN / id / "complete", code=exit_code, warnings=warnings, errors=errors)
-
 
 Parent = _Parent()
