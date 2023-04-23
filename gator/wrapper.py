@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import socket
 import subprocess
@@ -25,13 +26,16 @@ from typing import Dict, Optional
 
 import plotly.graph_objects as pg
 import psutil
+from rich.logging import RichHandler
 from tabulate import tabulate
 
-from .db import Attribute, Database, ProcStat
+from .common.db import Database, Query
+from .hub.api import HubAPI
 from .logger import Logger
 from .parent import Parent
 from .server import Server
 from .specs import Job
+from .types import Attribute, LogEntry, LogSeverity, ProcStat
 
 
 class Wrapper:
@@ -65,21 +69,34 @@ class Wrapper:
         self.tracking = tracking
         self.interval = interval
         self.plotting = plotting
+        self.quiet = quiet
         self.summary = summary
         self.proc = None
         self.code = None
-        # Setup database and server
-        self.db = Database(self.tracking / f"{self.id}.db", quiet=quiet)
-        self.server = Server(port=self.port, db=self.db)
+        # Create a logging instance
+        self.logger = logging.Logger(name="db", level=logging.DEBUG)
+        self.logger.addHandler(RichHandler())
+        # Setup database
+        Database.define_transform(LogSeverity, "INTEGER", lambda x: int(x), lambda x: LogSeverity(x))
+        self.db = Database(self.tracking / f"{os.getpid()}.db")
+        def _log_cb(entry : LogEntry) -> None:
+            self.logger.log(entry.severity, entry.message)
+        self.db.register(LogEntry, None if self.quiet else _log_cb)
+        self.db.register(Attribute)
+        self.db.register(ProcStat)
+        # Setup server
+        self.server = Server(db=self.db)
         self.server.start()
-        Parent.register(self.id, self.server.address)
+        if Parent.linked:
+            Parent.register(self.id, self.server.address)
+        elif HubAPI.linked:
+            HubAPI.register(self.id, self.server.address)
         # Launch the job
         self.launch()
         Logger.info(f"Wrapper '{self.id}' monitoring child PID {self.proc.pid}")
         self.monitor()
         Logger.info(f"Wrapper '{self.id}' child PID {self.proc.pid} finished")
         Parent.complete(self.id, self.code, *self.msg_counts())
-        self.db.stop()
 
     @property
     def id(self) -> str:
@@ -94,10 +111,6 @@ class Wrapper:
     @property
     def cwd(self) -> Path:
         return Path((self.spec.cwd if self.spec else None) or os.getcwd())
-
-    @property
-    def port(self) -> Path:
-        return self.spec.port if self.spec else None
 
     def launch(self) -> int:
         """
@@ -117,9 +130,9 @@ class Wrapper:
                                      close_fds=True)
 
     def msg_counts(self):
-        wrn_count = self.db.query("SELECT COUNT(timestamp) FROM logging WHERE severity = \"WARNING\"")
-        err_count = self.db.query("SELECT COUNT(timestamp) FROM logging WHERE severity = \"ERROR\"")
-        return wrn_count[0][0], err_count[0][0]
+        wrn_count = self.db.get_logentry(sql_count=True, severity=int(LogSeverity.WARNING))
+        err_count = self.db.get_logentry(sql_count=True, severity=Query(gte=int(LogSeverity.ERROR)))
+        return wrn_count, err_count
 
     def monitor(self) -> None:
         """ Track the logging and process statistics as the job runs """
@@ -128,7 +141,7 @@ class Wrapper:
             while True:
                 line = pipe.readline()
                 if len(line) > 0:
-                    db.push_log(severity, line.rstrip(), int(time.time()))
+                    db.push_logentry(LogEntry(severity, line.rstrip()))
         # Process stats monitor
         def _proc_stats(proc, db, interval):
             # Catch NoSuchProcess in case it exits before monitoring can start
@@ -158,7 +171,7 @@ class Wrapper:
                         vms      += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
-                    db.push_statistics(ProcStat(datetime.now(), nproc, cpu_perc, rss, vms))
+                    db.push_procstat(ProcStat(datetime.now(), nproc, cpu_perc, rss, vms))
                 # Count up to the interval so that process is regularly polled
                 if elapsed < interval:
                     elapsed += 1
@@ -171,10 +184,10 @@ class Wrapper:
         self.db.push_attribute(Attribute("cwd",   self.cwd.as_posix()))
         self.db.push_attribute(Attribute("host",  socket.gethostname()))
         self.db.push_attribute(Attribute("pid",   str(self.proc.pid)))
-        self.db.push_attribute(Attribute("start", int((started_at := datetime.now()).timestamp())))
+        self.db.push_attribute(Attribute("start", str((started_at := datetime.now()).timestamp())))
         # Create threads
-        out_thread = Thread(target=_stdio, args=(self.proc.stdout, self.db, "INFO"), daemon=True)
-        err_thread = Thread(target=_stdio, args=(self.proc.stderr, self.db, "ERROR"), daemon=True)
+        out_thread = Thread(target=_stdio, args=(self.proc.stdout, self.db, LogSeverity.INFO), daemon=True)
+        err_thread = Thread(target=_stdio, args=(self.proc.stderr, self.db, LogSeverity.ERROR), daemon=True)
         ps_thread = Thread(target=_proc_stats, args=(self.proc, self.db, self.interval), daemon=True)
         # Start threads
         out_thread.start()
@@ -189,12 +202,10 @@ class Wrapper:
                 last = curr
         self.code = retcode
         # Insert final attributes
-        self.db.push_attribute(Attribute("end",  int((stopped_at := datetime.now()).timestamp())))
+        self.db.push_attribute(Attribute("end",  str((stopped_at := datetime.now()).timestamp())))
         self.db.push_attribute(Attribute("exit", str(self.code)))
         # Pull data back from resource tracking
-        data = []
-        for (stamp, *other) in self.db.query("SELECT * FROM pstats ORDER BY timestamp ASC"):
-            data.append(ProcStat(datetime.fromtimestamp(stamp), *other))
+        data = self.db.get_procstat(sql_order_by=("timestamp", True))
         # If plotting enabled, draw the plot
         if self.plotting:
             dates = []

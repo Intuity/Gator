@@ -12,22 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import auto, Enum
 from pathlib import Path
+from threading import Lock
 from typing import Union
 
-from flask import jsonify, request
-from threading import Lock
+from flask import request
+from rich.logging import RichHandler
 
-from .db import Database
+from .common.db import Database
+from .hub.api import HubAPI
 from .logger import Logger
 from .parent import Parent
 from .server import Server
 from .scheduler import Scheduler
 from .specs import Job, JobGroup, Spec
+from .types import LogEntry
 
 class State(Enum):
     LAUNCHED = auto()
@@ -56,16 +60,29 @@ class Layer:
                  quiet    : bool = False) -> None:
         self.spec     = spec
         self.tracking = tracking
-        # Setup database and server
-        self.db     = Database(self.tracking / f"{self.id}.db", quiet)
-        self.server = Server(self.spec.port, self.db)
+        self.quiet    = quiet
+        # Create a logging instance
+        self.logger = logging.Logger(name="db", level=logging.DEBUG)
+        self.logger.addHandler(RichHandler())
+        # Setup database
+        self.db = Database(self.tracking / f"{os.getpid()}.db")
+        def _log_cb(entry : LogEntry) -> None:
+            self.logger.log(entry.severity, entry.message)
+        self.db.register(LogEntry, None if self.quiet else _log_cb)
+        # Setup server
+        self.server = Server(db=self.db)
         self.server.register_get("/children", self._list_children)
         self.server.register_get("/children/<child_id>", self._child_query)
         self.server.register_post("/children/<child_id>", self._child_started)
         self.server.register_post("/children/<child_id>/update", self._child_updated)
         self.server.register_post("/children/<child_id>/complete", self._child_completed)
         self.server.start()
-        Parent.register(self.spec.id, self.server.address)
+        # If an immediate parent is known, register with it
+        if Parent.linked:
+            Parent.register(self.spec.id, self.server.address)
+        # Otherwise, if a hub is known register to it
+        elif HubAPI.linked:
+            HubAPI.register(self.spec.id, self.server.address)
         # Track children
         self.children  = {}
         self.lock      = Lock()
@@ -73,7 +90,6 @@ class Layer:
         # Setup database and server
         Logger.info(f"Layer '{self.id}' launching sub-jobs")
         self.launch()
-        self.db.stop()
 
     @property
     def id(self) -> str:
@@ -97,13 +113,13 @@ class Layer:
 
     def _child_query(self, child_id : str):
         if child_id in self.children:
-            return jsonify({
+            return {
                 "result": "success",
                 "spec"  : Spec.dump(self.children[child_id].spec)
-            })
+            }
         else:
             Logger.error(f"Unknown child '{child_id}'")
-            return jsonify({ "result": "error" })
+            return { "result": "error" }
 
     def _child_started(self, child_id):
         """
@@ -123,10 +139,10 @@ class Layer:
             child.started = datetime.now()
             child.updated = datetime.now()
             self.lock.release()
-            return jsonify({ "result": "success" })
+            return { "result": "success" }
         else:
             Logger.error(f"Unknown child '{child_id}'")
-            return jsonify({ "result": "error" })
+            return { "result": "error" }
 
     def _child_updated(self, child_id):
         """
@@ -144,10 +160,10 @@ class Layer:
             child.errors   = data.get("errors",   0)
             child.updated  = datetime.now()
             self.lock.release()
-            return jsonify({ "result": "success" })
+            return { "result": "success" }
         else:
             print(f"Unknown child '{child_id}'")
-            return jsonify({ "result": "error" })
+            return { "result": "error" }
 
     def _child_completed(self, child_id):
         """
@@ -168,10 +184,10 @@ class Layer:
             child.updated   = datetime.now()
             child.completed = datetime.now()
             self.lock.release()
-            return jsonify({ "result": "success" })
+            return { "result": "success" }
         else:
             print(f"Unknown child '{child_id}'")
-            return jsonify({ "result": "error" })
+            return { "result": "error" }
 
     def launch(self):
         self.lock.acquire()

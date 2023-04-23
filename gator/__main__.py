@@ -16,6 +16,7 @@ from pathlib import Path
 
 import click
 
+from .hub.api import HubAPI
 from .layer import Layer
 from .parent import Parent
 from .specs import Job, JobGroup, Spec
@@ -24,14 +25,23 @@ from .wrapper import Wrapper
 
 @click.command()
 @click.option("--id",       default=None,  type=str,          help="Instance identifier")
+@click.option("--hub",      default=None,  type=str,          help="URL of a Gator Hub instance")
 @click.option("--parent",   default=None,  type=str,          help="Pointer to parent node")
 @click.option("--interval", default=5,     type=int,          help="Polling interval", show_default=True)
 @click.option("--tracking", default=None,  type=click.Path(), help="Tracking directory")
 @click.option("--quiet",    default=False, count=True,        help="Silence STDOUT logging")
 @click.argument("spec", type=click.Path(exists=True), required=False)
-def launch(id : str, parent : str, interval : int, tracking : str, quiet : bool, spec : str) -> None:
+def launch(id : str,
+           hub : str,
+           parent : str,
+           interval : int,
+           tracking : str,
+           quiet : bool,
+           spec : str) -> None:
+    if hub:
+        HubAPI.url = hub
     if parent:
-        Parent.parent = parent
+        Parent.url = parent
     # Work out where the spec is coming from
     if spec:
         spec_obj = Spec.parse(Path(spec))
