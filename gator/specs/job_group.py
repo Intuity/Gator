@@ -12,17 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
-from .common import SpecBase, register
+from .common import SpecBase
 from .job import Job
 
-@register()
 class JobGroup(SpecBase):
     yaml_tag = "!JobGroup"
 
     def __init__(self,
                  id   : Optional[str] = None,
-                 jobs : Optional[List[Union[Job, "JobGroup"]]] = None) -> None:
+                 jobs : Optional[List[Union[Job, "JobGroup"]]] = None,
+                 env  : Optional[Dict[str, str]] = None) -> None:
         self.id = id
         self.jobs = jobs or []
+        self.env = env or {}

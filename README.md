@@ -35,9 +35,9 @@ A simple specification may look like this:
       id  : inner
       jobs:
       - !Job
-        id     : say_hi
-        command: echo
-        args   : ["hi"]
+          id     : say_hi
+          command: echo
+          args   : ["hi"]
   # Directly attached to root
   - !Job
       id     : say_bye

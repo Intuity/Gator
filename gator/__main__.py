@@ -30,6 +30,7 @@ from .wrapper import Wrapper
 @click.option("--interval", default=5,     type=int,          help="Polling interval", show_default=True)
 @click.option("--tracking", default=None,  type=click.Path(), help="Tracking directory")
 @click.option("--quiet",    default=False, count=True,        help="Silence STDOUT logging")
+@click.option("--all-msg",  default=False, count=True,        help="Propagate all messages to the top level")
 @click.argument("spec", type=click.Path(exists=True), required=False)
 def launch(id : str,
            hub : str,
@@ -37,6 +38,7 @@ def launch(id : str,
            interval : int,
            tracking : str,
            quiet : bool,
+           all_msg : bool,
            spec : str) -> None:
     if hub:
         HubAPI.url = hub
@@ -55,13 +57,14 @@ def launch(id : str,
     if isinstance(spec_obj, JobGroup):
         Layer(spec    =spec_obj,
               tracking=tracking,
-              quiet   =quiet)
+              quiet   =quiet and not all_msg,
+              all_msg =all_msg)
     # If a Job is provided, launch a wrapper
     elif isinstance(spec_obj, Job):
         Wrapper(spec    =spec_obj,
                 tracking=tracking,
                 interval=interval,
-                quiet   =quiet)
+                quiet   =quiet and not all_msg)
     # Unsupported forms
     else:
         raise Exception(f"Unsupported specification object of type {type(spec_obj).__name__}")

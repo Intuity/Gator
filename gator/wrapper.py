@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 import os
 import socket
 import subprocess
@@ -24,9 +23,9 @@ from pathlib import Path
 from threading import Thread
 from typing import Dict, Optional
 
+import expandvars
 import plotly.graph_objects as pg
 import psutil
-from rich.logging import RichHandler
 from tabulate import tabulate
 
 from .common.db import Database, Query
@@ -73,14 +72,11 @@ class Wrapper:
         self.summary = summary
         self.proc = None
         self.code = None
-        # Create a logging instance
-        self.logger = logging.Logger(name="db", level=logging.DEBUG)
-        self.logger.addHandler(RichHandler())
         # Setup database
         Database.define_transform(LogSeverity, "INTEGER", lambda x: int(x), lambda x: LogSeverity(x))
-        self.db = Database(self.tracking / f"{os.getpid()}.db")
+        self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
         def _log_cb(entry : LogEntry) -> None:
-            self.logger.log(entry.severity, entry.message)
+            Logger.log(entry.severity.name, entry.message)
         self.db.register(LogEntry, None if self.quiet else _log_cb)
         self.db.register(Attribute)
         self.db.register(ProcStat)
@@ -120,7 +116,10 @@ class Wrapper:
 
         :returns:   The process ID of the launched task
         """
-        self.proc = subprocess.Popen([self.spec.command] + self.spec.args,
+        # Expand variables in the command
+        full_cmd = [expandvars.expand(x, environ=self.env) for x in [self.spec.command] + self.spec.args]
+        # Execute
+        self.proc = subprocess.Popen(full_cmd,
                                      cwd=self.cwd,
                                      env=self.env,
                                      encoding="utf-8",

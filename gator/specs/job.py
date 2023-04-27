@@ -14,9 +14,8 @@
 
 from typing import Dict, List, Optional
 
-from .common import SpecBase, register
+from .common import SpecBase
 
-@register()
 class Job(SpecBase):
     yaml_tag = "!Job"
 

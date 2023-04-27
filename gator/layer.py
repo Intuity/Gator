@@ -14,6 +14,7 @@
 
 import logging
 import os
+from copy import copy
 from dataclasses import dataclass
 from datetime import datetime
 from enum import auto, Enum
@@ -57,17 +58,16 @@ class Layer:
     def __init__(self,
                  spec     : JobGroup,
                  tracking : Path = Path.cwd() / "tracking",
-                 quiet    : bool = False) -> None:
+                 quiet    : bool = False,
+                 all_msg  : bool = False) -> None:
         self.spec     = spec
         self.tracking = tracking
         self.quiet    = quiet
-        # Create a logging instance
-        self.logger = logging.Logger(name="db", level=logging.DEBUG)
-        self.logger.addHandler(RichHandler())
+        self.all_msg  = all_msg
         # Setup database
-        self.db = Database(self.tracking / f"{os.getpid()}.db")
+        self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
         def _log_cb(entry : LogEntry) -> None:
-            self.logger.log(entry.severity, entry.message)
+            Logger.log(entry.severity.name, entry.message)
         self.db.register(LogEntry, None if self.quiet else _log_cb)
         # Setup server
         self.server = Server(db=self.db)
@@ -190,14 +190,24 @@ class Layer:
             return { "result": "error" }
 
     def launch(self):
+        # Lock while mutating child dictionary
         self.lock.acquire()
+        # Construct each child and
         for idx, job in enumerate(self.spec.jobs):
+            # Sanity check
             if not isinstance(job, (Job, JobGroup)):
                 print(f"Unexpected job object type {type(job).__name__}")
                 continue
+            # Propagate environment variables from parent to child
+            merged = copy(self.spec.env)
+            merged.update(job.env)
+            job.env = merged
+            # Launch the job
             job.id = f"T{idx}" + (f"_{job.id}" if job.id else "")
             self.children[job.id] = Child(spec=job, id=job.id)
+        # Unlock as updates complete
         self.lock.release()
         self.scheduler = Scheduler(tasks=list(self.children.keys()),
-                                   parent=self.server.address)
+                                   parent=self.server.address,
+                                   quiet=not self.all_msg)
         self.scheduler.wait_for_all()

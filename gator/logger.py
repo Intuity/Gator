@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 import time
 
 import click
@@ -26,28 +27,29 @@ local_logger.addHandler(RichHandler())
 class Logger:
 
     @staticmethod
-    def log(severity, message):
+    def log(severity : str, message : str) -> None:
         if Parent.linked:
             Parent.post("log", timestamp=time.time(),
                                severity =severity.upper(),
                                message  =message)
         else:
-            local_logger.log(logging._nameToLevel.get(severity, None), message)
+            local_logger.log(logging._nameToLevel.get(severity, None),
+                             f"[{os.getpid()}] {message}")
 
     @staticmethod
-    def debug(message):
+    def debug(message : str) -> None:
         return Logger.log("DEBUG", message)
 
     @staticmethod
-    def info(message):
+    def info(message : str) -> None:
         return Logger.log("INFO", message)
 
     @staticmethod
-    def warning(message):
+    def warning(message : str) -> None:
         return Logger.log("WARNING", message)
 
     @staticmethod
-    def error(message):
+    def error(message : str) -> None:
         return Logger.log("ERROR", message)
 
 @click.command()
