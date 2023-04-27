@@ -19,7 +19,7 @@ import click
 from .hub.api import HubAPI
 from .layer import Layer
 from .parent import Parent
-from .specs import Job, JobGroup, Spec
+from .specs import Job, JobArray, JobGroup, Spec
 from .wrapper import Wrapper
 
 
@@ -54,7 +54,7 @@ def launch(id : str,
     # Map tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
     # If a JobGroup is provided, launch a layer
-    if isinstance(spec_obj, JobGroup):
+    if isinstance(spec_obj, (JobArray, JobGroup)):
         Layer(spec    =spec_obj,
               tracking=tracking,
               quiet   =quiet and not all_msg,

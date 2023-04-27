@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 import os
-from copy import copy
+from copy import copy, deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from enum import auto, Enum
@@ -23,7 +22,6 @@ from threading import Lock
 from typing import Union
 
 from flask import request
-from rich.logging import RichHandler
 
 from .common.db import Database
 from .hub.api import HubAPI
@@ -31,7 +29,7 @@ from .logger import Logger
 from .parent import Parent
 from .server import Server
 from .scheduler import Scheduler
-from .specs import Job, JobGroup, Spec
+from .specs import Job, JobArray, JobGroup, Spec
 from .types import LogEntry
 
 class State(Enum):
@@ -41,7 +39,7 @@ class State(Enum):
 
 @dataclass
 class Child:
-    spec      : Union[Job, JobGroup]
+    spec      : Union[Job, JobArray, JobGroup]
     id        : str      = "N/A"
     state     : State    = State.LAUNCHED
     server    : str      = ""
@@ -56,7 +54,7 @@ class Layer:
     """ Layer of the process tree """
 
     def __init__(self,
-                 spec     : JobGroup,
+                 spec     : Union[JobArray, JobGroup],
                  tracking : Path = Path.cwd() / "tracking",
                  quiet    : bool = False,
                  all_msg  : bool = False) -> None:
@@ -192,22 +190,35 @@ class Layer:
     def launch(self):
         # Lock while mutating child dictionary
         self.lock.acquire()
-        # Construct each child and
-        for idx, job in enumerate(self.spec.jobs):
+        # Construct each child
+        is_jarr = isinstance(self.spec, JobArray)
+        for idx_job, job in enumerate(self.spec.jobs):
             # Sanity check
-            if not isinstance(job, (Job, JobGroup)):
-                print(f"Unexpected job object type {type(job).__name__}")
+            if not isinstance(job, (Job, JobGroup, JobArray)):
+                Logger.error(f"Unexpected job object type {type(job).__name__}")
                 continue
             # Propagate environment variables from parent to child
             merged = copy(self.spec.env)
             merged.update(job.env)
             job.env = merged
-            # Launch the job
-            job.id = f"T{idx}" + (f"_{job.id}" if job.id else "")
-            self.children[job.id] = Child(spec=job, id=job.id)
+            # Vary behaviour depending if this a job array or not
+            base_job_id = job.id
+            for idx_jarr in range(self.spec.repeats if is_jarr else 1):
+                if is_jarr:
+                    job_cp = deepcopy(job)
+                    job_cp.env["GATOR_ARRAY_INDEX"] = idx_jarr
+                    job_cp.id = f"T{idx_job}_A{idx_jarr}"
+                else:
+                    job_cp = job
+                    job_cp.id = f"T{idx_job}"
+                if base_job_id:
+                    job_cp.id += f"_{base_job_id}"
+                self.children[job_cp.id] = Child(spec=job_cp, id=job_cp.id)
         # Unlock as updates complete
         self.lock.release()
+        # Submit all children to the scheduler
         self.scheduler = Scheduler(tasks=list(self.children.keys()),
                                    parent=self.server.address,
                                    quiet=not self.all_msg)
+        # Wait until complete
         self.scheduler.wait_for_all()

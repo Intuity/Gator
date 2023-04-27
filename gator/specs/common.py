@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Type
-
 import yaml
 try:
     from yaml import CDumper as Dumper

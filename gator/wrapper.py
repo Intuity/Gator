@@ -117,11 +117,12 @@ class Wrapper:
         :returns:   The process ID of the launched task
         """
         # Expand variables in the command
-        full_cmd = [expandvars.expand(x, environ=self.env) for x in [self.spec.command] + self.spec.args]
+        safe_env = { str(k): str(v) for k, v in self.env.items() }
+        full_cmd = [expandvars.expand(x, environ=safe_env) for x in [self.spec.command] + self.spec.args]
         # Execute
         self.proc = subprocess.Popen(full_cmd,
                                      cwd=self.cwd,
-                                     env=self.env,
+                                     env=safe_env,
                                      encoding="utf-8",
                                      stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE,

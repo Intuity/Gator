@@ -15,9 +15,10 @@
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 
 class API:
@@ -28,6 +29,9 @@ class API:
 
     def __init__(self) -> None:
         self.url = os.environ.get(type(self).ENV_VAR, None)
+        self.session = requests.Session()
+        self.session.mount("http://", HTTPAdapter(max_retries=Retry(total=5,
+                                                                    backoff_factor=0.1)))
 
     @property
     def linked(self) -> bool:

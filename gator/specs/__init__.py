@@ -17,10 +17,9 @@ from pathlib import Path
 import yaml
 
 from .common import Dumper, Loader, SpecBase
-from .job import Job
-from .job_group import JobGroup
+from .jobs import Job, JobArray, JobGroup
 
-assert all((Job, JobGroup))
+assert all((Job, JobArray, JobGroup))
 
 class Spec:
     """ Methods to parse and dump YAML specification objects """

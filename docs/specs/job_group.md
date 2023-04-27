@@ -1,5 +1,6 @@
 A `!JobGroup` can specify a collection of jobs to be executed by Gator, each
-grouping can contain instances of [!Job](job.md) or nested `JobGroup` layers:
+grouping can contain instances of [!Job](job.md), [!JobArray](job_array.md),
+and nested `JobGroup` layers:
 
 ```yaml
 !JobGroup

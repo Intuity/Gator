@@ -43,6 +43,15 @@ A simple specification may look like this:
       id     : say_bye
       command: echo
       args   : ["bye"]
+  # Arrayed job
+  - !JobArray
+      id     : counting
+      repeats: 4
+      jobs   :
+      - !Job
+          id     : echo_count
+          command: echo
+          args   : ["$GATOR_ARRAY_INDEX"]
 ```
 
 ## Executing a Job Specification

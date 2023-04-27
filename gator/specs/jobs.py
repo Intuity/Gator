@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from .common import SpecBase
+
 
 class Job(SpecBase):
     yaml_tag = "!Job"
@@ -30,3 +31,29 @@ class Job(SpecBase):
         self.cwd = cwd
         self.command = command
         self.args = args or []
+
+
+class JobArray(SpecBase):
+    yaml_tag = "!JobArray"
+
+    def __init__(self,
+                 id     : Optional[str] = None,
+                 repeats: Optional[int] = None,
+                 jobs   : Optional[List[Union[Job, "JobArray", "JobGroup"]]] = None,
+                 env    : Optional[Dict[str, str]] = None) -> None:
+        self.id = id
+        self.repeats = 1 if (repeats is None) else repeats
+        self.jobs = jobs or []
+        self.env = env or {}
+
+
+class JobGroup(SpecBase):
+    yaml_tag = "!JobGroup"
+
+    def __init__(self,
+                 id   : Optional[str] = None,
+                 jobs : Optional[List[Union[Job, "JobGroup", JobArray]]] = None,
+                 env  : Optional[Dict[str, str]] = None) -> None:
+        self.id = id
+        self.jobs = jobs or []
+        self.env = env or {}

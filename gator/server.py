@@ -53,7 +53,11 @@ class Server:
     @property
     def address(self) -> str:
         """ Returns the URI of the server """
-        return f"{socket.gethostname()}:{self.port}"
+        hostname = socket.gethostname()
+        assert hostname, "Blank hostname returned from socket.gethostname()"
+        hostip = socket.gethostbyname(hostname)
+        assert hostip, "Blank IP return from socket.gethostbyname()"
+        return f"{hostip}:{self.port}"
 
     # ==========================================================================
     # Route Registration
