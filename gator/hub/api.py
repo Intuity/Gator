@@ -17,10 +17,13 @@ from pathlib import Path
 from ..common.api import API
 
 class _HubAPI(API):
-    ENV_VAR  = "GATOR_HUB"
-    REGISTER = Path("register")
+    ENV_VAR      = "GATOR_HUB"
+    ROUTE_PREFIX = "/api"
+    REGISTER     = Path("register")
 
     def register(self, id : str, url : str) -> None:
-        self.post(self.REGISTER, id=id, url=url)
+        response = self.post(self.REGISTER, id=id, url=url)
+        print(f"Registration UID {response['uid']}")
+        return response.get("uid", None)
 
 HubAPI = _HubAPI()

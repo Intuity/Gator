@@ -1,9 +1,13 @@
 import { ReactElement, useEffect, useState } from 'react'
+import moment from 'moment'
 // import * as bootstrap from "bootstrap"
 
 import mascot from "./assets/mascot_white.svg?url"
 
-interface ApiJob { id: string, server_url: string, timestamp: Number }
+interface ApiJob { db_uid    : number,
+                   id        : string,
+                   server_url: string,
+                   timestamp : string }
 
 function Breadcrumb ({ }) {
     return (
@@ -17,11 +21,12 @@ function Breadcrumb ({ }) {
 }
 
 function Job ({ job } : { job : ApiJob }) {
+    let date = moment(job.timestamp);
     return (
         <tr>
             <td>
-                <strong>{job.id}</strong><br />
-                <small>peterbirch - 18:14 22/04/23</small>
+                <strong>{job.db_uid}: {job.id}</strong><br />
+                <small>peterbirch - {date.format("DD/MM/YY @ HH:MM")}</small>
             </td>
         </tr>
     );
@@ -37,15 +42,22 @@ function Message ({ }) {
     );
 }
 
-export default function App() {
-    const [jobs, setJobs] = useState([])
-
-    useEffect(() => {
+function fetch_jobs (setJobs : CallableFunction) {
+    let inner = () => {
+        console.log("FETCH JOBS");
         fetch("/api/jobs")
             .then((response) => response.json())
             .then((data) => setJobs(data))
             .catch((err) => console.error(err.message))
-    }, []);
+            .finally(() => setTimeout(inner, 1000));
+    };
+    inner();
+}
+
+export default function App() {
+    const [jobs, setJobs] = useState([])
+
+    useEffect(() => fetch_jobs(setJobs), []);
 
     let job_elems : ReactElement[] = [];
     jobs.forEach((job) => job_elems.push(<Job job={job} />))

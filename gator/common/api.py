@@ -24,6 +24,7 @@ class API:
     """ API wrapper to interface with the parent layer's server """
 
     ENV_VAR = "GATOR_API"
+    ROUTE_PREFIX = ""
 
     def __init__(self) -> None:
         self.url = os.environ.get(type(self).ENV_VAR, None)
@@ -43,7 +44,7 @@ class API:
         if self.linked:
             if isinstance(route, Path):
                 route = route.as_posix()
-            resp = requests.get(f"http://{self.url}/{route}")
+            resp = requests.get(f"http://{self.url}{self.ROUTE_PREFIX}/{route}")
             data = resp.json()
             if data.get("result", None) != "success":
                 print(f"Failed to GET from route '{route}' via '{self.url}'", file=sys.stderr)
@@ -63,7 +64,7 @@ class API:
         if self.linked:
             if isinstance(route, Path):
                 route = route.as_posix()
-            resp = requests.post(f"http://{self.url}/{route}", json=kwargs)
+            resp = requests.post(f"http://{self.url}{self.ROUTE_PREFIX}/{route}", json=kwargs)
             data = resp.json()
             if data.get("result", None) != "success":
                 print(f"Failed to POST to route '{route}' via '{self.url}'", file=sys.stderr)

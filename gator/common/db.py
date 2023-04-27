@@ -28,6 +28,11 @@ except ImportError:
 
 
 @dataclasses.dataclass
+class Base:
+    db_uid : Optional[int] = None
+
+
+@dataclasses.dataclass
 class Query:
     """
     The query object supports more complex SQLite queries than just a direct
@@ -139,6 +144,8 @@ class Database:
         if descr.__name__ not in self.tables:
             fields = []
             for field in dataclasses.fields(descr):
+                if field.name == "db_uid":
+                    continue
                 stype, _, _ = self.TRANSFORMS.get(field.type, ("TEXT", None, None))
                 fields.append(f"{field.name} {stype}")
             with closing(self.__db.cursor()) as cursor:
@@ -149,10 +156,13 @@ class Database:
             self.tables.append(descr.__name__)
         # Setup push/get methods
         if descr not in self.registered:
-            fnames = [x.name for x in dataclasses.fields(descr)]
+            fnames = []
             transforms_put = []
             transforms_get = []
             for field in dataclasses.fields(descr):
+                if field.name == "db_uid":
+                    continue
+                fnames.append(field.name)
                 _, tput, tget = self.TRANSFORMS.get(field.type, (None, lambda x: x, lambda x: x))
                 transforms_put.append(tput)
                 transforms_get.append(tget)
@@ -166,17 +176,20 @@ class Database:
                 assert isinstance(object, descr)
                 self.__db_lock.acquire()
                 with closing(self.__db.cursor()) as cursor:
-                    cursor.execute(sql_put, [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object))])
+                    cursor.execute(sql_put, [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object)[1:])])
+                    db_uid = cursor.lastrowid
                 self.__db_lock.release()
                 if push_callback is not None:
                     push_callback(object)
+                return db_uid
             setattr(self, f"push_{descr.__name__.lower()}", _push)
             # Create a 'getter' method
             sql_base_query = f"SELECT * FROM {descr.__name__}"
             sql_base_count = f"SELECT COUNT(db_uid) FROM {descr.__name__}"
             def _get(sql_order_by : Optional[Tuple[str, bool]] = None,
-                    sql_count    : bool = False,
-                    **kwargs : Dict[str, Union[Query, str, int]]) -> List[descr]:
+                     sql_count    : bool = False,
+                     sql_limit    : Optional[int] = None,
+                     **kwargs     : Dict[str, Union[Query, str, int]]) -> List[descr]:
                 nonlocal sql_base_query, sql_base_count, transforms_get
                 query_str = [sql_base_query, sql_base_count][sql_count]
                 conditions = []
@@ -212,6 +225,9 @@ class Database:
                 if sql_order_by:
                     column, ascending = sql_order_by
                     query_str += f" ORDER BY {column} {['DESC', 'ASC'][ascending]}"
+                if sql_limit is not None:
+                    query_str += " LIMIT :limit"
+                    parameters["limit"] = sql_limit
                 self.__db_lock.acquire()
                 with closing(self.__db.cursor()) as cursor:
                     data = list(cursor.execute(query_str, parameters).fetchall())
@@ -219,8 +235,10 @@ class Database:
                 if sql_count:
                     return data[0][0]
                 else:
-                    # NOTE: The [1:] is to skip the UID column
-                    return [descr(*[y(z) for y, z in zip(transforms_get, x[1:])]) for x in data]
+                    objects = []
+                    for db_uid, *raw_vals in data:
+                        objects.append(descr(**{n: y(z) for n, y, z in zip(fnames, transforms_get, raw_vals)}, db_uid=db_uid))
+                    return objects
             setattr(self, f"get_{descr.__name__.lower()}", _get)
             # Track registration
             self.registered.append(descr)
@@ -231,7 +249,7 @@ class Database:
         descr = type(object)
         if descr not in self.registered:
             self.register(descr)
-        getattr(self, f"push_{descr.__name__.lower()}")(object)
+        return getattr(self, f"push_{descr.__name__.lower()}")(object)
 
     def get(self,
             descr : Type[dataclasses.dataclass],

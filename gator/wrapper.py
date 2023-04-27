@@ -87,8 +87,10 @@ class Wrapper:
         # Setup server
         self.server = Server(db=self.db)
         self.server.start()
+        # If an immediate parent is known, register with it
         if Parent.linked:
             Parent.register(self.id, self.server.address)
+        # Otherwise, if a hub is known register to it
         elif HubAPI.linked:
             HubAPI.register(self.id, self.server.address)
         # Launch the job
@@ -141,7 +143,8 @@ class Wrapper:
             while True:
                 line = pipe.readline()
                 if len(line) > 0:
-                    db.push_logentry(LogEntry(severity, line.rstrip()))
+                    db.push_logentry(LogEntry(severity=severity,
+                                              message=line.rstrip()))
         # Process stats monitor
         def _proc_stats(proc, db, interval):
             # Catch NoSuchProcess in case it exits before monitoring can start
@@ -180,11 +183,11 @@ class Wrapper:
         # Create database
         self.tracking.mkdir(parents=True, exist_ok=True)
         # Setup test attributes
-        self.db.push_attribute(Attribute("cmd",   " ".join([self.spec.command] + self.spec.args)))
-        self.db.push_attribute(Attribute("cwd",   self.cwd.as_posix()))
-        self.db.push_attribute(Attribute("host",  socket.gethostname()))
-        self.db.push_attribute(Attribute("pid",   str(self.proc.pid)))
-        self.db.push_attribute(Attribute("start", str((started_at := datetime.now()).timestamp())))
+        self.db.push_attribute(Attribute(name="cmd",   value=" ".join([self.spec.command] + self.spec.args)))
+        self.db.push_attribute(Attribute(name="cwd",   value=self.cwd.as_posix()))
+        self.db.push_attribute(Attribute(name="host",  value=socket.gethostname()))
+        self.db.push_attribute(Attribute(name="pid",   value=str(self.proc.pid)))
+        self.db.push_attribute(Attribute(name="start", value=str((started_at := datetime.now()).timestamp())))
         # Create threads
         out_thread = Thread(target=_stdio, args=(self.proc.stdout, self.db, LogSeverity.INFO), daemon=True)
         err_thread = Thread(target=_stdio, args=(self.proc.stderr, self.db, LogSeverity.ERROR), daemon=True)

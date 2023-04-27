@@ -17,11 +17,13 @@ import logging
 from enum import IntEnum
 from datetime import datetime
 
+from .common.db import Base
+
 
 @dataclasses.dataclass
-class Attribute:
-    name  : str
-    value : str
+class Attribute(Base):
+    name  : str = ""
+    value : str = ""
 
 
 class LogSeverity(IntEnum):
@@ -33,16 +35,16 @@ class LogSeverity(IntEnum):
 
 
 @dataclasses.dataclass
-class LogEntry:
-    severity  : LogSeverity
-    message   : str
-    timestamp : datetime = dataclasses.field(default_factory=datetime.now)
+class LogEntry(Base):
+    severity  : LogSeverity = LogSeverity.INFO
+    message   : str         = ""
+    timestamp : datetime    = dataclasses.field(default_factory=datetime.now)
 
 
 @dataclasses.dataclass
-class ProcStat:
-    nproc     : int
-    cpu       : int
-    mem       : int
-    vmem      : int
+class ProcStat(Base):
+    nproc     : int      = 0
+    cpu       : int      = 0
+    mem       : int      = 0
+    vmem      : int      = 0
     timestamp : datetime = dataclasses.field(default_factory=datetime.now)
