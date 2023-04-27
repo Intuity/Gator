@@ -19,7 +19,7 @@ from .job import Job
 
 @register()
 class JobGroup(SpecBase):
-    yaml_tag = "!JobGroup:"
+    yaml_tag = "!JobGroup"
 
     def __init__(self,
                  id   : Optional[str] = None,

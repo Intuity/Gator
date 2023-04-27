@@ -42,6 +42,6 @@ def register(tag : str = None) -> Callable:
     """
     def _inner(obj : Type[SpecBase]) -> Type[SpecBase]:
         assert issubclass(obj, SpecBase)
-        obj.yaml_tag = f"!{tag}:" if tag else f"!{obj.__name__}:"
+        obj.yaml_tag = f"!{tag}" if tag else f"!{obj.__name__}"
         return obj
     return _inner

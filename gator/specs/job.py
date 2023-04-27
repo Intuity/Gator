@@ -18,7 +18,7 @@ from .common import SpecBase, register
 
 @register()
 class Job(SpecBase):
-    yaml_tag = "!Job:"
+    yaml_tag = "!Job"
 
     def __init__(self,
                  id      : Optional[str] = None,

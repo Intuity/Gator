@@ -2,15 +2,15 @@ A `!JobGroup` can specify a collection of jobs to be executed by Gator, each
 grouping can contain instances of [!Job](job.md) or nested `JobGroup` layers:
 
 ```yaml
-!JobGroup:
+!JobGroup
   id  : top
   jobs:
-    - !Job:
+    - !Job
         id     : job_a
         command: echo
         args   :
          - "This is job A"
-    - !JobGroup:
+    - !JobGroup
         id  : inner
         jobs:
           - !Job

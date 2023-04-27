@@ -2,7 +2,7 @@ A `!Job` specifies a single action to perform along with the environment that it
 should be executed within:
 
 ```yaml
-!Job:
+!Job
   id     : test_job
   cwd    : /path/to/working/directory
   command: echo
