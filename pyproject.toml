@@ -40,8 +40,12 @@ testpaths = ["tests"]
 [tool.poe.tasks.npm_build]
 shell = "cd gator-hub && npm run build"
 
+[tool.poe.tasks.npm_build_dev]
+shell = "cd gator-hub && npm run build_dev"
+
 [tool.poe.tasks.uwsgi]
 shell = "uwsgi --http 127.0.0.1:8080 --master -p 4 -w gator.hub.app:hub --set react_root=$(PWD)/gator-hub/src/dist"
 
 [tool.poe.tasks]
 hub = ["npm_build", "uwsgi"]
+hub_dev = ["npm_build_dev", "uwsgi"]
