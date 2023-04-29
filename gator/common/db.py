@@ -12,19 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import atexit
 import dataclasses
-import sqlite3
-from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
-from threading import Lock
 
-try:
-    import uwsgi
-except ImportError:
-    uwsgi = None
+import aiosqlite
 
 
 @dataclasses.dataclass
@@ -75,34 +70,25 @@ class Database:
         self.uwsgi = uwsgi
         # Ensure path's parent folder exists
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # Create a instance for the SQLite database
-        kwargs = {}
-        if self.uwsgi:
-            kwargs["isolation_level"] = None
-        self.__db = sqlite3.connect(self.path.as_posix(),
-                                    timeout=1,
-                                    check_same_thread=False,
-                                    **kwargs)
-        atexit.register(self.__close)
-        # Create a lock for using the DB
-        self.__db_lock = Lock()
         # Track which dataclasses are register
         self.registered = []
         self.tables = []
-        # Lookup existing registrations
-        with closing(self.__db.cursor()) as cursor:
-            query = "SELECT name FROM sqlite_master WHERE type = 'table'"
-            self.tables = [x[0] for x in cursor.execute(query).fetchall()]
+        # Placeholder for the database instance
+        self.__db = None
 
-    def __close(self):
-        if self.uwsgi:
-            uwsgi.lock(0)
-        self.__db_lock.acquire()
-        self.__db.commit()
-        self.__db.close()
-        self.__db_lock.release()
-        if self.uwsgi:
-            uwsgi.unlock(0)
+    async def start(self) -> None:
+        self.__db = await aiosqlite.connect(self.path.as_posix(), timeout=1)
+        def _teardown() -> None:
+            asyncio.run(self.stop())
+        atexit.register(_teardown)
+        async with self.__db.execute("SELECT name FROM sqlite_master WHERE type = 'table'") as cursor:
+            result = await cursor.fetchall()
+            self.tables = [x[0] for x in result]
+
+    async def stop(self) -> None:
+        if self.__db is not None:
+            await self.__db.close()
+        self.__db = None
 
     @classmethod
     def define_transform(cls,
@@ -127,9 +113,9 @@ class Database:
             transform_get or (lambda x: x)
         )
 
-    def register(self,
-                 descr : Type[dataclasses.dataclass],
-                 push_callback : Optional[Callable] = None) -> None:
+    async def register(self,
+                       descr : Type[dataclasses.dataclass],
+                       push_callback : Optional[Callable] = None) -> None:
         """
         Register a dataclass - this will create a matching table in the database
         and setup the required 'push_X' and 'get_X' methods.
@@ -138,8 +124,6 @@ class Database:
         :param push_callback: Method to call whenever data is pushed into a
                               table in the database
         """
-        # Lock the database to prevent other mutations
-        self.__db_lock.acquire()
         # Create the table in the database and collect transformations to/from SQL
         if descr.__name__ not in self.tables:
             fields = []
@@ -148,11 +132,11 @@ class Database:
                     continue
                 stype, _, _ = self.TRANSFORMS.get(field.type, ("TEXT", None, None))
                 fields.append(f"{field.name} {stype}")
-            with closing(self.__db.cursor()) as cursor:
-                cursor.execute(
-                    f"CREATE TABLE {descr.__name__} ("
-                    f"db_uid INTEGER PRIMARY KEY AUTOINCREMENT, {', '.join(fields)})"
-                )
+            query = (
+                f"CREATE TABLE {descr.__name__} ("
+                f"db_uid INTEGER PRIMARY KEY AUTOINCREMENT, {', '.join(fields)})"
+            )
+            await self.__db.execute(query)
             self.tables.append(descr.__name__)
         # Setup push/get methods
         if descr not in self.registered:
@@ -171,25 +155,23 @@ class Database:
                 f"INSERT INTO {descr.__name__} ({', '.join(fnames)}) "
                 f"VALUES ({', '.join(['?' for _ in fnames])})"
             )
-            def _push(object : descr) -> None:
+            async def _push(object : descr) -> None:
                 nonlocal sql_put, transforms_put
                 assert isinstance(object, descr)
-                self.__db_lock.acquire()
-                with closing(self.__db.cursor()) as cursor:
-                    cursor.execute(sql_put, [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object)[1:])])
+                async with self.__db.execute(sql_put,
+                                             [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object)[1:])]) as cursor:
                     db_uid = cursor.lastrowid
-                self.__db_lock.release()
                 if push_callback is not None:
-                    push_callback(object)
+                    await push_callback(object)
                 return db_uid
             setattr(self, f"push_{descr.__name__.lower()}", _push)
             # Create a 'getter' method
             sql_base_query = f"SELECT * FROM {descr.__name__}"
             sql_base_count = f"SELECT COUNT(db_uid) FROM {descr.__name__}"
-            def _get(sql_order_by : Optional[Tuple[str, bool]] = None,
-                     sql_count    : bool = False,
-                     sql_limit    : Optional[int] = None,
-                     **kwargs     : Dict[str, Union[Query, str, int]]) -> List[descr]:
+            async def _get(sql_order_by : Optional[Tuple[str, bool]] = None,
+                           sql_count    : bool = False,
+                           sql_limit    : Optional[int] = None,
+                           **kwargs     : Dict[str, Union[Query, str, int]]) -> List[descr]:
                 nonlocal sql_base_query, sql_base_count, transforms_get
                 query_str = [sql_base_query, sql_base_count][sql_count]
                 conditions = []
@@ -228,12 +210,13 @@ class Database:
                 if sql_limit is not None:
                     query_str += " LIMIT :limit"
                     parameters["limit"] = sql_limit
-                self.__db_lock.acquire()
-                with closing(self.__db.cursor()) as cursor:
-                    data = list(cursor.execute(query_str, parameters).fetchall())
-                self.__db_lock.release()
+                async with self.__db.execute(query_str, parameters) as cursor:
+                    if sql_count:
+                        data = await cursor.fetchone()
+                    else:
+                        data = await cursor.fetchall()
                 if sql_count:
-                    return data[0][0]
+                    return data[0]
                 else:
                     objects = []
                     for db_uid, *raw_vals in data:
@@ -242,18 +225,18 @@ class Database:
             setattr(self, f"get_{descr.__name__.lower()}", _get)
             # Track registration
             self.registered.append(descr)
-        # Release lock
-        self.__db_lock.release()
 
-    def push(self, object : Any) -> None:
+    async def push(self, object : Any) -> None:
         descr = type(object)
         if descr not in self.registered:
             self.register(descr)
-        return getattr(self, f"push_{descr.__name__.lower()}")(object)
+        result = await getattr(self, f"push_{descr.__name__.lower()}")(object)
+        return result
 
-    def get(self,
+    async def get(self,
             descr : Type[dataclasses.dataclass],
             **kwargs : Dict[str, Any]) -> Any:
         if descr not in self.registered:
             self.register(descr)
-        return getattr(self, f"get_{descr.__name__.lower()}")(**kwargs)
+        result = await getattr(self, f"get_{descr.__name__.lower()}")(**kwargs)
+        return result

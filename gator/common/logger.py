@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import logging
 import os
 import time
@@ -19,7 +20,7 @@ import time
 import click
 from rich.logging import RichHandler
 
-from .parent import Parent
+from .client import Client
 
 local_logger = logging.Logger(name="gator", level=logging.DEBUG)
 local_logger.addHandler(RichHandler())
@@ -27,36 +28,36 @@ local_logger.addHandler(RichHandler())
 class Logger:
 
     @staticmethod
-    def log(severity : str, message : str) -> None:
-        if Parent.linked:
-            Parent.post("log", timestamp=time.time(),
-                               severity =severity.upper(),
-                               message  =message)
+    async def log(severity : str, message : str) -> None:
+        if Client.instance().linked:
+            await Client.instance().log(timestamp=time.time(),
+                                        severity =severity.upper(),
+                                        message  =message)
         else:
             local_logger.log(logging._nameToLevel.get(severity, None),
                              f"[{os.getpid()}] {message}")
 
     @staticmethod
-    def debug(message : str) -> None:
-        return Logger.log("DEBUG", message)
+    async def debug(message : str) -> None:
+        await Logger.log("DEBUG", message)
 
     @staticmethod
-    def info(message : str) -> None:
-        return Logger.log("INFO", message)
+    async def info(message : str) -> None:
+        await Logger.log("INFO", message)
 
     @staticmethod
-    def warning(message : str) -> None:
-        return Logger.log("WARNING", message)
+    async def warning(message : str) -> None:
+        await Logger.log("WARNING", message)
 
     @staticmethod
-    def error(message : str) -> None:
-        return Logger.log("ERROR", message)
+    async def error(message : str) -> None:
+        await Logger.log("ERROR", message)
 
 @click.command()
 @click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
 @click.argument("message")
 def logger(severity, message):
-    Logger.log(severity.upper(), message)
+    asyncio.run(Logger.log(severity.upper(), message))
 
 if __name__ == "__main__":
     logger(prog_name="logger")

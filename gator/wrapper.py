@@ -12,27 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import os
 import socket
 import subprocess
-import time
 from collections import defaultdict
-from copy import copy
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from threading import Thread
-from typing import Dict, Optional
+from typing import Optional
 
 import expandvars
 import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
+from .common.client import Client
 from .common.db import Database, Query
+from .common.server import Server
 from .hub.api import HubAPI
-from .logger import Logger
-from .parent import Parent
-from .server import Server
+from .common.logger import Logger
 from .specs import Job
 from .types import Attribute, LogEntry, LogSeverity, ProcStat
 
@@ -44,9 +42,9 @@ class Wrapper:
                  spec     : Job,
                  tracking : Path = Path.cwd() / "tracking",
                  interval : int  = 5,
-                 plotting : Optional[Path] = None,
                  quiet    : bool = False,
-                 summary  : bool = False) -> None:
+                 summary  : bool = False,
+                 plotting : Optional[Path] = None) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
@@ -70,145 +68,152 @@ class Wrapper:
         self.plotting = plotting
         self.quiet = quiet
         self.summary = summary
-        self.proc = None
         self.code = None
+        self.db = None
+        self.server = None
+        self.client = None
+
+    @classmethod
+    async def create(cls, *args, **kwargs) -> None:
+        self = cls(*args, **kwargs)
         # Setup database
         Database.define_transform(LogSeverity, "INTEGER", lambda x: int(x), lambda x: LogSeverity(x))
         self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
-        def _log_cb(entry : LogEntry) -> None:
-            Logger.log(entry.severity.name, entry.message)
-        self.db.register(LogEntry, None if self.quiet else _log_cb)
-        self.db.register(Attribute)
-        self.db.register(ProcStat)
+        async def _log_cb(entry : LogEntry) -> None:
+            await Logger.log(entry.severity.name, entry.message)
+        await self.db.start()
+        await self.db.register(LogEntry, None if self.quiet else _log_cb)
+        await self.db.register(Attribute)
+        await self.db.register(ProcStat)
         # Setup server
         self.server = Server(db=self.db)
-        self.server.start()
+        server_address = await self.server.start()
         # If an immediate parent is known, register with it
-        if Parent.linked:
-            Parent.register(self.id, self.server.address)
+        self.client = await Client.instance().start()
+        await self.client.register(id=self.id, server=server_address)
         # Otherwise, if a hub is known register to it
-        elif HubAPI.linked:
-            HubAPI.register(self.id, self.server.address)
-        # Launch the job
-        self.launch()
-        Logger.info(f"Wrapper '{self.id}' monitoring child PID {self.proc.pid}")
-        self.monitor()
-        Logger.info(f"Wrapper '{self.id}' child PID {self.proc.pid} finished")
-        Parent.complete(self.id, self.code, *self.msg_counts())
+        if HubAPI.linked:
+            HubAPI.register(self.id, server_address)
+        # Launch
+        await self.__launch()
+        # Report
+        await self.__report()
+        # Shutdown the server
+        await self.server.stop()
+        # Shutdown the database
+        await self.db.stop()
+        # Shutdown the client
+        await self.client.stop()
 
     @property
     def id(self) -> str:
         return self.spec.id
 
-    @property
-    def env(self) -> Dict[str, str]:
-        env = copy(self.spec.env or os.environ)
-        env["GATOR_PARENT"] = self.server.address
-        return env
+    async def count_messages(self):
+        wrn_count = await self.db.get_logentry(sql_count=True, severity=int(LogSeverity.WARNING))
+        err_count = await self.db.get_logentry(sql_count=True, severity=Query(gte=int(LogSeverity.ERROR)))
+        return wrn_count, err_count
 
-    @property
-    def cwd(self) -> Path:
-        return Path((self.spec.cwd if self.spec else None) or os.getcwd())
-
-    def launch(self) -> int:
+    async def __launch(self) -> int:
         """
         Launch the process and pipe STDIN, STDOUT, and STDERR with line buffering
 
         :returns:   The process ID of the launched task
         """
+        # Overlay any custom variables on the environment
+        env = { str(k): str(v) for k, v in (self.spec.env or os.environ).items() }
+        env["GATOR_PARENT"] = await self.server.get_address()
+        # Determine the working directory
+        working_dir = Path((self.spec.cwd if self.spec else None) or os.getcwd())
         # Expand variables in the command
-        safe_env = { str(k): str(v) for k, v in self.env.items() }
-        full_cmd = [expandvars.expand(x, environ=safe_env) for x in [self.spec.command] + self.spec.args]
-        # Execute
-        self.proc = subprocess.Popen(full_cmd,
-                                     cwd=self.cwd,
-                                     env=safe_env,
-                                     encoding="utf-8",
-                                     stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE,
-                                     bufsize=1,
-                                     universal_newlines=True,
-                                     close_fds=True)
-
-    def msg_counts(self):
-        wrn_count = self.db.get_logentry(sql_count=True, severity=int(LogSeverity.WARNING))
-        err_count = self.db.get_logentry(sql_count=True, severity=Query(gte=int(LogSeverity.ERROR)))
-        return wrn_count, err_count
-
-    def monitor(self) -> None:
-        """ Track the logging and process statistics as the job runs """
-        # STDOUT/STDERR monitoring
-        def _stdio(pipe, db, severity):
-            while True:
-                line = pipe.readline()
+        all_args = [str(x) for x in ([self.spec.command] + self.spec.args)]
+        full_cmd = " ".join(expandvars.expand(x, environ=env) for x in all_args)
+        # Setup initial attributes
+        await self.db.push_attribute(Attribute(name="cmd",     value=full_cmd))
+        await self.db.push_attribute(Attribute(name="cwd",     value=working_dir.as_posix()))
+        await self.db.push_attribute(Attribute(name="host",    value=socket.gethostname()))
+        await self.db.push_attribute(Attribute(name="started", value=str(datetime.now().timestamp())))
+        # Launch the process
+        await Logger.info(f"Launching task: {full_cmd}")
+        proc = await asyncio.create_subprocess_shell(full_cmd,
+                                                     cwd=working_dir,
+                                                     env=env,
+                                                     stdin=subprocess.PIPE,
+                                                     stdout=subprocess.PIPE,
+                                                     stderr=subprocess.PIPE,
+                                                     close_fds=True)
+        # Capture STDOUT and STDERR
+        async def _cap_stdio(pipe, severity) -> None:
+            while not pipe.at_eof():
+                line = await pipe.readline()
+                line = line.decode("utf-8").rstrip()
                 if len(line) > 0:
-                    db.push_logentry(LogEntry(severity=severity,
-                                              message=line.rstrip()))
-        # Process stats monitor
-        def _proc_stats(proc, db, interval):
+                    await self.db.push_logentry(LogEntry(severity=severity,
+                                                         message =line))
+        t_stdout = asyncio.create_task(_cap_stdio(proc.stdout, LogSeverity.INFO))
+        t_stderr = asyncio.create_task(_cap_stdio(proc.stderr, LogSeverity.ERROR))
+        # Monitor process usage
+        async def _mon_proc(proc, done_evt, interval) -> None:
             # Catch NoSuchProcess in case it exits before monitoring can start
             try:
                 ps = psutil.Process(pid=proc.pid)
             except psutil.NoSuchProcess:
                 return
-            elapsed = 0
-            while proc.poll() is None:
-                # Capture statistics
-                elapsed = 0
-                with ps.oneshot():
-                    nproc    = 1
-                    cpu_perc = ps.cpu_percent()
-                    mem_stat = ps.memory_info()
-                    rss, vms = mem_stat.rss, mem_stat.vms
-                    # io_count = ps.io_counters() if hasattr(ps, "io_counters") else None
-                    for child in ps.children(recursive=True):
-                        try:
-                            c_cpu_perc = child.cpu_percent()
-                            c_mem_stat   = child.memory_info()
-                        except psutil.ZombieProcess:
-                            continue
-                        nproc    += 1
-                        cpu_perc += c_cpu_perc
-                        rss      += c_mem_stat.rss
-                        vms      += c_mem_stat.vms
-                        # if io_count is not None:
-                        #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
-                    db.push_procstat(ProcStat(datetime.now(), nproc, cpu_perc, rss, vms))
+            while not done_evt.is_set():
+                try:
+                    # Capture statistics
+                    with ps.oneshot():
+                        await Logger.debug(f"Capturing statistics for {proc.pid}")
+                        nproc    = 1
+                        cpu_perc = ps.cpu_percent()
+                        mem_stat = ps.memory_info()
+                        rss, vms = mem_stat.rss, mem_stat.vms
+                        # io_count = ps.io_counters() if hasattr(ps, "io_counters") else None
+                        for child in ps.children(recursive=True):
+                            try:
+                                c_cpu_perc = child.cpu_percent()
+                                c_mem_stat   = child.memory_info()
+                            except psutil.ZombieProcess:
+                                continue
+                            nproc    += 1
+                            cpu_perc += c_cpu_perc
+                            rss      += c_mem_stat.rss
+                            vms      += c_mem_stat.vms
+                            # if io_count is not None:
+                            #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
+                        await self.db.push_procstat(ProcStat(datetime.now(), nproc, cpu_perc, rss, vms))
+                except psutil.NoSuchProcess:
+                    break
                 # Count up to the interval so that process is regularly polled
-                if elapsed < interval:
-                    elapsed += 1
-                    time.sleep(1)
-                    continue
-        # Create database
-        self.tracking.mkdir(parents=True, exist_ok=True)
-        # Setup test attributes
-        self.db.push_attribute(Attribute(name="cmd",   value=" ".join([self.spec.command] + self.spec.args)))
-        self.db.push_attribute(Attribute(name="cwd",   value=self.cwd.as_posix()))
-        self.db.push_attribute(Attribute(name="host",  value=socket.gethostname()))
-        self.db.push_attribute(Attribute(name="pid",   value=str(self.proc.pid)))
-        self.db.push_attribute(Attribute(name="start", value=str((started_at := datetime.now()).timestamp())))
-        # Create threads
-        out_thread = Thread(target=_stdio, args=(self.proc.stdout, self.db, LogSeverity.INFO), daemon=True)
-        err_thread = Thread(target=_stdio, args=(self.proc.stderr, self.db, LogSeverity.ERROR), daemon=True)
-        ps_thread = Thread(target=_proc_stats, args=(self.proc, self.db, self.interval), daemon=True)
-        # Start threads
-        out_thread.start()
-        err_thread.start()
-        ps_thread.start()
-        # Wait for process to end
-        last = datetime.now()
-        while (retcode := self.proc.poll()) is None:
-            time.sleep(0.1)
-            if ((curr := datetime.now()) - last) > timedelta(seconds=1):
-                Parent.update(self.id, *self.msg_counts())
-                last = curr
-        self.code = retcode
+                await asyncio.sleep(interval)
+        e_done = asyncio.Event()
+        t_pmon = asyncio.create_task(_mon_proc(proc, e_done, self.interval))
+        # Run until process complete & STDOUT/STDERR digested
+        await Logger.info("Monitoring task")
+        await asyncio.gather(proc.wait(), t_stdout, t_stderr)
+        e_done.set()
+        await t_pmon
+        # Capture the exit code
+        self.code = proc.returncode
+        await Logger.info(f"Task completed with return code {self.code}")
         # Insert final attributes
-        self.db.push_attribute(Attribute("end",  str((stopped_at := datetime.now()).timestamp())))
-        self.db.push_attribute(Attribute("exit", str(self.code)))
+        await self.db.push_attribute(Attribute(name="pid",     value=str(proc.pid)))
+        await self.db.push_attribute(Attribute(name="stopped", value=str(datetime.now().timestamp())))
+        await self.db.push_attribute(Attribute(name="exit",    value=str(self.code)))
+        # Count messages
+        num_wrn, num_err = await self.count_messages()
+        await Logger.info(f"Recorded {num_wrn} warnings and {num_err} errors")
+        # Mark job complete
+        await self.client.complete(id=self.id, code=self.code, warnings=num_wrn, errors=num_err)
+
+    async def __report(self) -> None:
         # Pull data back from resource tracking
-        data = self.db.get_procstat(sql_order_by=("timestamp", True))
+        data       = await self.db.get_procstat(sql_order_by=("timestamp", True))
+        pid        = await self.db.get_attribute(name="pid")
+        ts_started = await self.db.get_attribute(name="started")
+        ts_stopped = await self.db.get_attribute(name="stopped")
+        started_at = datetime.fromtimestamp(float(ts_started[0].value))
+        stopped_at = datetime.fromtimestamp(float(ts_stopped[0].value))
         # If plotting enabled, draw the plot
         if self.plotting:
             dates = []
@@ -222,7 +227,7 @@ class Wrapper:
             fig = pg.Figure()
             for key, vals in series.items():
                 fig.add_trace(pg.Scatter(x=dates, y=vals, mode="lines", name=key))
-            fig.update_layout(title=f"Resource Usage for {self.proc.pid}",
+            fig.update_layout(title=f"Resource Usage for {pid[0].value}",
                               xaxis_title="Time")
             fig.write_image(self.plotting.as_posix(), format="png")
         # Summarise process usage
@@ -230,7 +235,7 @@ class Wrapper:
             max_nproc = max(map(lambda x: x.nproc, data)) if data else 0
             max_cpu   = max(map(lambda x: x.cpu, data)) if data else 0
             max_mem   = max(map(lambda x: x.mem, data)) if data else 0
-            print(tabulate([[f"Summary of process {self.proc.pid}"],
+            print(tabulate([[f"Summary of process {pid[0].value}"],
                             ["Max Processes",           max_nproc],
                             ["Max CPU %",               f"{max_cpu * 100:.1f}"],
                             ["Max Memory Usage (MB)",   f"{max_mem / 1024**3:.2f}"],

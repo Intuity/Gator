@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
+import asyncio
 import subprocess
+from typing import List
 
 class Scheduler:
     """ Launches a set of tasks on a particular infrastructure """
@@ -28,18 +29,18 @@ class Scheduler:
         self.interval = interval
         self.quiet    = quiet
         self.state    = {}
-        self.launch()
 
-    def launch(self):
+    async def launch(self):
         common = ["python3", "-m", "gator",
                   "--parent", self.parent,
                   "--interval", f"{self.interval}",
                   ["--all-msg", "--quiet"][self.quiet]]
         for task in self.tasks:
-            self.state[task] = subprocess.Popen(common + ["--id", f"{task}"],
-                                                stdin =subprocess.DEVNULL,
-                                                stdout=subprocess.DEVNULL)
+            self.state[task] = await asyncio.create_subprocess_shell(
+                " ".join(common + ["--id", f"{task}"]),
+                # stdin =subprocess.DEVNULL,
+                # stdout=subprocess.DEVNULL
+            )
 
-    def wait_for_all(self):
-        for proc in self.state.values():
-            proc.wait()
+    async def wait_for_all(self):
+        await asyncio.gather(*(x.wait() for x in self.state.values()))

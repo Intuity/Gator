@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 from pathlib import Path
 
 import click
 
+from .common.client import Client
 from .hub.api import HubAPI
 from .layer import Layer
-from .parent import Parent
 from .specs import Job, JobArray, JobGroup, Spec
 from .wrapper import Wrapper
 
@@ -43,31 +44,36 @@ def launch(id : str,
     if hub:
         HubAPI.url = hub
     if parent:
-        Parent.url = parent
-    # Work out where the spec is coming from
-    if spec:
-        spec_obj = Spec.parse(Path(spec))
-    elif Parent.linked and id:
-        spec_obj = Parent.spec(id)
-    else:
-        raise Exception("No specification file provided and no parent server to query")
+        Client(address=parent)
     # Map tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
-    # If a JobGroup is provided, launch a layer
-    if isinstance(spec_obj, (JobArray, JobGroup)):
-        Layer(spec    =spec_obj,
-              tracking=tracking,
-              quiet   =quiet and not all_msg,
-              all_msg =all_msg)
-    # If a Job is provided, launch a wrapper
-    elif isinstance(spec_obj, Job):
-        Wrapper(spec    =spec_obj,
-                tracking=tracking,
-                interval=interval,
-                quiet   =quiet and not all_msg)
-    # Unsupported forms
-    else:
-        raise Exception(f"Unsupported specification object of type {type(spec_obj).__name__}")
+    async def _launch() -> None:
+        # Start client
+        await Client.instance().start()
+        # Work out where the spec is coming from
+        if spec:
+            spec_obj = Spec.parse(Path(spec))
+        elif Client.instance().linked and id:
+            raw_spec = await Client.instance().spec(id=id)
+            spec_obj = Spec.parse_str(raw_spec.get("spec", ""))
+        else:
+            raise Exception("No specification file provided and no parent server to query")
+        # If a JobGroup is provided, launch a layer
+        if isinstance(spec_obj, (JobArray, JobGroup)):
+            await Layer.create(spec    =spec_obj,
+                               tracking=tracking,
+                               quiet   =quiet and not all_msg,
+                               all_msg =all_msg)
+        # If a Job is provided, launch a wrapper
+        elif isinstance(spec_obj, Job):
+            await Wrapper.create(spec    =spec_obj,
+                                 tracking=tracking,
+                                 interval=interval,
+                                 quiet   =quiet and not all_msg)
+        # Unsupported forms
+        else:
+            raise Exception(f"Unsupported specification object of type {type(spec_obj).__name__}")
+    asyncio.run(_launch())
 
 if __name__ == "__main__":
     launch(prog_name="gator", auto_envvar_prefix="GATOR_")
