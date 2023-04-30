@@ -301,6 +301,8 @@ class Layer:
                 data["sub_active"] += child.sub_active
                 data["sub_passed"] += child.sub_passed
                 data["sub_failed"] += child.sub_failed
+        # While jobs are still starting up, estimate the total number expected
+        data["sub_total"] = max(data["sub_total"], self.spec.expected_jobs)
         return data
 
     async def __heartbeat(self, done_evt : asyncio.Event) -> None:
@@ -396,3 +398,9 @@ class Layer:
         # Mark this layer as complete
         summary = await self.summarise()
         await self.client.complete(id=self.id, code=0, **summary)
+        # Final heartbeat update
+        if self.heartbeat_cb:
+            if inspect.iscoroutinefunction(self.heartbeat_cb):
+                await self.heartbeat_cb(**summary)
+            else:
+                self.heartbeat_cb(**summary)

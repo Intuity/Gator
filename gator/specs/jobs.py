@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase
@@ -60,6 +61,14 @@ class JobArray(SpecBase):
         self.on_pass = on_pass or []
         self.on_done = on_done or []
 
+    @property
+    @functools.lru_cache()
+    def expected_jobs(self) -> int:
+        expected = 0
+        for job in self.jobs:
+            expected += self.repeats * (1 if isinstance(job, Job) else job.expected_jobs)
+        return expected
+
 
 class JobGroup(SpecBase):
     yaml_tag = "!JobGroup"
@@ -79,3 +88,11 @@ class JobGroup(SpecBase):
         self.on_fail = on_fail or []
         self.on_pass = on_pass or []
         self.on_done = on_done or []
+
+    @property
+    @functools.lru_cache()
+    def expected_jobs(self) -> int:
+        expected = 0
+        for job in self.jobs:
+            expected += 1 if isinstance(job, Job) else job.expected_jobs
+        return expected

@@ -14,18 +14,24 @@
 
 import asyncio
 from pathlib import Path
+from time import sleep
 from typing import Callable, Optional, Union
 
 import click
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
 from rich.progress import (BarColumn,
                            MofNCompleteColumn,
                            Progress,
                            SpinnerColumn,
                            TaskProgressColumn,
                            TextColumn)
+from rich.table import Table
+from rich.text import Text
 
 from .common.client import Client
-from .common.logger import local_console
+from .common.logger import Logger
 from .hub.api import HubAPI
 from .layer import Layer
 from .specs import Job, JobArray, JobGroup, Spec
@@ -53,7 +59,7 @@ async def launch(id           : Optional[str]               = None,
     # If an ID has been provided, override whatever the spec gives
     if id is not None:
         spec.id = id
-    # If a JobGroup is provided, launch a layer
+    # If a JobArray or JobGroup is provided, launch a layer
     if isinstance(spec, (JobArray, JobGroup)):
         await Layer.create(spec         =spec,
                             tracking    =tracking,
@@ -96,23 +102,34 @@ def main(id       : str,
         Client(address=parent)
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
-    # Create a progress bar
-    progbar = None
+    # Create a console
     prog_cb = None
     if progress:
-        progbar = Progress(TextColumn("Gator 🐊"),
+        table = Table(expand=True, show_edge=False, show_header=False)
+        # Create a progress bar
+        progbar = Progress(TextColumn("{task.description}"),
                            SpinnerColumn(),
                            BarColumn(bar_width=None),
                            MofNCompleteColumn(),
                            TaskProgressColumn(),
-                           console=local_console,
-                           expand=True,
-                           refresh_per_second=5)
-        progbar.start()
-        tracker = progbar.add_task("Running", total=1)
+                           expand=True)
+        table.add_row(Panel(progbar, title="Gator :crocodile:"))
+        # Create a progress bar
+        bar_total  = progbar.add_task("Completed",     total=1)
+        bar_active = progbar.add_task("[cyan]Running", total=1)
+        bar_passed = progbar.add_task("[green]Passed", total=1)
+        bar_failed = progbar.add_task("[red]Failed",   total=1)
         def _update(sub_total, sub_active, sub_passed, sub_failed, **_):
-            progbar.update(tracker, total=sub_total, completed=(sub_passed + sub_failed))
+            progbar.update(bar_total,  total=sub_total, completed=(sub_passed + sub_failed))
+            progbar.update(bar_active, total=sub_total, completed=sub_active)
+            progbar.update(bar_passed, total=sub_total, completed=sub_passed)
+            progbar.update(bar_failed, total=sub_total, completed=sub_failed)
         prog_cb = _update
+        # Start console
+        console = Console(log_path=False)
+        live = Live(table, refresh_per_second=4, console=console)
+        Logger.CONSOLE = live.console
+        live.start(refresh=True)
     # Launch
     asyncio.run(launch(id          =id,
                        spec        =Path(spec) if spec is not None else None,
@@ -121,9 +138,11 @@ def main(id       : str,
                        quiet       =quiet,
                        all_msg     =all_msg,
                        heartbeat_cb=prog_cb))
-    # Stop the progress bar
-    if progbar:
-        progbar.stop()
+    # Wait a little so the final progress update happens
+    sleep(1)
+    # Stop the console
+    if progress:
+        live.stop()
 
 
 if __name__ == "__main__":

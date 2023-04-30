@@ -13,18 +13,15 @@
 # limitations under the License.
 
 import asyncio
-import logging
-import os
 import time
 
 import click
-from rich.console import Console
 
 from .client import Client
 
-local_console = Console(log_path=False)
-
 class Logger:
+
+    CONSOLE = None
 
     FORMAT = {
         "DEBUG"  : ("[bold cyan]", "[/bold cyan]"),
@@ -33,16 +30,16 @@ class Logger:
         "ERROR"  : ("[bold red]", "[/bold red]"),
     }
 
-    @staticmethod
-    async def log(severity : str, message : str) -> None:
+    @classmethod
+    async def log(cls, severity : str, message : str) -> None:
         severity = severity.strip().upper()
         if Client.instance().linked:
             await Client.instance().log(timestamp=time.time(),
                                         severity =severity,
                                         message  =message)
-        else:
-            prefix, suffix = Logger.FORMAT.get(severity, ("[bold]", "[/bold]"))
-            local_console.log(f"{prefix}[{severity:<7s}]{suffix} {message}")
+        elif cls.CONSOLE:
+            prefix, suffix = cls.FORMAT.get(severity, ("[bold]", "[/bold]"))
+            cls.CONSOLE.log(f"{prefix}[{severity:<7s}]{suffix} {message}")
 
     @staticmethod
     async def debug(message : str) -> None:
