@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import inspect
 import os
 from copy import copy, deepcopy
 from collections import defaultdict
@@ -20,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import auto, Enum
 from pathlib import Path
-from typing import List, Union
+from typing import Callable, Dict, List, Union, Optional
 
 from .common.client import Client
 from .common.db import Database
@@ -42,9 +43,16 @@ class Child:
     id         : str           = "N/A"
     state      : State         = State.LAUNCHED
     server     : str           = ""
+    exitcode   : int           = 0
+    # Message counting
     warnings   : int           = 0
     errors     : int           = 0
-    exitcode   : int           = 0
+    # Tracking of childrens' state
+    sub_total  : int           = 0
+    sub_active : int           = 0
+    sub_passed : int           = 0
+    sub_failed : int           = 0
+    # Timestamping
     started    : datetime      = datetime.min
     updated    : datetime      = datetime.min
     completed  : datetime      = datetime.min
@@ -54,19 +62,21 @@ class Layer:
     """ Layer of the process tree """
 
     def __init__(self,
-                 spec     : Union[JobArray, JobGroup],
-                 tracking : Path = Path.cwd() / "tracking",
-                 quiet    : bool = False,
-                 all_msg  : bool = False) -> None:
-        self.spec      = spec
-        self.tracking  = tracking
-        self.quiet     = quiet
-        self.all_msg   = all_msg
-        self.db        = None
-        self.client    = None
-        self.server    = None
-        self.scheduler = None
-        self.lock      = asyncio.Lock()
+                 spec         : Union[JobArray, JobGroup],
+                 tracking     : Path               = Path.cwd() / "tracking",
+                 quiet        : bool               = False,
+                 all_msg      : bool               = False,
+                 heartbeat_cb : Optional[Callable] = None) -> None:
+        self.spec         = spec
+        self.tracking     = tracking
+        self.quiet        = quiet
+        self.all_msg      = all_msg
+        self.heartbeat_cb = heartbeat_cb
+        self.db           = None
+        self.client       = None
+        self.server       = None
+        self.scheduler    = None
+        self.lock         = asyncio.Lock()
         # Tracking for jobs in different phases
         self.launched  = {}
         self.pending   = {}
@@ -103,6 +113,11 @@ class Layer:
         # Launch jobs
         await Logger.info(f"Layer '{self.id}' launching sub-jobs")
         await self.__launch()
+        # Report
+        summary = await self.summarise()
+        await Logger.info(f"Complete - W: {summary['warnings']}, E: {summary['errors']}, "
+                          f"T: {summary['sub_total']}, A: {summary['sub_active']}, "
+                          f"P: {summary['sub_passed']}, F: {summary['sub_failed']}")
         # Shutdown the server
         await self.server.stop()
         # Shutdown the database
@@ -114,6 +129,10 @@ class Layer:
     def id(self) -> str:
         return self.spec.id or str(os.getpid())
 
+    @property
+    def is_root(self) -> bool:
+        return not self.client.linked
+
     async def __list_children(self, **_):
         """ List all of the children of this layer """
         state = {}
@@ -124,13 +143,13 @@ class Layer:
                 state[key] = {}
                 for child in store.values():
                     state[key][child.id] = { "state"    : child.state.name,
-                                            "server"   : child.server,
-                                            "warnings" : child.warnings,
-                                            "errors"   : child.errors,
-                                            "exitcode" : child.exitcode,
-                                            "started"  : child.started.isoformat(),
-                                            "updated"  : child.updated.isoformat(),
-                                            "completed": child.completed.isoformat() }
+                                             "server"   : child.server,
+                                             "warnings" : child.warnings,
+                                             "errors"   : child.errors,
+                                             "exitcode" : child.exitcode,
+                                             "started"  : child.started.isoformat(),
+                                             "updated"  : child.updated.isoformat(),
+                                             "completed": child.completed.isoformat() }
         return state
 
     async def __child_query(self, id : str, **_):
@@ -142,7 +161,10 @@ class Layer:
                 await Logger.error(f"Unknown child '{id}'")
                 return { "result": "error" }
 
-    async def __child_started(self, id : str, server : str, **_):
+    async def __child_started(self,
+                              id     : str,
+                              server : str,
+                              **_):
         """
         Register a child process with the parent's server.
 
@@ -153,16 +175,24 @@ class Layer:
                 child = self.launched[id]
                 if child.state is not State.LAUNCHED:
                     await Logger.error(f"Duplicate start detected for child '{child.id}'")
-                child.server  = server
-                child.state   = State.STARTED
-                child.started = datetime.now()
-                child.updated = datetime.now()
+                child.server   = server
+                child.state    = State.STARTED
+                child.started  = datetime.now()
+                child.updated  = datetime.now()
                 return { "result": "success" }
             else:
                 await Logger.error(f"Unknown child '{id}'")
                 return { "result": "error" }
 
-    async def __child_updated(self, id : str, errors : int, warnings : int, **_):
+    async def __child_updated(self,
+                              id         : str,
+                              warnings   : int,
+                              errors     : int,
+                              sub_total  : int = 0,
+                              sub_active : int = 0,
+                              sub_passed : int = 0,
+                              sub_failed : int = 0,
+                              **_):
         """
         Child can report error and warning counts.
 
@@ -173,15 +203,27 @@ class Layer:
                 child = self.launched[id]
                 if child.state is not State.STARTED:
                     await Logger.error(f"Update received for child '{child.id}' before start")
-                child.warnings = int(warnings)
-                child.errors   = int(errors)
-                child.updated  = datetime.now()
+                child.warnings   = int(warnings)
+                child.errors     = int(errors)
+                child.updated    = datetime.now()
+                child.sub_total  = sub_total
+                child.sub_active = sub_active
+                child.sub_passed = sub_passed
+                child.sub_failed = sub_failed
                 return { "result": "success" }
             else:
                 await Logger.error(f"Unknown child '{id}'")
                 return { "result": "error" }
 
-    async def __child_completed(self, id : str, code : int, warnings : int, errors : int, **_):
+    async def __child_completed(self,
+                                id         : str,
+                                code       : int,
+                                warnings   : int,
+                                errors     : int,
+                                sub_total  : int = 0,
+                                sub_passed : int = 0,
+                                sub_failed : int = 0,
+                                **_):
         """
         Mark that a child process has completed.
 
@@ -191,17 +233,20 @@ class Layer:
             if id in self.launched:
                 child = self.launched[id]
                 # Apply updates
-                child.state     = State.COMPLETE
-                child.warnings  = int(warnings)
-                child.errors    = int(errors)
-                child.exitcode  = int(code)
-                child.updated   = datetime.now()
-                child.completed = datetime.now()
+                child.state      = State.COMPLETE
+                child.warnings   = int(warnings)
+                child.errors     = int(errors)
+                child.exitcode   = int(code)
+                child.updated    = datetime.now()
+                child.completed  = datetime.now()
+                child.sub_total  = sub_total
+                child.sub_active = 0
+                child.sub_passed = sub_passed
+                child.sub_failed = sub_failed
                 # Move to the completed store
                 self.complete[child.id] = child
                 del self.launched[child.id]
                 # Trigger complete event
-                await Logger.info(f"Setting complete event for {id}")
                 child.e_complete.set()
                 return { "result": "success" }
             else:
@@ -245,6 +290,34 @@ class Layer:
                 self.launched[child.id] = child
                 del self.pending[child.id]
             await self.scheduler.launch([x.id for x in to_launch])
+
+    async def summarise(self) -> Dict[str, int]:
+        data = defaultdict(lambda: 0)
+        async with self.lock:
+            for child in (list(self.launched.values()) + list(self.complete.values())):
+                data["errors"]     += child.errors
+                data["warnings"]   += child.warnings
+                data["sub_total"]  += child.sub_total
+                data["sub_active"] += child.sub_active
+                data["sub_passed"] += child.sub_passed
+                data["sub_failed"] += child.sub_failed
+        return data
+
+    async def __heartbeat(self, done_evt : asyncio.Event) -> None:
+        cb_async = self.heartbeat_cb and inspect.iscoroutinefunction(self.heartbeat_cb)
+        while not done_evt.is_set():
+            # Summarise state
+            summary = await self.summarise()
+            # Report to parent
+            await self.client.update(id=self.id, **summary)
+            # Launch callback
+            if self.heartbeat_cb:
+                if cb_async:
+                    await self.heartbeat_cb(**summary)
+                else:
+                    self.heartbeat_cb(**summary)
+            # Wait for the next heartbeat
+            await asyncio.sleep(1)
 
     async def __launch(self):
         # Construct each child
@@ -302,6 +375,9 @@ class Layer:
                         self.launched[child.id] = child
             # Schedule all 'launched' jobs
             await self.scheduler.launch(list(self.launched.keys()))
+        # Launch the heartbeat
+        e_done = asyncio.Event()
+        t_beat = asyncio.create_task(self.__heartbeat(e_done))
         # Wait for all dependency tasks to complete
         await Logger.info(f"Waiting for {len(self.job_tasks)} dependency tasks to complete")
         await asyncio.gather(*self.job_tasks)
@@ -314,6 +390,9 @@ class Layer:
         # Wait until complete
         await Logger.info("Waiting for scheduler to finish")
         await self.scheduler.wait_for_all()
+        # Stop the heartbeat
+        e_done.set()
+        await t_beat
         # Mark this layer as complete
-        # TODO: Summarise all warnings and errors from child processes
-        await self.client.complete(id=self.id, code=0, warnings=0, errors=0)
+        summary = await self.summarise()
+        await self.client.complete(id=self.id, code=0, **summary)

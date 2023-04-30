@@ -145,7 +145,7 @@ class Wrapper:
                     for child in ps.children(recursive=True):
                         try:
                             c_cpu_perc = child.cpu_percent()
-                            c_mem_stat   = child.memory_info()
+                            c_mem_stat = child.memory_info()
                         except psutil.ZombieProcess:
                             continue
                         nproc    += 1
@@ -159,6 +159,16 @@ class Wrapper:
                 break
             # Count up to the interval so that process is regularly polled
             await asyncio.sleep(self.interval)
+
+    async def __heartbeat(self, done_evt : asyncio.Event) -> None:
+        while not done_evt.is_set():
+            num_wrn, num_err = await self.count_messages()
+            await self.client.update(id        =self.id,
+                                     warnings  =num_wrn,
+                                     errors    =num_err,
+                                     sub_total =1,
+                                     sub_active=1)
+            await asyncio.sleep(1)
 
     async def __launch(self) -> int:
         """
@@ -194,11 +204,13 @@ class Wrapper:
         # Monitor process usage
         e_done = asyncio.Event()
         t_pmon = asyncio.create_task(self.__monitor_usage(proc, e_done))
+        # Deliver heartbeat to the server
+        t_beat = asyncio.create_task(self.__heartbeat(e_done))
         # Run until process complete & STDOUT/STDERR digested
         await Logger.info("Monitoring task")
         await asyncio.gather(proc.wait(), t_stdout, t_stderr)
         e_done.set()
-        await t_pmon
+        await asyncio.gather(t_pmon, t_beat)
         # Capture the exit code
         self.code = proc.returncode
         await Logger.info(f"Task completed with return code {self.code}")
@@ -210,7 +222,14 @@ class Wrapper:
         num_wrn, num_err = await self.count_messages()
         await Logger.info(f"Recorded {num_wrn} warnings and {num_err} errors")
         # Mark job complete
-        await self.client.complete(id=self.id, code=self.code, warnings=num_wrn, errors=num_err)
+        passed = (num_err == 0) and (self.code == 0)
+        await self.client.complete(id        =self.id,
+                                   code      =self.code,
+                                   warnings  =num_wrn,
+                                   errors    =num_err,
+                                   sub_total =1,
+                                   sub_passed=[0, 1][passed],
+                                   sub_failed=[1, 0][passed])
 
     async def __report(self) -> None:
         # Pull data back from resource tracking
