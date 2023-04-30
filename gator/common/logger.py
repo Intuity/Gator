@@ -18,24 +18,31 @@ import os
 import time
 
 import click
-from rich.logging import RichHandler
+from rich.console import Console
 
 from .client import Client
 
-local_logger = logging.Logger(name="gator", level=logging.DEBUG)
-local_logger.addHandler(RichHandler())
+local_console = Console(log_path=False)
 
 class Logger:
 
+    FORMAT = {
+        "DEBUG"  : ("[bold cyan]", "[/bold cyan]"),
+        "INFO"   : ("[bold]", "[/bold]"),
+        "WARNING": ("[bold amber]", "[/bold amber]"),
+        "ERROR"  : ("[bold red]", "[/bold red]"),
+    }
+
     @staticmethod
     async def log(severity : str, message : str) -> None:
+        severity = severity.strip().upper()
         if Client.instance().linked:
             await Client.instance().log(timestamp=time.time(),
-                                        severity =severity.upper(),
+                                        severity =severity,
                                         message  =message)
         else:
-            local_logger.log(logging._nameToLevel.get(severity, None),
-                             f"[{os.getpid()}] {message}")
+            prefix, suffix = Logger.FORMAT.get(severity, ("[bold]", "[/bold]"))
+            local_console.log(f"{prefix}[{severity:<7s}]{suffix} {message}")
 
     @staticmethod
     async def debug(message : str) -> None:
