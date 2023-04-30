@@ -114,6 +114,52 @@ class Wrapper:
         err_count = await self.db.get_logentry(sql_count=True, severity=Query(gte=int(LogSeverity.ERROR)))
         return wrn_count, err_count
 
+    async def __monitor_stdio(self,
+                              pipe     : asyncio.subprocess.PIPE,
+                              severity : LogSeverity) -> None:
+        while not pipe.at_eof():
+            line = await pipe.readline()
+            line = line.decode("utf-8").rstrip()
+            if len(line) > 0:
+                await self.db.push_logentry(LogEntry(severity=severity,
+                                                     message =line))
+
+    async def __monitor_usage(self,
+                              proc     : asyncio.subprocess.Process,
+                              done_evt : asyncio.Event) -> None:
+        # Catch NoSuchProcess in case it exits before monitoring can start
+        try:
+            ps = psutil.Process(pid=proc.pid)
+        except psutil.NoSuchProcess:
+            return
+        while not done_evt.is_set():
+            try:
+                # Capture statistics
+                with ps.oneshot():
+                    await Logger.debug(f"Capturing statistics for {proc.pid}")
+                    nproc    = 1
+                    cpu_perc = ps.cpu_percent()
+                    mem_stat = ps.memory_info()
+                    rss, vms = mem_stat.rss, mem_stat.vms
+                    # io_count = ps.io_counters() if hasattr(ps, "io_counters") else None
+                    for child in ps.children(recursive=True):
+                        try:
+                            c_cpu_perc = child.cpu_percent()
+                            c_mem_stat   = child.memory_info()
+                        except psutil.ZombieProcess:
+                            continue
+                        nproc    += 1
+                        cpu_perc += c_cpu_perc
+                        rss      += c_mem_stat.rss
+                        vms      += c_mem_stat.vms
+                        # if io_count is not None:
+                        #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
+                    await self.db.push_procstat(ProcStat(datetime.now(), nproc, cpu_perc, rss, vms))
+            except psutil.NoSuchProcess:
+                break
+            # Count up to the interval so that process is regularly polled
+            await asyncio.sleep(self.interval)
+
     async def __launch(self) -> int:
         """
         Launch the process and pipe STDIN, STDOUT, and STDERR with line buffering
@@ -143,51 +189,11 @@ class Wrapper:
                                                      stderr=subprocess.PIPE,
                                                      close_fds=True)
         # Capture STDOUT and STDERR
-        async def _cap_stdio(pipe, severity) -> None:
-            while not pipe.at_eof():
-                line = await pipe.readline()
-                line = line.decode("utf-8").rstrip()
-                if len(line) > 0:
-                    await self.db.push_logentry(LogEntry(severity=severity,
-                                                         message =line))
-        t_stdout = asyncio.create_task(_cap_stdio(proc.stdout, LogSeverity.INFO))
-        t_stderr = asyncio.create_task(_cap_stdio(proc.stderr, LogSeverity.ERROR))
+        t_stdout = asyncio.create_task(self.__monitor_stdio(proc.stdout, LogSeverity.INFO))
+        t_stderr = asyncio.create_task(self.__monitor_stdio(proc.stderr, LogSeverity.ERROR))
         # Monitor process usage
-        async def _mon_proc(proc, done_evt, interval) -> None:
-            # Catch NoSuchProcess in case it exits before monitoring can start
-            try:
-                ps = psutil.Process(pid=proc.pid)
-            except psutil.NoSuchProcess:
-                return
-            while not done_evt.is_set():
-                try:
-                    # Capture statistics
-                    with ps.oneshot():
-                        await Logger.debug(f"Capturing statistics for {proc.pid}")
-                        nproc    = 1
-                        cpu_perc = ps.cpu_percent()
-                        mem_stat = ps.memory_info()
-                        rss, vms = mem_stat.rss, mem_stat.vms
-                        # io_count = ps.io_counters() if hasattr(ps, "io_counters") else None
-                        for child in ps.children(recursive=True):
-                            try:
-                                c_cpu_perc = child.cpu_percent()
-                                c_mem_stat   = child.memory_info()
-                            except psutil.ZombieProcess:
-                                continue
-                            nproc    += 1
-                            cpu_perc += c_cpu_perc
-                            rss      += c_mem_stat.rss
-                            vms      += c_mem_stat.vms
-                            # if io_count is not None:
-                            #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
-                        await self.db.push_procstat(ProcStat(datetime.now(), nproc, cpu_perc, rss, vms))
-                except psutil.NoSuchProcess:
-                    break
-                # Count up to the interval so that process is regularly polled
-                await asyncio.sleep(interval)
         e_done = asyncio.Event()
-        t_pmon = asyncio.create_task(_mon_proc(proc, e_done, self.interval))
+        t_pmon = asyncio.create_task(self.__monitor_usage(proc, e_done))
         # Run until process complete & STDOUT/STDERR digested
         await Logger.info("Monitoring task")
         await asyncio.gather(proc.wait(), t_stdout, t_stderr)
