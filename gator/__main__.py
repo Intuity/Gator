@@ -130,6 +130,9 @@ def main(id       : str,
         live = Live(table, refresh_per_second=4, console=console)
         Logger.CONSOLE = live.console
         live.start(refresh=True)
+    else:
+        Logger.CONSOLE = Console(log_path=False)
+        Logger.CONSOLE.log("Starting Gator :crocodile:")
     # Launch
     asyncio.run(launch(id          =id,
                        spec        =Path(spec) if spec is not None else None,
