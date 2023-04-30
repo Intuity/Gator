@@ -25,35 +25,57 @@ class Job(SpecBase):
                  env     : Optional[Dict[str, str]] = None,
                  cwd     : Optional[str] = None,
                  command : Optional[str] = None,
-                 args    : Optional[List[str]] = None) -> None:
+                 args    : Optional[List[str]] = None,
+                 on_fail : Optional[List[str]] = None,
+                 on_pass : Optional[List[str]] = None,
+                 on_done : Optional[List[str]] = None) -> None:
         self.id = id
         self.env = env or {}
         self.cwd = cwd
         self.command = command
         self.args = args or []
+        self.on_fail = on_fail or []
+        self.on_pass = on_pass or []
+        self.on_done = on_done or []
 
 
 class JobArray(SpecBase):
     yaml_tag = "!JobArray"
 
     def __init__(self,
-                 id     : Optional[str] = None,
-                 repeats: Optional[int] = None,
-                 jobs   : Optional[List[Union[Job, "JobArray", "JobGroup"]]] = None,
-                 env    : Optional[Dict[str, str]] = None) -> None:
+                 id      : Optional[str] = None,
+                 repeats : Optional[int] = None,
+                 jobs    : Optional[List[Union[Job, "JobArray", "JobGroup"]]] = None,
+                 env     : Optional[Dict[str, str]] = None,
+                 cwd     : Optional[str] = None,
+                 on_fail : Optional[List[str]] = None,
+                 on_pass : Optional[List[str]] = None,
+                 on_done : Optional[List[str]] = None) -> None:
         self.id = id
         self.repeats = 1 if (repeats is None) else repeats
         self.jobs = jobs or []
         self.env = env or {}
+        self.cwd = cwd
+        self.on_fail = on_fail or []
+        self.on_pass = on_pass or []
+        self.on_done = on_done or []
 
 
 class JobGroup(SpecBase):
     yaml_tag = "!JobGroup"
 
     def __init__(self,
-                 id   : Optional[str] = None,
-                 jobs : Optional[List[Union[Job, "JobGroup", JobArray]]] = None,
-                 env  : Optional[Dict[str, str]] = None) -> None:
+                 id      : Optional[str] = None,
+                 jobs    : Optional[List[Union[Job, "JobGroup", JobArray]]] = None,
+                 env     : Optional[Dict[str, str]] = None,
+                 cwd     : Optional[str] = None,
+                 on_fail : Optional[List[str]] = None,
+                 on_pass : Optional[List[str]] = None,
+                 on_done : Optional[List[str]] = None) -> None:
         self.id = id
         self.jobs = jobs or []
         self.env = env or {}
+        self.cwd = cwd
+        self.on_fail = on_fail or []
+        self.on_pass = on_pass or []
+        self.on_done = on_done or []

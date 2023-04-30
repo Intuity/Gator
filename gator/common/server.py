@@ -159,6 +159,6 @@ class Server:
                     response.update(call_rsp or {})
                     await ws.send(json.dumps(response))
                 except Exception as e:
-                    await Logger.error(f"Caught exception on route {action}: {str(e)}")
+                    await Logger.error(f"Caught {type(e).__name__} on route {action}: {str(e)}")
                     await ws.send(json.dumps({ "result": "error",
                                                "reason": str(e) }))

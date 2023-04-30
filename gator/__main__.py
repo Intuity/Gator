@@ -56,6 +56,7 @@ def launch(id : str,
         elif Client.instance().linked and id:
             raw_spec = await Client.instance().spec(id=id)
             spec_obj = Spec.parse_str(raw_spec.get("spec", ""))
+            spec_obj.id = id
         else:
             raise Exception("No specification file provided and no parent server to query")
         # If a JobGroup is provided, launch a layer

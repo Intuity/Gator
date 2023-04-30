@@ -20,27 +20,37 @@ class Scheduler:
     """ Launches a set of tasks on a particular infrastructure """
 
     def __init__(self,
-                 tasks    : List[str],
                  parent   : str,
                  interval : int = 5,
                  quiet    : bool = True) -> None:
-        self.tasks    = tasks
         self.parent   = parent
         self.interval = interval
         self.quiet    = quiet
-        self.state    = {}
+        self.lock     = asyncio.Lock()
+        self.launched = {}
+        self.complete = {}
+        self.monitors = {}
 
-    async def launch(self):
+    async def __monitor(self, id : str, proc : asyncio.subprocess.Process) -> None:
+        rc = await proc.wait()
+        async with self.lock:
+            self.complete[id] = rc
+            del self.launched[id]
+            del self.monitors[id]
+
+    async def launch(self, tasks : List[str]) -> None:
         common = ["python3", "-m", "gator",
                   "--parent", self.parent,
                   "--interval", f"{self.interval}",
                   ["--all-msg", "--quiet"][self.quiet]]
-        for task in self.tasks:
-            self.state[task] = await asyncio.create_subprocess_shell(
-                " ".join(common + ["--id", f"{task}"]),
-                # stdin =subprocess.DEVNULL,
-                # stdout=subprocess.DEVNULL
-            )
+        async with self.lock:
+            for task in tasks:
+                self.launched[task] = await asyncio.create_subprocess_shell(
+                    " ".join(common + ["--id", f"{task}"]),
+                    stdin =subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL
+                )
+                self.monitors[task] = asyncio.create_task(self.__monitor(task, self.launched[task]))
 
     async def wait_for_all(self):
-        await asyncio.gather(*(x.wait() for x in self.state.values()))
+        await asyncio.gather(*self.monitors.values())
