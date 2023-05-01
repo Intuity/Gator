@@ -21,7 +21,7 @@ import requests
 from requests.adapters import HTTPAdapter, Retry
 
 
-class API:
+class HTTPAPI:
     """ API wrapper to interface with the parent layer's server """
 
     ENV_VAR = "GATOR_API"

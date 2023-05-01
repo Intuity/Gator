@@ -17,7 +17,7 @@ import time
 
 import click
 
-from .client import Client
+from .ws_api import WebsocketAPI
 
 class Logger:
 
@@ -33,10 +33,10 @@ class Logger:
     @classmethod
     async def log(cls, severity : str, message : str) -> None:
         severity = severity.strip().upper()
-        if Client.instance().linked:
-            await Client.instance().log(timestamp=time.time(),
-                                        severity =severity,
-                                        message  =message)
+        if WebsocketAPI.linked:
+            await WebsocketAPI.log(timestamp=time.time(),
+                                   severity =severity,
+                                   message  =message)
         elif cls.CONSOLE:
             prefix, suffix = cls.FORMAT.get(severity, ("[bold]", "[/bold]"))
             cls.CONSOLE.log(f"{prefix}[{severity:<7s}]{suffix} {message}")

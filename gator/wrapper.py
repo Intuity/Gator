@@ -26,7 +26,7 @@ import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
-from .common.client import Client
+from .common.ws_api import WebsocketAPI
 from .common.db import Database, Query
 from .common.server import Server
 from .hub.api import HubAPI
@@ -71,7 +71,6 @@ class Wrapper:
         self.code = None
         self.db = None
         self.server = None
-        self.client = None
 
     @classmethod
     async def create(cls, *args, **kwargs) -> None:
@@ -89,10 +88,10 @@ class Wrapper:
         self.server = Server(db=self.db)
         server_address = await self.server.start()
         # If an immediate parent is known, register with it
-        self.client = await Client.instance().start()
-        await self.client.register(id=self.id, server=server_address)
+        if WebsocketAPI.linked:
+            await WebsocketAPI.register(id=self.id, server=server_address)
         # Otherwise, if a hub is known register to it
-        if HubAPI.linked:
+        elif HubAPI.linked:
             HubAPI.register(self.id, server_address)
         # Launch
         await self.__launch()
@@ -102,8 +101,6 @@ class Wrapper:
         await self.server.stop()
         # Shutdown the database
         await self.db.stop()
-        # Shutdown the client
-        await self.client.stop()
 
     @property
     def id(self) -> str:
@@ -163,11 +160,11 @@ class Wrapper:
     async def __heartbeat(self, done_evt : asyncio.Event) -> None:
         while not done_evt.is_set():
             num_wrn, num_err = await self.count_messages()
-            await self.client.update(id        =self.id,
-                                     warnings  =num_wrn,
-                                     errors    =num_err,
-                                     sub_total =1,
-                                     sub_active=1)
+            await WebsocketAPI.update(id        =self.id,
+                                      warnings  =num_wrn,
+                                      errors    =num_err,
+                                      sub_total =1,
+                                      sub_active=1)
             await asyncio.sleep(1)
 
     async def __launch(self) -> int:
@@ -223,13 +220,13 @@ class Wrapper:
         await Logger.info(f"Recorded {num_wrn} warnings and {num_err} errors")
         # Mark job complete
         passed = (num_err == 0) and (self.code == 0)
-        await self.client.complete(id        =self.id,
-                                   code      =self.code,
-                                   warnings  =num_wrn,
-                                   errors    =num_err,
-                                   sub_total =1,
-                                   sub_passed=[0, 1][passed],
-                                   sub_failed=[1, 0][passed])
+        await WebsocketAPI.complete(id        =self.id,
+                                    code      =self.code,
+                                    warnings  =num_wrn,
+                                    errors    =num_err,
+                                    sub_total =1,
+                                    sub_passed=[0, 1][passed],
+                                    sub_failed=[1, 0][passed])
 
     async def __report(self) -> None:
         # Pull data back from resource tracking

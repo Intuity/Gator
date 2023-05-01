@@ -14,9 +14,9 @@
 
 from pathlib import Path
 
-from ..common.api import API
+from ..common.http_api import HTTPAPI
 
-class _HubAPI(API):
+class _HubAPI(HTTPAPI):
     ENV_VAR      = "GATOR_HUB"
     ROUTE_PREFIX = "/api"
     REGISTER     = Path("register")

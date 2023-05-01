@@ -23,7 +23,7 @@ from enum import auto, Enum
 from pathlib import Path
 from typing import Callable, Dict, List, Union, Optional
 
-from .common.client import Client
+from .common.ws_api import WebsocketAPI
 from .common.db import Database
 from .common.logger import Logger
 from .common.server import Server
@@ -73,7 +73,6 @@ class Layer:
         self.all_msg      = all_msg
         self.heartbeat_cb = heartbeat_cb
         self.db           = None
-        self.client       = None
         self.server       = None
         self.scheduler    = None
         self.lock         = asyncio.Lock()
@@ -102,9 +101,8 @@ class Layer:
         self.server.register("complete", self.__child_completed)
         server_address = await self.server.start()
         # If an immediate parent is known, register with it
-        self.client = await Client.instance().start()
-        if self.client.linked:
-            await self.client.register(id=self.id, server=server_address)
+        if WebsocketAPI.linked:
+            await WebsocketAPI.register(id=self.id, server=server_address)
         # Otherwise, if a hub is known register to it
         elif HubAPI.linked:
             HubAPI.register(self.spec.id, self.server.address)
@@ -122,8 +120,6 @@ class Layer:
         await self.server.stop()
         # Shutdown the database
         await self.db.stop()
-        # Shutdown the client
-        await self.client.stop()
 
     @property
     def id(self) -> str:
@@ -131,7 +127,7 @@ class Layer:
 
     @property
     def is_root(self) -> bool:
-        return not self.client.linked
+        return not WebsocketAPI.linked
 
     async def __list_children(self, **_):
         """ List all of the children of this layer """
@@ -311,7 +307,7 @@ class Layer:
             # Summarise state
             summary = await self.summarise()
             # Report to parent
-            await self.client.update(id=self.id, **summary)
+            await WebsocketAPI.update(id=self.id, **summary)
             # Launch callback
             if self.heartbeat_cb:
                 if cb_async:
@@ -397,7 +393,7 @@ class Layer:
         await t_beat
         # Mark this layer as complete
         summary = await self.summarise()
-        await self.client.complete(id=self.id, code=0, **summary)
+        await WebsocketAPI.complete(id=self.id, code=0, **summary)
         # Final heartbeat update
         if self.heartbeat_cb:
             if inspect.iscoroutinefunction(self.heartbeat_cb):

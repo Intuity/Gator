@@ -28,15 +28,13 @@ from rich.progress import (BarColumn,
                            TaskProgressColumn,
                            TextColumn)
 from rich.table import Table
-from rich.text import Text
 
-from .common.client import Client
+from .common.ws_api import WebsocketAPI
 from .common.logger import Logger
 from .hub.api import HubAPI
 from .layer import Layer
 from .specs import Job, JobArray, JobGroup, Spec
 from .wrapper import Wrapper
-
 
 
 async def launch(id           : Optional[str]               = None,
@@ -47,10 +45,10 @@ async def launch(id           : Optional[str]               = None,
                  all_msg      : bool                        = False,
                  heartbeat_cb : Optional[Callable]          = None) -> None:
     # Start client
-    await Client.instance().start()
+    await WebsocketAPI.start()
     # Work out where the spec is coming from
-    if spec is None and Client.instance().linked and id:
-        raw_spec = await Client.instance().spec(id=id)
+    if spec is None and WebsocketAPI.linked and id:
+        raw_spec = await WebsocketAPI.spec(id=id)
         spec     = Spec.parse_str(raw_spec.get("spec", ""))
     elif spec is not None and not isinstance(spec, Spec):
         spec = Spec.parse(Path(spec))
@@ -75,6 +73,8 @@ async def launch(id           : Optional[str]               = None,
     # Unsupported forms
     else:
         raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
+    # Shutdown client
+    await WebsocketAPI.stop()
 
 
 @click.command()
@@ -99,7 +99,7 @@ def main(id       : str,
     if hub:
         HubAPI.url = hub
     if parent:
-        Client(address=parent)
+        WebsocketAPI.address = parent
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
     # Create a console
