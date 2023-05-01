@@ -43,12 +43,15 @@ class _WebsocketAPI(WebsocketWrapper):
         def _teardown() -> None:
             asyncio.run(self.stop())
         atexit.register(_teardown)
+        # Start socket monitor
+        await self.start_monitor()
         # For chaining
         return self
 
     async def stop(self) -> None:
         if self.ws is not None:
             await self.ws.close()
+            await self.stop_monitor()
             self.ws = None
 
 WebsocketAPI = _WebsocketAPI()

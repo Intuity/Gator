@@ -36,7 +36,8 @@ class Logger:
         if WebsocketAPI.linked:
             await WebsocketAPI.log(timestamp=time.time(),
                                    severity =severity,
-                                   message  =message)
+                                   message  =message,
+                                   posted   =True)
         elif cls.CONSOLE:
             prefix, suffix = cls.FORMAT.get(severity, ("[bold]", "[/bold]"))
             cls.CONSOLE.log(f"{prefix}[{severity:<7s}]{suffix} {message}")

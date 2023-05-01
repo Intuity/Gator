@@ -144,6 +144,7 @@ class Server:
                 continue
             # Check for a supported action
             action = data.get("action", None)
+            posted = data.get("posted", False)
             if not action:
                 await ws.send(json.dumps({ "tool": "gator", "version": "1.0" }))
                 continue
@@ -154,10 +155,13 @@ class Server:
                 continue
             else:
                 try:
-                    response = { "result": "success" }
-                    call_rsp = await self.__routes[action](**data)
-                    response.update(call_rsp or {})
-                    await ws.send(json.dumps(response))
+                    call_rsp = await self.__routes[action](ws=ws, **data)
+                    if not posted:
+                        response = { "action": action,
+                                    "req_id": data.get("req_id", 0),
+                                    "result": "success" }
+                        response.update(call_rsp or {})
+                        await ws.send(json.dumps(response))
                 except Exception as e:
                     await Logger.error(f"Caught {type(e).__name__} on route {action}: {str(e)}")
                     await ws.send(json.dumps({ "result": "error",

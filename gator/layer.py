@@ -23,7 +23,10 @@ from enum import auto, Enum
 from pathlib import Path
 from typing import Callable, Dict, List, Union, Optional
 
+import websockets
+
 from .common.ws_api import WebsocketAPI
+from .common.ws_wrapper import WebsocketWrapper
 from .common.db import Database
 from .common.logger import Logger
 from .common.server import Server
@@ -57,6 +60,8 @@ class Child:
     updated    : datetime      = datetime.min
     completed  : datetime      = datetime.min
     e_complete : asyncio.Event = field(default_factory=asyncio.Event)
+    # Socket
+    ws         : Optional[WebsocketWrapper] = None
 
 class Layer:
     """ Layer of the process tree """
@@ -158,6 +163,7 @@ class Layer:
                 return { "result": "error" }
 
     async def __child_started(self,
+                              ws     : websockets.WebSocketClientProtocol,
                               id     : str,
                               server : str,
                               **_):
@@ -171,10 +177,11 @@ class Layer:
                 child = self.launched[id]
                 if child.state is not State.LAUNCHED:
                     await Logger.error(f"Duplicate start detected for child '{child.id}'")
-                child.server   = server
-                child.state    = State.STARTED
-                child.started  = datetime.now()
-                child.updated  = datetime.now()
+                child.server  = server
+                child.state   = State.STARTED
+                child.started = datetime.now()
+                child.updated = datetime.now()
+                child.ws      = WebsocketWrapper(ws)
                 return { "result": "success" }
             else:
                 await Logger.error(f"Unknown child '{id}'")
