@@ -1,0 +1,8 @@
+!Job
+  id: test_job
+  env:
+    test_key_a: hey
+    test_key_b: you
+  command: sleep
+  args   :
+    - 10

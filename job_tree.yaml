@@ -1,0 +1,41 @@
+!JobGroup
+  id  : top
+  env :
+    DURATION: 60
+  jobs:
+  # Nested layer
+  - !JobGroup
+      id  : inner
+      jobs:
+      - !Job
+          id     : unner_sleep_1
+          command: sleep
+          args   : ["$DURATION"]
+      - !Job
+          id     : inner_sleep_2
+          command: sleep
+          args   : ["$DURATION"]
+  # Directly attached to root
+  - !Job
+      id     : sleep
+      env    :
+        TEST_C: direct
+      command: sleep
+      args   : ["$DURATION"]
+  # Job array
+  - !JobArray
+      id     : array
+      repeats: 4
+      jobs   :
+      - !Job
+          id     : array_sleep
+          command: sleep
+          args   : ["$DURATION"]
+      - !JobArray
+          id     : nested
+          repeats: 3
+          jobs   :
+          - !Job
+              id     : array_nested_sleep
+              command: sleep
+              args   : ["$DURATION"]

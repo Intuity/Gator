@@ -21,15 +21,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import auto, Enum
 from pathlib import Path
-from typing import Callable, Dict, List, Union, Optional
+from typing import Any, Callable, Dict, List, Union, Optional
 
 import websockets
 
-from .common.ws_api import WebsocketAPI
+from .common.ws_client import WebsocketClient
 from .common.ws_wrapper import WebsocketWrapper
 from .common.db import Database
 from .common.logger import Logger
-from .common.server import Server
+from .common.ws_server import WebsocketServer
 from .hub.api import HubAPI
 from .scheduler import Scheduler
 from .specs import Job, JobArray, JobGroup, Spec
@@ -98,16 +98,18 @@ class Layer:
         await self.db.start()
         await self.db.register(LogEntry, None if self.quiet else _log_cb)
         # Setup server
-        self.server = Server(db=self.db)
-        self.server.register("children", self.__list_children)
-        self.server.register("spec", self.__child_query)
-        self.server.register("register", self.__child_started)
-        self.server.register("update", self.__child_updated)
-        self.server.register("complete", self.__child_completed)
+        self.server = WebsocketServer(db=self.db)
+        self.server.add_route("children", self.__list_children)
+        self.server.add_route("spec", self.__child_query)
+        self.server.add_route("register", self.__child_started)
+        self.server.add_route("update", self.__child_updated)
+        self.server.add_route("complete", self.__child_completed)
         server_address = await self.server.start()
+        # Add a handler for downwards calls
+        WebsocketClient.add_route("get_tree", self.get_tree)
         # If an immediate parent is known, register with it
-        if WebsocketAPI.linked:
-            await WebsocketAPI.register(id=self.id, server=server_address)
+        if WebsocketClient.linked:
+            await WebsocketClient.register(id=self.id, server=server_address)
         # Otherwise, if a hub is known register to it
         elif HubAPI.linked:
             HubAPI.register(self.spec.id, self.server.address)
@@ -132,15 +134,28 @@ class Layer:
 
     @property
     def is_root(self) -> bool:
-        return not WebsocketAPI.linked
+        return not WebsocketClient.linked
+
+    async def get_tree(self, **_) -> Dict[str, Any]:
+        tree = {}
+        async with self.lock:
+            all_launched = list(self.launched.values())
+        for child in all_launched:
+            if isinstance(child.spec, Job) or child.ws is None:
+                await Logger.warning(f"TREE CHILD: {child.id}")
+                tree[child.id] = child.state.name
+            else:
+                await Logger.warning(f"RECURSING FROM {os.getpid()} -> {type(child.spec).__name__}: {child.id}")
+                tree[child.id] = await child.ws.get_tree()
+        return tree
 
     async def __list_children(self, **_):
         """ List all of the children of this layer """
         state = {}
         async with self.lock:
             for key, store in (("launched", self.launched),
-                            ("pending",  self.pending ),
-                            ("complete", self.complete)):
+                               ("pending",  self.pending ),
+                               ("complete", self.complete)):
                 state[key] = {}
                 for child in store.values():
                     state[key][child.id] = { "state"    : child.state.name,
@@ -182,6 +197,7 @@ class Layer:
                 child.started = datetime.now()
                 child.updated = datetime.now()
                 child.ws      = WebsocketWrapper(ws)
+                child.ws.ws_event.set()
                 return { "result": "success" }
             else:
                 await Logger.error(f"Unknown child '{id}'")
@@ -314,13 +330,18 @@ class Layer:
             # Summarise state
             summary = await self.summarise()
             # Report to parent
-            await WebsocketAPI.update(id=self.id, **summary)
+            await WebsocketClient.update(id=self.id, **summary)
             # Launch callback
             if self.heartbeat_cb:
                 if cb_async:
                     await self.heartbeat_cb(**summary)
                 else:
                     self.heartbeat_cb(**summary)
+            # Get tree
+            if self.is_root:
+                await Logger.warning("STARTING TO CALCULATE TREE")
+                tree = await self.get_tree()
+                await Logger.info(f"TREE: {tree}")
             # Wait for the next heartbeat
             await asyncio.sleep(1)
 
@@ -400,7 +421,7 @@ class Layer:
         await t_beat
         # Mark this layer as complete
         summary = await self.summarise()
-        await WebsocketAPI.complete(id=self.id, code=0, **summary)
+        await WebsocketClient.complete(id=self.id, code=0, **summary)
         # Final heartbeat update
         if self.heartbeat_cb:
             if inspect.iscoroutinefunction(self.heartbeat_cb):

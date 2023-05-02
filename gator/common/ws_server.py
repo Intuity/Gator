@@ -14,38 +14,34 @@
 
 import asyncio
 import atexit
-import inspect
 import json
 import socket
 from contextlib import closing
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Optional
 
 import websockets
 
 from .db import Database
 from .logger import Logger
 from ..types import LogEntry, LogSeverity
+from .ws_router import WebsocketRouter
 
 
-class ServerError(Exception):
-    pass
-
-
-class Server:
+class WebsocketServer(WebsocketRouter):
     """ Websocket server that exposes a local server with extensible routes """
 
     def __init__(self,
                  port : Optional[int] = None,
                  db   : Database      = None) -> None:
+        super().__init__()
+        # Store the DB pointer
         self.db = db
         # Create a lock which is held until server thread starts
         self.__port     = port
         self.__port_set = asyncio.Event()
-        # Gather routes
-        self.__routes = {}
         # Register standard routes
-        self.register("log", self.handle_log)
+        self.add_route("log", self.handle_log)
         # Hold a reference to the websocket
         self.__ws = None
 
@@ -64,21 +60,6 @@ class Server:
         assert hostip, "Blank IP return from socket.gethostbyname()"
         port = await self.get_port()
         return f"{hostip}:{port}"
-
-    # ==========================================================================
-    # Route Registration
-    # ==========================================================================
-
-    def register(self, action : str, handler : Callable) -> None:
-        """
-        Register a handler with the websocket
-
-        :param action:  Name of action to register with
-        :param handler: Callback method when route is accessed
-        """
-        if not inspect.iscoroutinefunction(handler):
-            raise ServerError("Attempted to register a non-asynchronous handler")
-        self.__routes[action] = handler
 
     # ==========================================================================
     # Standard Routes
@@ -117,7 +98,7 @@ class Server:
                 self.__port = s.getsockname()[1]
         self.__port_set.set()
         # Start an asyncio task to run the websocket in the background
-        self.__ws = await websockets.serve(self.__route, "0.0.0.0", self.__port)
+        self.__ws = await websockets.serve(self.__handle_client, "0.0.0.0", self.__port)
         # Setup teardown
         def _teardown() -> None:
             asyncio.run(self.stop())
@@ -132,37 +113,12 @@ class Server:
             await self.__ws.wait_closed()
             self.__ws = None
 
-    async def __route(self, ws) -> None:
+    async def __handle_client(self, ws) -> None:
         async for message in ws:
-            # Attempt to decode
             try:
-                data = json.loads(message)
+                await self.route(ws, json.loads(message))
             except json.JSONDecodeError as e:
                 await Logger.error(f"JSON decode error: {str(e)}")
                 await ws.send(json.dumps({ "result": "error",
                                            "reason": "JSON decode failed" }))
                 continue
-            # Check for a supported action
-            action = data.get("action", None)
-            posted = data.get("posted", False)
-            if not action:
-                await ws.send(json.dumps({ "tool": "gator", "version": "1.0" }))
-                continue
-            elif action not in self.__routes:
-                await Logger.error(f"Bad route: {action}")
-                await ws.send(json.dumps({ "result": "error",
-                                           "reason": f"Unknown action '{action}'" }))
-                continue
-            else:
-                try:
-                    call_rsp = await self.__routes[action](ws=ws, **data)
-                    if not posted:
-                        response = { "action": action,
-                                    "req_id": data.get("req_id", 0),
-                                    "result": "success" }
-                        response.update(call_rsp or {})
-                        await ws.send(json.dumps(response))
-                except Exception as e:
-                    await Logger.error(f"Caught {type(e).__name__} on route {action}: {str(e)}")
-                    await ws.send(json.dumps({ "result": "error",
-                                               "reason": str(e) }))

@@ -26,9 +26,9 @@ import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
-from .common.ws_api import WebsocketAPI
+from .common.ws_client import WebsocketClient
 from .common.db import Database, Query
-from .common.server import Server
+from .common.ws_server import WebsocketServer
 from .hub.api import HubAPI
 from .common.logger import Logger
 from .specs import Job
@@ -85,11 +85,11 @@ class Wrapper:
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
         # Setup server
-        self.server = Server(db=self.db)
+        self.server = WebsocketServer(db=self.db)
         server_address = await self.server.start()
         # If an immediate parent is known, register with it
-        if WebsocketAPI.linked:
-            await WebsocketAPI.register(id=self.id, server=server_address)
+        if WebsocketClient.linked:
+            await WebsocketClient.register(id=self.id, server=server_address)
         # Otherwise, if a hub is known register to it
         elif HubAPI.linked:
             HubAPI.register(self.id, server_address)
@@ -160,7 +160,7 @@ class Wrapper:
     async def __heartbeat(self, done_evt : asyncio.Event) -> None:
         while not done_evt.is_set():
             num_wrn, num_err = await self.count_messages()
-            await WebsocketAPI.update(id        =self.id,
+            await WebsocketClient.update(id        =self.id,
                                       warnings  =num_wrn,
                                       errors    =num_err,
                                       sub_total =1,
@@ -220,7 +220,7 @@ class Wrapper:
         await Logger.info(f"Recorded {num_wrn} warnings and {num_err} errors")
         # Mark job complete
         passed = (num_err == 0) and (self.code == 0)
-        await WebsocketAPI.complete(id        =self.id,
+        await WebsocketClient.complete(id        =self.id,
                                     code      =self.code,
                                     warnings  =num_wrn,
                                     errors    =num_err,

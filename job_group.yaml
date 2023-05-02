@@ -1,0 +1,21 @@
+!JobGroup
+  id  : test_group
+  jobs:
+    - !Job
+        id     : job_a
+        command: echo
+        args   :
+          - "This is A"
+    # - !JobGroup
+    #     id  : nested
+    #     jobs:
+    #       - !Job
+    #           id     : job_b
+    #           command: echo
+    #           args   :
+    #             - "This is B"
+    #       - !Job
+    #           id     : job_c
+    #           command: echo
+    #           args   :
+    #             - "This is C"

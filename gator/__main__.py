@@ -29,7 +29,7 @@ from rich.progress import (BarColumn,
                            TextColumn)
 from rich.table import Table
 
-from .common.ws_api import WebsocketAPI
+from .common.ws_client import WebsocketClient
 from .common.logger import Logger
 from .hub.api import HubAPI
 from .layer import Layer
@@ -45,10 +45,10 @@ async def launch(id           : Optional[str]               = None,
                  all_msg      : bool                        = False,
                  heartbeat_cb : Optional[Callable]          = None) -> None:
     # Start client
-    await WebsocketAPI.start()
+    await WebsocketClient.start()
     # Work out where the spec is coming from
-    if spec is None and WebsocketAPI.linked and id:
-        raw_spec = await WebsocketAPI.spec(id=id)
+    if spec is None and WebsocketClient.linked and id:
+        raw_spec = await WebsocketClient.spec(id=id)
         spec     = Spec.parse_str(raw_spec.get("spec", ""))
     elif spec is not None and not isinstance(spec, Spec):
         spec = Spec.parse(Path(spec))
@@ -74,7 +74,7 @@ async def launch(id           : Optional[str]               = None,
     else:
         raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
     # Shutdown client
-    await WebsocketAPI.stop()
+    await WebsocketClient.stop()
 
 
 @click.command()
@@ -99,7 +99,7 @@ def main(id       : str,
     if hub:
         HubAPI.url = hub
     if parent:
-        WebsocketAPI.address = parent
+        WebsocketClient.address = parent
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
     # Create a console

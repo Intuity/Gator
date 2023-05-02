@@ -21,15 +21,18 @@ from typing import Any, Dict, Optional, Union
 
 import websockets
 
+from .ws_router import WebsocketRouter
+
 
 class WebsocketWrapperError(Exception):
     pass
 
 
-class WebsocketWrapper:
+class WebsocketWrapper(WebsocketRouter):
 
     def __init__(self,
                  ws : Optional[websockets.WebSocketClientProtocol] = None) -> None:
+        super().__init__()
         self.ws = ws
         self.ws_event = asyncio.Event()
         self.__monitor_task = None
@@ -59,15 +62,15 @@ class WebsocketWrapper:
         try:
             async for raw in self.ws:
                 try:
-                    response = json.loads(raw)
-                    if "req_id" in response and response["req_id"] == self.__pending_req_id:
+                    message = json.loads(raw)
+                    if "rsp_id" in message and message["rsp_id"] == self.__pending_req_id:
                         self.__pending_req_id = None
-                        self.__pending_response = response
+                        self.__pending_response = message
                         self.__pending_req_evt.set()
                     else:
-                        print(f"Got unexpected message: {raw}")
+                        await self.route(self.ws, message)
                 except json.JSONDecodeError:
-                    raise WebsocketWrapperError(f"Failed to decode response from: {raw}")
+                    raise WebsocketWrapperError(f"Failed to decode message: {raw}")
         except asyncio.CancelledError:
             pass
 
@@ -92,22 +95,35 @@ class WebsocketWrapper:
                 if not posted:
                     self.__pending_req_id = next(self.__next_request_id)
                 # Serialise and send the request
-                await self.ws.send(json.dumps({ "action": key.lower(),
-                                                "req_id": self.__pending_req_id or 0,
-                                                "posted": posted,
-                                                **kwargs }))
+                full_req = { "action": key.lower(),
+                             "req_id": self.__pending_req_id or 0,
+                             "posted": posted,
+                             **kwargs }
+                print(f"SENDING: {full_req} -> {self.ws}")
+                await self.ws.send(json.dumps(full_req))
                 # Posted requests return immediately
                 if posted:
                     return None
                 # Non-posted requests wait for a response
                 else:
-                    await self.__pending_req_evt.wait()
-                    self.__pending_req_evt.clear()
-                    response = self.__pending_response
-                    self.__pending_response = None
+                    # If a monitor is running, rely on it to capture responses
+                    if self.__monitor_task:
+                        await self.__pending_req_evt.wait()
+                        self.__pending_req_evt.clear()
+                        response = self.__pending_response
+                        self.__pending_response = None
+                    # Otherwise, directly fetch a response
+                    else:
+                        raw = await self.ws.recv()
+                        try:
+                            response = json.loads(raw)
+                        except json.JSONDecodeError:
+                            raise WebsocketWrapperError(f"Failed to decode response from: {raw}")
+                    # Check for result
                     if response.get("result", "error") != "success":
                         raise WebsocketWrapperError(f"Server responded with an "
                                                     f"error for '{key}': {response}")
+                    # Return response
                     return response
 
         return _shim

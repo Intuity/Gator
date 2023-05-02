@@ -22,7 +22,7 @@ import websockets
 from .ws_wrapper import WebsocketWrapper
 
 
-class _WebsocketAPI(WebsocketWrapper):
+class _WebsocketClient(WebsocketWrapper):
 
     def __init__(self, address : Optional[str] = None) -> None:
         super().__init__()
@@ -54,4 +54,4 @@ class _WebsocketAPI(WebsocketWrapper):
             await self.stop_monitor()
             self.ws = None
 
-WebsocketAPI = _WebsocketAPI()
+WebsocketClient = _WebsocketClient()
