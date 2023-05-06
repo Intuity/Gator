@@ -63,11 +63,8 @@ class Database:
                    lambda x: datetime.fromtimestamp(x))
     }
 
-    def __init__(self,
-                 path : Path,
-                 uwsgi : bool = False) -> None:
+    def __init__(self, path : Path) -> None:
         self.path = path
-        self.uwsgi = uwsgi
         # Ensure path's parent folder exists
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # Track which dataclasses are register
@@ -87,6 +84,7 @@ class Database:
 
     async def stop(self) -> None:
         if self.__db is not None:
+            await self.__db.commit()
             await self.__db.close()
         self.__db = None
 
@@ -160,10 +158,10 @@ class Database:
                 assert isinstance(object, descr)
                 async with self.__db.execute(sql_put,
                                              [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object)[1:])]) as cursor:
-                    db_uid = cursor.lastrowid
+                    object.db_uid = cursor.lastrowid
                 if push_callback is not None:
                     await push_callback(object)
-                return db_uid
+                return object.db_uid
             setattr(self, f"push_{descr.__name__.lower()}", _push)
             # Create a 'getter' method
             sql_base_query = f"SELECT * FROM {descr.__name__}"
@@ -202,7 +200,7 @@ class Database:
                     else:
                         conditions.append(f"{key} = :match_{key}")
                         parameters[f"match_{key}"] = val
-                if kwargs:
+                if conditions:
                     query_str += " WHERE " + " AND ".join(conditions)
                 if sql_order_by:
                     column, ascending = sql_order_by
@@ -229,7 +227,7 @@ class Database:
     async def push(self, object : Any) -> None:
         descr = type(object)
         if descr not in self.registered:
-            self.register(descr)
+            await self.register(descr)
         result = await getattr(self, f"push_{descr.__name__.lower()}")(object)
         return result
 
@@ -237,6 +235,6 @@ class Database:
             descr : Type[dataclasses.dataclass],
             **kwargs : Dict[str, Any]) -> Any:
         if descr not in self.registered:
-            self.register(descr)
+            await self.register(descr)
         result = await getattr(self, f"get_{descr.__name__.lower()}")(**kwargs)
         return result

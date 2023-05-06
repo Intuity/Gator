@@ -14,15 +14,11 @@
 
 from dataclasses import dataclass
 from enum import IntEnum
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from datetime import datetime
-from typing import Optional
 from unittest.mock import AsyncMock, call
 
 import pytest
 
-from gator.common.db import Base, Database, DatabaseError, Query
+from gator.common.db import Base, Database, Query
 
 @pytest.fixture
 def database(tmp_path) -> Database:
