@@ -12,10 +12,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import MagicMock, call
+import asyncio
+import subprocess
+from unittest.mock import AsyncMock, MagicMock, call
 
-import gator.scheduler
+import pytest
+
 from gator.scheduler import Scheduler
+
+@pytest.mark.asyncio
+class TestScheduler:
+
+    async def test_scheduling(self, mocker):
+        """ Launch a number of tasks """
+        # Create an scheduler
+        sched = Scheduler(parent="test:1234", interval=7, quiet=False)
+        assert sched.parent == "test:1234"
+        assert sched.interval == 7
+        assert sched.quiet == False
+        # Patch asyncio so we don't launch any real operations
+        as_sub = mocker.patch("gator.scheduler.asyncio.create_subprocess_shell", new=AsyncMock())
+        as_tsk = mocker.patch("gator.scheduler.asyncio.create_task", new=MagicMock(wraps=asyncio.create_task))
+        as_mon = mocker.patch.object(sched,
+                                     "_Scheduler__monitor",
+                                     new=AsyncMock(wraps=sched._Scheduler__monitor))
+        procs = []
+        def _create_proc(*_args, **_kwargs):
+            nonlocal procs
+            procs.append(proc := AsyncMock())
+            return proc
+        as_sub.side_effect = _create_proc
+        # Launch some tasks
+        await sched.launch([f"T{x}" for x in range(10)])
+        # Check for launch calls
+        as_sub.assert_has_calls([
+            call(f"python3 -m gator --parent test:1234 --interval 7 --all-msg --id T{x}",
+                 stdin =subprocess.DEVNULL,
+                 stdout=subprocess.DEVNULL)
+            for x in range(10)
+        ])
+        # Check for task creation calls
+        assert len(as_tsk.mock_calls) == 10
+        # Wait for all tasks to complete
+        await sched.wait_for_all()
+        # Check all monitors were fired up
+        as_mon.assert_has_calls([
+            call(f"T{x}", y) for x, y in zip(range(10), procs)
+        ])
+
 
 # def test_scheduler(mocker):
 #     """ Test the basic local scheduler """
