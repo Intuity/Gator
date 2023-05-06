@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+import signal
 from pathlib import Path
 from typing import Callable, Optional, Union
 
@@ -53,19 +55,28 @@ async def launch(id           : Optional[str]               = None,
         spec.id = id
     # If a JobArray or JobGroup is provided, launch a layer
     if isinstance(spec, (JobArray, JobGroup)):
-        await Layer.create(spec         =spec,
-                            tracking    =tracking,
-                            quiet       =quiet and not all_msg,
-                            all_msg     =all_msg,
-                            heartbeat_cb=heartbeat_cb)
+        top = Layer(spec        =spec,
+                    tracking    =tracking,
+                    quiet       =quiet and not all_msg,
+                    all_msg     =all_msg,
+                    heartbeat_cb=heartbeat_cb)
     # If a Job is provided, launch a wrapper
     elif isinstance(spec, Job):
-        await Wrapper.create(spec    =spec,
-                             tracking=tracking,
-                             interval=interval,
-                             quiet   =quiet and not all_msg)
+        top = Wrapper(spec    =spec,
+                      tracking=tracking,
+                      interval=interval,
+                      quiet   =quiet and not all_msg)
     # Unsupported forms
     else:
         raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
+    # Setup signal handler to capture CTRL+C events
+    def _handler(sig : signal, evt_loop : asyncio.BaseEventLoop, top : Union[Layer, Wrapper]):
+        if top.is_root:
+            evt_loop.create_task(top.stop())
+    evt_loop = asyncio.get_event_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        evt_loop.add_signal_handler(sig, lambda: _handler(sig, evt_loop, top))
+    # Wait for the executor to complete
+    await top.launch()
     # Shutdown client
     await WebsocketClient.stop()

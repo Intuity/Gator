@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import asyncio
-from time import sleep
 
 from rich.console import Console
 from rich.live import Live

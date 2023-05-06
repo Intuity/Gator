@@ -71,10 +71,9 @@ class Wrapper:
         self.code = None
         self.db = None
         self.server = None
+        self.proc = None
 
-    @classmethod
-    async def create(cls, *args, **kwargs) -> None:
-        self = cls(*args, **kwargs)
+    async def launch(self, *args, **kwargs) -> None:
         # Setup database
         Database.define_transform(LogSeverity, "INTEGER", lambda x: int(x), lambda x: LogSeverity(x))
         self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
@@ -87,6 +86,8 @@ class Wrapper:
         # Setup server
         self.server = WebsocketServer(db=self.db)
         server_address = await self.server.start()
+        # Add handlers for downwards calls
+        WebsocketClient.add_route("stop", self.stop)
         # If an immediate parent is known, register with it
         if WebsocketClient.linked:
             await WebsocketClient.register(id=self.id, server=server_address)
@@ -102,9 +103,21 @@ class Wrapper:
         # Shutdown the database
         await self.db.stop()
 
+    async def stop(self, **kwargs) -> None:
+        await Logger.info("Stopping leaf job")
+        if self.proc:
+            try:
+                self.proc.terminate()
+            except ProcessLookupError:
+                pass
+
     @property
     def id(self) -> str:
         return self.spec.id
+
+    @property
+    def is_root(self) -> bool:
+        return not WebsocketClient.linked
 
     async def count_messages(self):
         wrn_count = await self.db.get_logentry(sql_count=True, severity=int(LogSeverity.WARNING))
@@ -155,7 +168,10 @@ class Wrapper:
             except psutil.NoSuchProcess:
                 break
             # Count up to the interval so that process is regularly polled
-            await asyncio.sleep(self.interval)
+            try:
+                await asyncio.wait_for(done_evt.wait(), self.interval)
+            except asyncio.exceptions.TimeoutError:
+                pass
 
     async def __heartbeat(self, done_evt : asyncio.Event) -> None:
         while not done_evt.is_set():
@@ -165,7 +181,10 @@ class Wrapper:
                                       errors    =num_err,
                                       sub_total =1,
                                       sub_active=1)
-            await asyncio.sleep(1)
+            try:
+                await asyncio.wait_for(done_evt.wait(), 1)
+            except asyncio.exceptions.TimeoutError:
+                pass
 
     async def __launch(self) -> int:
         """
@@ -188,31 +207,31 @@ class Wrapper:
         await self.db.push_attribute(Attribute(name="started", value=str(datetime.now().timestamp())))
         # Launch the process
         await Logger.info(f"Launching task: {full_cmd}")
-        proc = await asyncio.create_subprocess_shell(full_cmd,
-                                                     cwd=working_dir,
-                                                     env=env,
-                                                     stdin=subprocess.PIPE,
-                                                     stdout=subprocess.PIPE,
-                                                     stderr=subprocess.PIPE,
-                                                     close_fds=True)
+        self.proc = await asyncio.create_subprocess_shell(full_cmd,
+                                                          cwd=working_dir,
+                                                          env=env,
+                                                          stdin=subprocess.PIPE,
+                                                          stdout=subprocess.PIPE,
+                                                          stderr=subprocess.PIPE,
+                                                          close_fds=True)
         # Capture STDOUT and STDERR
-        t_stdout = asyncio.create_task(self.__monitor_stdio(proc.stdout, LogSeverity.INFO))
-        t_stderr = asyncio.create_task(self.__monitor_stdio(proc.stderr, LogSeverity.ERROR))
+        t_stdout = asyncio.create_task(self.__monitor_stdio(self.proc.stdout, LogSeverity.INFO))
+        t_stderr = asyncio.create_task(self.__monitor_stdio(self.proc.stderr, LogSeverity.ERROR))
         # Monitor process usage
         e_done = asyncio.Event()
-        t_pmon = asyncio.create_task(self.__monitor_usage(proc, e_done))
+        t_pmon = asyncio.create_task(self.__monitor_usage(self.proc, e_done))
         # Deliver heartbeat to the server
         t_beat = asyncio.create_task(self.__heartbeat(e_done))
         # Run until process complete & STDOUT/STDERR digested
         await Logger.info("Monitoring task")
-        await asyncio.gather(proc.wait(), t_stdout, t_stderr)
+        await asyncio.gather(self.proc.wait(), t_stdout, t_stderr)
         e_done.set()
         await asyncio.gather(t_pmon, t_beat)
         # Capture the exit code
-        self.code = proc.returncode
+        self.code = self.proc.returncode
         await Logger.info(f"Task completed with return code {self.code}")
         # Insert final attributes
-        await self.db.push_attribute(Attribute(name="pid",     value=str(proc.pid)))
+        await self.db.push_attribute(Attribute(name="pid",     value=str(self.proc.pid)))
         await self.db.push_attribute(Attribute(name="stopped", value=str(datetime.now().timestamp())))
         await self.db.push_attribute(Attribute(name="exit",    value=str(self.code)))
         # Count messages
@@ -221,12 +240,12 @@ class Wrapper:
         # Mark job complete
         passed = (num_err == 0) and (self.code == 0)
         await WebsocketClient.complete(id        =self.id,
-                                    code      =self.code,
-                                    warnings  =num_wrn,
-                                    errors    =num_err,
-                                    sub_total =1,
-                                    sub_passed=[0, 1][passed],
-                                    sub_failed=[1, 0][passed])
+                                       code      =self.code,
+                                       warnings  =num_wrn,
+                                       errors    =num_err,
+                                       sub_total =1,
+                                       sub_passed=[0, 1][passed],
+                                       sub_failed=[1, 0][passed])
 
     async def __report(self) -> None:
         # Pull data back from resource tracking

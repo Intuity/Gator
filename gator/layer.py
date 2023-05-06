@@ -86,9 +86,7 @@ class Layer:
         # Tasks for pending jobs
         self.job_tasks = []
 
-    @classmethod
-    async def create(cls, *args, **kwargs) -> None:
-        self = cls(*args, **kwargs)
+    async def launch(self, *args, **kwargs) -> None:
         # Setup database
         self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
         async def _log_cb(entry : LogEntry) -> None:
@@ -105,6 +103,7 @@ class Layer:
         server_address = await self.server.start()
         # Add a handler for downwards calls
         WebsocketClient.add_route("get_tree", self.get_tree)
+        WebsocketClient.add_route("stop",     self.stop    )
         # If an immediate parent is known, register with it
         if WebsocketClient.linked:
             await WebsocketClient.register(id=self.id, server=server_address)
@@ -125,6 +124,12 @@ class Layer:
         await self.server.stop()
         # Shutdown the database
         await self.db.stop()
+
+    async def stop(self, **kwargs) -> None:
+        await Logger.info("Stopping all jobs")
+        async with self.lock:
+            for child in self.launched.values():
+                await child.ws.stop(posted=True)
 
     @property
     def id(self) -> str:
