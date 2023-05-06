@@ -14,68 +14,13 @@
 
 import asyncio
 from pathlib import Path
-from time import sleep
-from typing import Callable, Optional, Union
 
 import click
-from rich.console import Console
-from rich.live import Live
-from rich.panel import Panel
-from rich.progress import (BarColumn,
-                           MofNCompleteColumn,
-                           Progress,
-                           SpinnerColumn,
-                           TaskProgressColumn,
-                           TextColumn)
-from rich.table import Table
-from rich.tree import Tree
 
+from . import launch
+from . import launch_progress
 from .common.ws_client import WebsocketClient
-from .common.logger import Logger
 from .hub.api import HubAPI
-from .layer import Layer
-from .specs import Job, JobArray, JobGroup, Spec
-from .wrapper import Wrapper
-
-
-async def launch(id           : Optional[str]               = None,
-                 spec         : Optional[Union[Spec, Path]] = None,
-                 tracking     : Path                        = Path.cwd(),
-                 interval     : int                         = 5,
-                 quiet        : bool                        = False,
-                 all_msg      : bool                        = False,
-                 heartbeat_cb : Optional[Callable]          = None) -> None:
-    # Start client
-    await WebsocketClient.start()
-    # Work out where the spec is coming from
-    if spec is None and WebsocketClient.linked and id:
-        raw_spec = await WebsocketClient.spec(id=id)
-        spec     = Spec.parse_str(raw_spec.get("spec", ""))
-    elif spec is not None and not isinstance(spec, Spec):
-        spec = Spec.parse(Path(spec))
-    else:
-        raise Exception("No specification file provided and no parent server to query")
-    # If an ID has been provided, override whatever the spec gives
-    if id is not None:
-        spec.id = id
-    # If a JobArray or JobGroup is provided, launch a layer
-    if isinstance(spec, (JobArray, JobGroup)):
-        await Layer.create(spec         =spec,
-                            tracking    =tracking,
-                            quiet       =quiet and not all_msg,
-                            all_msg     =all_msg,
-                            heartbeat_cb=heartbeat_cb)
-    # If a Job is provided, launch a wrapper
-    elif isinstance(spec, Job):
-        await Wrapper.create(spec    =spec,
-                             tracking=tracking,
-                             interval=interval,
-                             quiet   =quiet and not all_msg)
-    # Unsupported forms
-    else:
-        raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
-    # Shutdown client
-    await WebsocketClient.stop()
 
 
 @click.command()
@@ -103,63 +48,15 @@ def main(id       : str,
         WebsocketClient.address = parent
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
-    # Create a console
-    prog_cb = None
-    if progress:
-        # Create console
-        console = Console(log_path=False)
-        # Create table
-        table = Table(expand=True, show_edge=False, show_header=False)
-        # Create a progress bar
-        progbar = Progress(TextColumn("{task.description}"),
-                           SpinnerColumn(),
-                           BarColumn(bar_width=None),
-                           MofNCompleteColumn(),
-                           TaskProgressColumn(),
-                           expand=True)
-        table.add_row(Panel(progbar, title="Gator :crocodile:"))
-        # Create a progress bar
-        bar_total  = progbar.add_task("Completed",     total=1)
-        bar_active = progbar.add_task("[cyan]Running", total=1)
-        bar_passed = progbar.add_task("[green]Passed", total=1)
-        bar_failed = progbar.add_task("[red]Failed",   total=1)
-        def _update(sub_total, sub_active, sub_passed, sub_failed, tree=None, **_):
-            # Update the progress bars
-            progbar.update(bar_total,  total=sub_total, completed=(sub_passed + sub_failed))
-            progbar.update(bar_active, total=sub_total, completed=sub_active)
-            progbar.update(bar_passed, total=sub_total, completed=sub_passed)
-            progbar.update(bar_failed, total=sub_total, completed=sub_failed)
-            # Display the tree
-            if tree:
-                def _chase(parent, segment):
-                    for key, value in segment.items():
-                        branch = parent.add(key)
-                        if isinstance(value, dict):
-                            _chase(branch, value)
-                r_tree = Tree("Root")
-                _chase(r_tree, tree)
-                console.log(r_tree)
-        prog_cb = _update
-        # Start console
-        live = Live(table, refresh_per_second=4, console=console)
-        Logger.CONSOLE = console
-        live.start(refresh=True)
-    else:
-        Logger.CONSOLE = Console(log_path=False)
-        Logger.CONSOLE.log("Starting Gator :crocodile:")
-    # Launch
-    asyncio.run(launch(id          =id,
-                       spec        =Path(spec) if spec is not None else None,
-                       tracking    =tracking,
-                       interval    =interval,
-                       quiet       =quiet,
-                       all_msg     =all_msg,
-                       heartbeat_cb=prog_cb))
-    # Wait a little so the final progress update happens
-    sleep(1)
-    # Stop the console
-    if progress:
-        live.stop()
+    # Launch with optional progress tracking
+    asyncio.run((launch_progress if progress else launch).launch(
+        id      =id,
+        spec    =Path(spec) if spec is not None else None,
+        tracking=tracking,
+        interval=interval,
+        quiet   =quiet,
+        all_msg =all_msg
+    ))
 
 
 if __name__ == "__main__":
