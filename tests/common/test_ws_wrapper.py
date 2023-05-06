@@ -18,7 +18,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from gator.common.ws_wrapper import WebsocketWrapper, WebsocketWrapperError
+from gator.common.ws_wrapper import (WebsocketWrapper,
+                                     WebsocketWrapperError,
+                                     WebsocketWrapperPending)
 
 @pytest.fixture
 def wrapper() -> WebsocketWrapper:
@@ -34,11 +36,13 @@ class TestWebsocketWrapper:
         """ An unlinked wrapper should silently drop requests """
         wrp = WebsocketWrapper()
         wrp.ws_event.set()
+        assert not wrp.linked
         await wrp.some_route(word="hello", name="fred")
         assert not wrp._WebsocketWrapper__pending
 
     async def test_posted(self, wrapper):
         """ Send posted requests which will return immediately """
+        assert wrapper.linked
         await wrapper.some_route(word="hello", name="fred", posted=True)
         wrapper.ws.send.assert_called_with(json.dumps({ "action" : "some_route",
                                                         "posted" : True,
@@ -106,3 +110,82 @@ class TestWebsocketWrapper:
         # Check the exception
         assert isinstance(exception.value, WebsocketWrapperError)
         assert str(exception.value) == f"Server responded with an error for 'some_route': {response}"
+
+    async def test_monitor_fallback(self, wrapper, mocker):
+        """ Check that the monitor routes messages to the fallback handler """
+        # Replace the websocket with a queue so it can be iterated
+        ws_q = asyncio.Queue()
+        async def _ws_generator():
+            nonlocal ws_q
+            while True:
+                try:
+                    yield await asyncio.wait_for(ws_q.get(), 1)
+                except asyncio.exceptions.TimeoutError:
+                    break
+        mocker.patch.object(wrapper, "ws", new=_ws_generator())
+        # Start the monitor
+        await wrapper.start_monitor()
+        # Patch the fallback routing method
+        mk_async = AsyncMock()
+        mk_route = mocker.patch.object(wrapper, "route", new=mk_async.route)
+        ev_route = asyncio.Event()
+        async def _route(_ws, _msg):
+            nonlocal ev_route
+            ev_route.set()
+        mk_route.side_effect = _route
+        # Check that an unsolicited response uses the fallback
+        message = { "action" : "some_route",
+                    "rsp_id" : 123,
+                    "payload": { "word": "hello" } }
+        await ws_q.put(json.dumps(message))
+        # Wait for routing to happen
+        await ev_route.wait()
+        ev_route.clear()
+        # Check what was routed
+        mk_route.assert_called_with(wrapper, message)
+        mk_route.reset_mock()
+        # Check that an unsolicited message uses the fallback
+        message = { "action" : "other_route",
+                    "payload": { "word": "hello" } }
+        await ws_q.put(json.dumps(message))
+        # Wait for routing to happen
+        await ev_route.wait()
+        ev_route.clear()
+        # Check what was routed
+        mk_route.assert_called_with(wrapper, message)
+        mk_route.reset_mock()
+        # Stop the monitor
+        await wrapper.stop_monitor()
+
+    async def test_monitor_pending(self, wrapper, mocker):
+        """ Check that the monitor identifies pending messages """
+        # Replace the websocket with a queue so it can be iterated
+        ws_q = asyncio.Queue()
+        async def _ws_generator():
+            nonlocal ws_q
+            while True:
+                try:
+                    yield await asyncio.wait_for(ws_q.get(), 1)
+                except asyncio.exceptions.TimeoutError:
+                    break
+        mocker.patch.object(wrapper, "ws", new=_ws_generator())
+        # Start the monitor
+        await wrapper.start_monitor()
+        # Patch the fallback routing method
+        mk_async = AsyncMock()
+        mk_route = mocker.patch.object(wrapper, "route", new=mk_async.route)
+        # Setup a pending item
+        wrapper._WebsocketWrapper__pending[123] = (pend := WebsocketWrapperPending(123))
+        # Check that an unsolicited response uses the fallback
+        message = { "action" : "some_route",
+                    "rsp_id" : 123,
+                    "payload": { "word": "hello" } }
+        await ws_q.put(json.dumps(message))
+        # Wait for routing to happen
+        await pend.event.wait()
+        assert 123 not in wrapper._WebsocketWrapper__pending
+        assert pend.response == message
+        # Check what was routed
+        assert not mk_route.called
+        # Stop the monitor
+        await wrapper.stop_monitor()

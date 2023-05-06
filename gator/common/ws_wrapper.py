@@ -54,7 +54,7 @@ class WebsocketWrapper(WebsocketRouter):
     async def start_monitor(self) -> None:
         self.__monitor_task = asyncio.create_task(self.monitor())
         def _teardown() -> None:
-            asyncio.run(self.stop())
+            asyncio.run(self.stop_monitor())
         atexit.register(_teardown)
 
     async def stop_monitor(self) -> None:
