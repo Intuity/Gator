@@ -75,8 +75,8 @@ class Wrapper:
 
     async def launch(self, *args, **kwargs) -> None:
         # Setup database
-        Database.define_transform(LogSeverity, "INTEGER", lambda x: int(x), lambda x: LogSeverity(x))
         self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
+        self.db.define_transform(LogSeverity, "INTEGER", int, LogSeverity)
         async def _log_cb(entry : LogEntry) -> None:
             await Logger.log(entry.severity.name, entry.message)
         await self.db.start()
@@ -120,8 +120,8 @@ class Wrapper:
         return not WebsocketClient.linked
 
     async def count_messages(self):
-        wrn_count = await self.db.get_logentry(sql_count=True, severity=int(LogSeverity.WARNING))
-        err_count = await self.db.get_logentry(sql_count=True, severity=Query(gte=int(LogSeverity.ERROR)))
+        wrn_count = await self.db.get_logentry(sql_count=True, severity=LogSeverity.WARNING)
+        err_count = await self.db.get_logentry(sql_count=True, severity=Query(gte=LogSeverity.ERROR))
         return wrn_count, err_count
 
     async def __monitor_stdio(self,

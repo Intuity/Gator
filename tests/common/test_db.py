@@ -275,10 +275,10 @@ class TestDatabase:
             ORANGE = 0
             APPLE  = 1
             BANANA = 2
-        Database.define_transform(TestEnum,
-                                sql_type="INTEGER",
-                                transform_put=lambda x: int(x),
-                                transform_get=lambda x: TestEnum(x))
+        database.define_transform(TestEnum,
+                                  sql_type="INTEGER",
+                                  transform_put=lambda x: int(x),
+                                  transform_get=lambda x: TestEnum(x))
         # Define a dataclass
         @dataclass
         class TestObj(Base):

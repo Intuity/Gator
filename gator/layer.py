@@ -101,7 +101,7 @@ class Layer:
         self.server.add_route("update", self.__child_updated)
         self.server.add_route("complete", self.__child_completed)
         server_address = await self.server.start()
-        # Add a handler for downwards calls
+        # Add handlers for downwards calls
         WebsocketClient.add_route("get_tree", self.get_tree)
         WebsocketClient.add_route("stop",     self.stop    )
         # If an immediate parent is known, register with it

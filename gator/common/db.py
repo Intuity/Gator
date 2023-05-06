@@ -55,14 +55,6 @@ class Database:
     functions to allow data to be submitted to and queried from the table.
     """
 
-    # Collect transformations for types to store into the database
-    TRANSFORMS = {
-        int     : ("INTEGER", lambda x: x, lambda x: x),
-        datetime: ("INTEGER",
-                   lambda x: x.timestamp(),
-                   lambda x: datetime.fromtimestamp(x))
-    }
-
     def __init__(self, path : Path) -> None:
         self.path = path
         # Ensure path's parent folder exists
@@ -72,6 +64,13 @@ class Database:
         self.tables = []
         # Placeholder for the database instance
         self.__db = None
+        # Record transforms
+        self.__transforms = {}
+        self.define_transform(int, "INTEGER")
+        self.define_transform(datetime,
+                              "INTEGER",
+                              lambda x: x.timestamp(),
+                              datetime.fromtimestamp)
 
     async def start(self) -> None:
         self.__db = await aiosqlite.connect(self.path.as_posix(), timeout=1)
@@ -88,8 +87,7 @@ class Database:
             await self.__db.close()
         self.__db = None
 
-    @classmethod
-    def define_transform(cls,
+    def define_transform(self,
                          obj_type : Any,
                          sql_type : str = "TEXT",
                          transform_put : Optional[Callable] = None,
@@ -105,11 +103,33 @@ class Database:
         :param transform_get: Optional transform from the SQLite type into the
                               Python type
         """
-        cls.TRANSFORMS[obj_type] = (
+        self.__transforms[obj_type] = (
             sql_type,
             transform_put or (lambda x: x),
             transform_get or (lambda x: x)
         )
+
+    def get_transform(self, obj_type : Any) -> Tuple[str, Callable, Callable]:
+        """
+        Lookup a transform for a given object type, returning the SQLite
+        column type and the transforming functions to and from the SQLite type.
+
+        :param obj_type: The Python object type
+        :returns:        Tuple of the SQLite type, transformation function from
+                         Python to SQLite, and the reverse
+        """
+        return self.__transforms.get(obj_type, ("TEXT", lambda x: x, lambda x: x))
+
+    def transform_to_sql(self, obj : Any) -> Any:
+        """
+        Use registered transformations to convert a Python object to it's SQLite
+        equivalent.
+
+        :param obj: Object to convert
+        :returns:   Translated value
+        """
+        _, to_func, _ = self.get_transform(type(obj))
+        return to_func(obj)
 
     async def register(self,
                        descr : Type[dataclasses.dataclass],
@@ -128,7 +148,7 @@ class Database:
             for field in dataclasses.fields(descr):
                 if field.name == "db_uid":
                     continue
-                stype, _, _ = self.TRANSFORMS.get(field.type, ("TEXT", None, None))
+                stype, _, _ = self.get_transform(field.type)
                 fields.append(f"{field.name} {stype}")
             query = (
                 f"CREATE TABLE {descr.__name__} ("
@@ -145,7 +165,7 @@ class Database:
                 if field.name == "db_uid":
                     continue
                 fnames.append(field.name)
-                _, tput, tget = self.TRANSFORMS.get(field.type, (None, lambda x: x, lambda x: x))
+                _, tput, tget = self.get_transform(field.type)
                 transforms_put.append(tput)
                 transforms_get.append(tget)
             # Create a 'push' method
@@ -178,28 +198,28 @@ class Database:
                     if isinstance(val, Query):
                         if val.exact is not None:
                             conditions.append(f"{key} = :exact_{key}")
-                            parameters[f"exact_{key}"] = val.exact
+                            parameters[f"exact_{key}"] = self.transform_to_sql(val.exact)
                         elif val.like is not None:
                             conditions.append(f"{key} LIKE :like_{key}")
-                            parameters[f"like_{key}"] = val.like
+                            parameters[f"like_{key}"] = self.transform_to_sql(val.like)
                         else:
                             # Greater than (or equal to)
                             if val.gt is not None:
                                 conditions.append(f"{key} > :gt_{key}")
-                                parameters[f"gt_{key}"] = val.gt
+                                parameters[f"gt_{key}"] = self.transform_to_sql(val.gt)
                             elif val.gte is not None:
                                 conditions.append(f"{key} >= :gte_{key}")
-                                parameters[f"gte_{key}"] = val.gte
+                                parameters[f"gte_{key}"] = self.transform_to_sql(val.gte)
                             # Less than (or equal to)
                             if val.lt is not None:
                                 conditions.append(f"{key} < :lt_{key}")
-                                parameters[f"lt_{key}"] = val.lt
+                                parameters[f"lt_{key}"] = self.transform_to_sql(val.lt)
                             elif val.lte is not None:
                                 conditions.append(f"{key} <= :lte_{key}")
-                                parameters[f"lte_{key}"] = val.lte
+                                parameters[f"lte_{key}"] = self.transform_to_sql(val.lte)
                     else:
                         conditions.append(f"{key} = :match_{key}")
-                        parameters[f"match_{key}"] = val
+                        parameters[f"match_{key}"] = self.transform_to_sql(val)
                 if conditions:
                     query_str += " WHERE " + " AND ".join(conditions)
                 if sql_order_by:
