@@ -12,105 +12,302 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass
+from enum import IntEnum
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from datetime import datetime
+from typing import Optional
+from unittest.mock import AsyncMock, call
 
-from gator.db import Attribute, Database, ProcStat
+import pytest
 
+from gator.common.db import Base, Database, DatabaseError, Query
+
+@pytest.fixture
+def database(tmp_path) -> Database:
+    return Database(tmp_path / "test.db")
+
+@pytest.mark.asyncio
 class TestDatabase:
 
-    def setup_method(self):
-        self.tmp = TemporaryDirectory()
-        self.db = Database(Path(self.tmp.name) / "test.db")
+    async def test_register(self, database, mocker):
+        """ Register a dataclass with the database """
+        await database.start()
+        # Setup a mock to capture SQLite queries
+        sqlite = database._Database__db
+        mocker.patch.object(sqlite, "_execute", new=AsyncMock())
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : int = 0
+        # Register it
+        await database.register(TestObj)
+        # Check for the query
+        sqlite._execute.assert_called_with(sqlite._conn.execute,
+                                        "CREATE TABLE TestObj ("
+                                        "db_uid INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                        "key_a TEXT, "
+                                        "key_b INTEGER)",
+                                        [])
+        # Check push and get methods have been created
+        assert getattr(database, "push_testobj")
+        assert getattr(database, "get_testobj")
+        # Check the dataclass has been registered
+        assert TestObj in database.registered
+        # Check the table is known
+        assert "TestObj" in database.tables
+        # Check that a second registration has no effect
+        sqlite._execute.reset_mock()
+        await database.register(TestObj)
+        assert not sqlite._execute.called
+        # Clean-up
+        await database.stop()
+        # Check a double stop doesn't cause problems
+        await database.stop()
 
-    def teardown_method(self):
-        self.db.stop()
-        self.tmp.cleanup()
+    async def test_push(self, database, mocker):
+        """ Push entries into the database """
+        await database.start()
+        # Setup a mock to capture SQLite queries
+        sqlite = database._Database__db
+        mocker.patch.object(sqlite, "_execute", new=AsyncMock())
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : int = 0
+        # Register it
+        await database.register(TestObj)
+        # Push entries
+        await database.push(TestObj(key_a="hello", key_b=1234))
+        await database.push(TestObj(key_a="goodbye", key_b=2345))
+        # Check for queries
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "INSERT INTO TestObj (key_a, key_b) "
+                                        "VALUES (?, ?)",
+                                        ["hello", 1234])
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "INSERT INTO TestObj (key_a, key_b) "
+                                        "VALUES (?, ?)",
+                                        ["goodbye", 2345])
+        # Clean-up
+        await database.stop()
 
-    def test_attributes(self):
-        """ Store and retrieve attributes """
-        # Push some attributes
-        for idx in range(20):
-            attr = Attribute(f"attr_{idx}", f"value_{idx}")
-            self.db.push_attribute(attr)
-        # Retrieve all attributes
-        attrs = self.db.get_attributes()
-        assert len(attrs) == 20
-        for idx, attr in enumerate(attrs):
-            assert attr.name == f"attr_{idx}"
-            assert attr.value == f"value_{idx}"
-        # Retrieve all attributes starting with 'attr_1'
-        attrs = self.db.get_attributes("attr_1%")
-        assert len(attrs) == 11
-        assert attrs[0] == ("attr_1", "value_1")
-        for idx, attr in enumerate(attrs[1:]):
-            assert attr == (f"attr_{idx+10}", f"value_{idx+10}")
-
-    def test_logging(self):
-        """ Log and retrieve messages """
-        # Push some messages
-        for idx in range(10):
-            self.db.push_log("debug", "Testing logging at debug", idx)
-            self.db.push_log("info", "Testing logging at info", idx)
-            self.db.push_log("warning", "Testing logging at warning", idx)
-            self.db.push_log("error", "Testing logging at error", idx)
-        # Retrieve all messages
-        msgs = self.db.get_logs()
-        assert len(msgs) == 40
-        assert { x.severity for x in msgs } == { "DEBUG", "INFO", "WARNING", "ERROR" }
-        assert { x.time for x in msgs } == set(range(10))
-        # Retrieve just INFO messages
-        msgs = self.db.get_logs(severity="INFO", exact_severity=True)
-        assert len(msgs) == 10
-        assert { x.severity for x in msgs } == { "INFO" }
-        assert { x.time for x in msgs } == set(range(10))
-        # Retrieve WARNING and ERROR messages
-        msgs = self.db.get_logs(severity="WARNING")
-        assert len(msgs) == 20
-        assert { x.severity for x in msgs } == { "WARNING", "ERROR" }
-        assert { x.time for x in msgs } == set(range(10))
-        # Retrieve messages between time 5 & 8 (includes 5, 6, and 7)
-        msgs = self.db.get_logs(after=5, before=8)
-        assert len(msgs) == 12
-        assert { x.severity for x in msgs } == { "DEBUG", "INFO", "WARNING", "ERROR" }
-        assert { x.time for x in msgs } == { 5, 6, 7 }
-        # Retrieve messages with a string filter
-        msgs = self.db.get_logs(message=r"%warning")
-        assert len(msgs) == 10
-        assert { x.severity for x in msgs } == { "WARNING" }
-        assert { x.time for x in msgs } == set(range(10))
-        # Retrieve messages with all filters
-        msgs = self.db.get_logs(severity="INFO",
-                                message =r"%error",
-                                after   =5,
-                                before  =8)
-        assert len(msgs) == 3
-        assert { x.severity for x in msgs } == { "ERROR" }
-        assert { x.time for x in msgs } == { 5, 6, 7 }
-
-    def test_statistics(self):
-        """ Push and retrieve process statistics """
-        # Push simple statistics
+    async def test_push_uids(self, database):
+        """ Push entries into the database and check a unique ID is assigned each time """
+        await database.start()
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : int = 0
+        # Register it
+        await database.register(TestObj)
+        # Push entries
+        entries = []
         for idx in range(100):
-            self.db.push_statistics(ProcStat(datetime.fromtimestamp(idx),
-                                             idx + 1,
-                                             idx * 30,
-                                             idx * 100,
-                                             idx * 200))
-        # Retrieve all statistics
-        stats = self.db.get_statistics()
-        assert len(stats) == 100
-        assert [x.time  for x in stats] == [datetime.fromtimestamp(x) for x in range(100)]
-        assert [x.nproc for x in stats] == [(x + 1  ) for x in range(100)]
-        assert [x.cpu   for x in stats] == [(x * 30 ) for x in range(100)]
-        assert [x.mem   for x in stats] == [(x * 100) for x in range(100)]
-        assert [x.vmem  for x in stats] == [(x * 200) for x in range(100)]
-        # Retrieve statistics in a window
-        stats = self.db.get_statistics(after=20, before=30)
-        assert len(stats) == 10
-        assert [x.time  for x in stats] == [datetime.fromtimestamp(x) for x in range(20, 30)]
-        assert [x.nproc for x in stats] == [(x + 1  ) for x in range(20, 30)]
-        assert [x.cpu   for x in stats] == [(x * 30 ) for x in range(20, 30)]
-        assert [x.mem   for x in stats] == [(x * 100) for x in range(20, 30)]
-        assert [x.vmem  for x in stats] == [(x * 200) for x in range(20, 30)]
+            await database.push(entry := TestObj(key_a=f"key_{idx}", key_b=idx))
+            entries.append(entry)
+        assert len(set(x.db_uid for x in entries)) == 100
+        # Clean-up
+        await database.stop()
+
+    async def test_push_callback(self, database):
+        """ Check callback executed for each push """
+        await database.start()
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : int = 0
+        # Register it
+        push_cb = AsyncMock()
+        await database.register(TestObj, push_callback=push_cb)
+        # Push entries
+        entries = []
+        for idx in range(100):
+            await database.push(entry := TestObj(key_a=f"key_{idx}", key_b=idx))
+            entries.append(entry)
+        # Check for calls
+        push_cb.assert_has_calls([call(x) for x in entries])
+        # Clean-up
+        await database.stop()
+
+    async def test_get(self, database, mocker):
+        """ Push entries into the database """
+        await database.start()
+        # Setup a mock to capture SQLite queries
+        sqlite = database._Database__db
+        mocker.patch.object(sqlite, "_execute", new=AsyncMock())
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : int = 0
+        # Register it
+        await database.register(TestObj)
+        # Perform a simple query
+        await database.get(TestObj)
+        sqlite._execute.assert_any_call(sqlite._conn.execute, "SELECT * FROM TestObj", {})
+        sqlite._execute.reset_mock()
+        # Perform a count query
+        await database.get(TestObj, sql_count=True)
+        sqlite._execute.assert_any_call(sqlite._conn.execute, "SELECT COUNT(db_uid) FROM TestObj", {})
+        sqlite._execute.reset_mock()
+        # Perform a limited query
+        await database.get(TestObj, sql_limit=30)
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj LIMIT :limit",
+                                        { "limit": 30 })
+        sqlite._execute.reset_mock()
+        # Perform a ordered query
+        await database.get(TestObj, sql_order_by=("key_b", False))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj ORDER BY key_b DESC",
+                                        {})
+        sqlite._execute.reset_mock()
+        # Perform a basic filter query
+        await database.get(TestObj, key_a="hello")
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj WHERE key_a = :match_key_a",
+                                        { "match_key_a": "hello" })
+        sqlite._execute.reset_mock()
+        # Perform a ranged (X >= 10) filter query
+        await database.get(TestObj, key_b=Query(gte=10))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj WHERE key_b >= :gte_key_b",
+                                        { "gte_key_b": 10 })
+        sqlite._execute.reset_mock()
+        # Perform a ranged (X < 20) filter query
+        await database.get(TestObj, key_b=Query(lt=20))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj WHERE key_b < :lt_key_b",
+                                        { "lt_key_b": 20 })
+        sqlite._execute.reset_mock()
+        # Perform a ranged (X >= 10 & X < 20) filter query
+        await database.get(TestObj, key_b=Query(gte=10, lt=20))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj WHERE key_b >= :gte_key_b AND key_b < :lt_key_b",
+                                        { "gte_key_b": 10, "lt_key_b": 20 })
+        sqlite._execute.reset_mock()
+        # Perform a ranged (X = 10 & X <= 20) filter query
+        await database.get(TestObj, key_b=Query(gt=10, lte=20))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj WHERE key_b > :gt_key_b AND key_b <= :lte_key_b",
+                                        { "gt_key_b": 10, "lte_key_b": 20 })
+        sqlite._execute.reset_mock()
+        # Perform a exact filter query
+        await database.get(TestObj, key_b=Query(exact=15))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj WHERE key_b = :exact_key_b",
+                                        { "exact_key_b": 15 })
+        sqlite._execute.reset_mock()
+        # Perform a loose filter query
+        await database.get(TestObj, key_a=Query(like="test%"))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "SELECT * FROM TestObj WHERE key_a LIKE :like_key_a",
+                                        { "like_key_a": "test%" })
+        sqlite._execute.reset_mock()
+        # Clean-up
+        await database.stop()
+
+    async def test_push_and_get(self, database):
+        """ Push entries into the database and check a unique ID is assigned each time """
+        await database.start()
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : int = 0
+        # Push entries (without prior registration)
+        entries = []
+        for idx in range(100):
+            await database.push(entry := TestObj(key_a=f"key_{idx}", key_b=idx))
+            entries.append(entry)
+        assert len(set(x.db_uid for x in entries)) == 100
+        # Retrieve entries
+        entries = await database.get(TestObj)
+        assert len(entries) == 100
+        assert set(x.key_a for x in entries) == set(f"key_{x}" for x in range(100))
+        # Retrieve count
+        count = await database.get(TestObj, sql_count=True)
+        assert count == 100
+        # Apply filter
+        count = await database.get(TestObj, sql_count=True, key_b=Query(gte=10, lt=20))
+        assert count == 10
+        # Clean-up
+        await database.stop()
+
+    async def test_reload(self, tmp_path):
+        """ Check that tables can be reloaded from disk """
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : int = 0
+        # Common database path
+        sqlite_path = tmp_path / "test.sqlite"
+        # Create an original database and pump in some entries
+        db_a = Database(sqlite_path)
+        await db_a.start()
+        for idx in range(100):
+            await db_a.push(TestObj(key_a=f"key_{idx}", key_b=idx))
+        entries = await db_a.get(TestObj)
+        assert len(entries) == 100
+        await db_a.stop()
+        # Reload
+        db_b = Database(sqlite_path)
+        await db_b.start()
+        assert "TestObj" in db_b.tables
+        assert TestObj not in db_b.registered
+        entries = await db_b.get(TestObj)
+        assert len(entries) == 100
+        assert set(x.key_a for x in entries) == set(f"key_{x}" for x in range(100))
+        assert set(x.key_b for x in entries) == set(range(100))
+        await db_b.stop()
+
+    async def test_custom_transform(self, database, mocker):
+        """ Register a custom transformation """
+        await database.start()
+        # Setup a mock to capture SQLite queries
+        sqlite = database._Database__db
+        mocker.patch.object(sqlite, "_execute", new=AsyncMock())
+        # Define an enumeration and it's transform
+        class TestEnum(IntEnum):
+            ORANGE = 0
+            APPLE  = 1
+            BANANA = 2
+        Database.define_transform(TestEnum,
+                                sql_type="INTEGER",
+                                transform_put=lambda x: int(x),
+                                transform_get=lambda x: TestEnum(x))
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : TestEnum = TestEnum.ORANGE
+        # Register it
+        await database.register(TestObj)
+        sqlite._execute.assert_called_with(sqlite._conn.execute,
+                                        "CREATE TABLE TestObj ("
+                                        "db_uid INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                        "key_a TEXT, "
+                                        "key_b INTEGER)",
+                                        [])
+        sqlite._execute.reset_mock()
+        # Push entries
+        await database.push(TestObj(key_a="hello", key_b=TestEnum.APPLE))
+        await database.push(TestObj(key_a="goodbye", key_b=TestEnum.BANANA))
+        # Check for queries
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "INSERT INTO TestObj (key_a, key_b) "
+                                        "VALUES (?, ?)",
+                                        ["hello", 1])
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "INSERT INTO TestObj (key_a, key_b) "
+                                        "VALUES (?, ?)",
+                                        ["goodbye", 2])
+        # Clean-up
+        await database.stop()

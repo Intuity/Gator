@@ -13,8 +13,7 @@
 # limitations under the License.
 
 from gator.specs import Spec
-from gator.specs.job import Job
-from gator.specs.job_group import JobGroup
+from gator.specs.jobs import Job, JobGroup
 
 def test_spec_job_group_positional():
     """ A job group should preserve all positional arguments provided to it """
@@ -34,10 +33,10 @@ def test_spec_job_group_parse(tmp_path):
     """ Parse a specification from a YAML string """
     spec_file = tmp_path / "job_group.yaml"
     spec_file.write_text(
-        "!JobGroup:\n"
+        "!JobGroup\n"
         "  id: grp_123\n"
         "  jobs:\n"
-        "  - !Job:\n"
+        "  - !Job\n"
         "      id: id_123\n"
         "      env:\n"
         "        key_a: 2345\n"
@@ -46,10 +45,10 @@ def test_spec_job_group_parse(tmp_path):
         "      command: echo\n"
         "      args:\n"
         "        - String to print A\n"
-        "  - !JobGroup:\n"
+        "  - !JobGroup\n"
         "      id: grp_234\n"
         "      jobs: \n"
-        "      - !Job:\n"
+        "      - !Job\n"
         "          id: id_234\n"
         "          env:\n"
         "            key_a: 3456\n"
@@ -84,10 +83,10 @@ def test_spec_job_group_parse(tmp_path):
 def test_spec_job_group_parse_str():
     """ Parse a specification from a YAML string """
     spec_str = (
-        "!JobGroup:\n"
+        "!JobGroup\n"
         "  id: grp_123\n"
         "  jobs:\n"
-        "  - !Job:\n"
+        "  - !Job\n"
         "      id: id_123\n"
         "      env:\n"
         "        key_a: 2345\n"
@@ -96,10 +95,10 @@ def test_spec_job_group_parse_str():
         "      command: echo\n"
         "      args:\n"
         "        - String to print A\n"
-        "  - !JobGroup:\n"
+        "  - !JobGroup\n"
         "      id: grp_234\n"
         "      jobs: \n"
-        "      - !Job:\n"
+        "      - !Job\n"
         "          id: id_234\n"
         "          env:\n"
         "            key_a: 3456\n"
@@ -141,10 +140,12 @@ def test_spec_job_group_dump():
     grp = JobGroup(id="grp_123", jobs=[job])
     spec_str = Spec.dump(grp)
     assert spec_str == (
-        "!JobGroup:\n"
+        "!JobGroup\n"
+        "cwd: null\n"
+        "env: {}\n"
         "id: grp_123\n"
         "jobs:\n"
-        "- !Job:\n"
+        "- !Job\n"
         "  args:\n"
         "  - String to print\n"
         "  command: echo\n"
@@ -153,4 +154,10 @@ def test_spec_job_group_dump():
         "    key_a: 2345\n"
         "    key_b: false\n"
         "  id: id_123\n"
+        "  on_done: []\n"
+        "  on_fail: []\n"
+        "  on_pass: []\n"
+        "on_done: []\n"
+        "on_fail: []\n"
+        "on_pass: []\n"
     )

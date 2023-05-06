@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from gator.specs import Spec
-from gator.specs.job import Job
+from gator.specs.jobs import Job
 
 def test_spec_job_positional():
     """ A job should preserve all positional arguments provided to it """
@@ -45,7 +45,7 @@ def test_spec_job_parse(tmp_path):
     """ Parse a specification from a YAML file """
     spec_file = tmp_path / "job.yaml"
     spec_file.write_text(
-        "!Job:\n"
+        "!Job\n"
         "  id: id_123\n"
         "  env:\n"
         "    key_a: 2345\n"
@@ -66,7 +66,7 @@ def test_spec_job_parse(tmp_path):
 def test_spec_job_parse_str():
     """ Parse a specification from a YAML string """
     spec_str = (
-        "!Job:\n"
+        "!Job\n"
         "  id: id_123\n"
         "  env:\n"
         "    key_a: 2345\n"
@@ -93,7 +93,7 @@ def test_spec_job_dump():
               args   =["String to print"])
     spec_str = Spec.dump(job)
     assert spec_str == (
-        "!Job:\n"
+        "!Job\n"
         "args:\n"
         "- String to print\n"
         "command: echo\n"
@@ -102,4 +102,7 @@ def test_spec_job_dump():
         "  key_a: 2345\n"
         "  key_b: false\n"
         "id: id_123\n"
+        "on_done: []\n"
+        "on_fail: []\n"
+        "on_pass: []\n"
     )
