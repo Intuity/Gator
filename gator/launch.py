@@ -39,7 +39,7 @@ async def launch(id           : Optional[str]               = None,
         console = Console(log_path=False)
         console.log("Starting Gator :crocodile:")
     # Ensure logger has a pointer to the console
-    Logger.CONSOLE = console
+    Logger.set_console(console)
     # Start client
     await WebsocketClient.start()
     # Work out where the spec is coming from

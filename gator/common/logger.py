@@ -14,15 +14,15 @@
 
 import asyncio
 import time
+from typing import Optional
 
 import click
+from rich.console import Console
 
-from .ws_client import WebsocketClient
+from .ws_client import _WebsocketClient, WebsocketClient
 
 
-class Logger:
-
-    CONSOLE = None
+class _Logger:
 
     FORMAT = {
         "DEBUG"  : ("[bold cyan]", "[/bold cyan]"),
@@ -31,33 +31,39 @@ class Logger:
         "ERROR"  : ("[bold red]", "[/bold red]"),
     }
 
-    @classmethod
-    async def log(cls, severity : str, message : str) -> None:
+    def __init__(self,
+                 ws_cli  : _WebsocketClient,
+                 console : Optional[Console] = None) -> None:
+        self.ws_cli  = ws_cli
+        self.console = console
+
+    def set_console(self, console : Console) -> None:
+        self.console = console
+
+    async def log(self, severity : str, message : str) -> None:
         severity = severity.strip().upper()
-        if WebsocketClient.linked:
-            await WebsocketClient.log(timestamp=time.time(),
-                                      severity =severity,
-                                      message  =message,
-                                      posted   =True)
-        elif cls.CONSOLE:
-            prefix, suffix = cls.FORMAT.get(severity, ("[bold]", "[/bold]"))
-            cls.CONSOLE.log(f"{prefix}[{severity:<7s}]{suffix} {message}")
+        if self.ws_cli.linked:
+            await self.ws_cli.log(timestamp=time.time(),
+                                  severity =severity,
+                                  message  =message,
+                                  posted   =True)
+        elif self.console:
+            prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
+            self.console.log(f"{prefix}[{severity:<7s}]{suffix} {message}")
 
-    @staticmethod
-    async def debug(message : str) -> None:
-        await Logger.log("DEBUG", message)
+    async def debug(self, message : str) -> None:
+        await self.log("DEBUG", message)
 
-    @staticmethod
-    async def info(message : str) -> None:
-        await Logger.log("INFO", message)
+    async def info(self, message : str) -> None:
+        await self.log("INFO", message)
 
-    @staticmethod
-    async def warning(message : str) -> None:
-        await Logger.log("WARNING", message)
+    async def warning(self, message : str) -> None:
+        await self.log("WARNING", message)
 
-    @staticmethod
-    async def error(message : str) -> None:
-        await Logger.log("ERROR", message)
+    async def error(self, message : str) -> None:
+        await self.log("ERROR", message)
+
+Logger = _Logger(WebsocketClient)
 
 @click.command()
 @click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
