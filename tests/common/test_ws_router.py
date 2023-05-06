@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import json
-import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
