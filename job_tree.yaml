@@ -8,7 +8,7 @@
       id  : inner
       jobs:
       - !Job
-          id     : unner_sleep_1
+          id     : inner_sleep_1
           command: sleep
           args   : ["$DURATION"]
       - !Job

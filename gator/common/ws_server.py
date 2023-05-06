@@ -26,6 +26,7 @@ from .db import Database
 from .logger import Logger
 from ..types import LogEntry, LogSeverity
 from .ws_router import WebsocketRouter
+from .ws_wrapper import WebsocketWrapper
 
 
 class WebsocketServer(WebsocketRouter):
@@ -114,11 +115,7 @@ class WebsocketServer(WebsocketRouter):
             self.__ws = None
 
     async def __handle_client(self, ws) -> None:
-        async for message in ws:
-            try:
-                await self.route(ws, json.loads(message))
-            except json.JSONDecodeError as e:
-                await Logger.error(f"JSON decode error: {str(e)}")
-                await ws.send(json.dumps({ "result": "error",
-                                           "reason": "JSON decode failed" }))
-                continue
+        wrp = WebsocketWrapper(ws)
+        wrp.ws_event.set()
+        wrp.fallback = self.route
+        await wrp.monitor()

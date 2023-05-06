@@ -39,8 +39,8 @@ class WebsocketRouterError(Exception):
 class WebsocketRouter:
 
     def __init__(self) -> None:
-        # Gather routes
         self.__routes = {}
+        self.fallback = None
 
     def add_route(self, action : str, handler : Callable) -> None:
         """
@@ -54,32 +54,32 @@ class WebsocketRouter:
         self.__routes[action] = handler
 
     async def route(self, ws : Any, data : Dict[str, Any]) -> None:
-        print(f"ROUTING: {data}", file=sys.stderr)
         # Check for a supported action
         action = data.get("action", None)
         posted = data.get("posted", False)
         if not action:
             if not posted:
                 await ws.send(json.dumps({ "tool": "gator", "version": "1.0" }))
-            return
         elif action not in self.__routes:
-            import os
-            print(f"Bad route: {os.getpid()} {action} - {self} - {self.__routes.keys()}", file=sys.stderr)
-            if not posted:
-                await ws.send(json.dumps({ "result": "error",
-                                           "reason": f"Unknown action '{action}'" }))
-            return
+            if self.fallback:
+                await self.fallback(ws, data)
+            else:
+                import os
+                print(f"Bad route: {os.getpid()} {action} - {self} - {self.__routes.keys()}", file=sys.stderr)
+                if not posted:
+                    await ws.send(json.dumps({ "result": "error",
+                                               "reason": f"Unknown action '{action}'" }))
         else:
             try:
-                call_rsp = await self.__routes[action](ws=ws, **data)
+                call_rsp = await self.__routes[action](ws=ws, **data.get("payload", {}))
                 if not posted:
-                    response = { "action": action,
-                                 "rsp_id": data.get("req_id", 0),
-                                 "result": "success" }
-                    response.update(call_rsp or {})
+                    response = { "action" : action,
+                                 "rsp_id" : data.get("req_id", 0),
+                                 "result" : "success",
+                                 "payload": (call_rsp or {}) }
                     await ws.send(json.dumps(response))
             except Exception as e:
                 print(f"Caught {type(e).__name__} on route {action}: {str(e)}", file=sys.stderr)
                 if not posted:
                     await ws.send(json.dumps({ "result": "error",
-                                                "reason": str(e) }))
+                                               "reason": str(e) }))

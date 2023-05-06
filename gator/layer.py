@@ -23,8 +23,6 @@ from enum import auto, Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Union, Optional
 
-import websockets
-
 from .common.ws_client import WebsocketClient
 from .common.ws_wrapper import WebsocketWrapper
 from .common.db import Database
@@ -142,10 +140,8 @@ class Layer:
             all_launched = list(self.launched.values())
         for child in all_launched:
             if isinstance(child.spec, Job) or child.ws is None:
-                await Logger.warning(f"TREE CHILD: {child.id}")
                 tree[child.id] = child.state.name
             else:
-                await Logger.warning(f"RECURSING FROM {os.getpid()} -> {type(child.spec).__name__}: {child.id}")
                 tree[child.id] = await child.ws.get_tree()
         return tree
 
@@ -178,7 +174,7 @@ class Layer:
                 return { "result": "error" }
 
     async def __child_started(self,
-                              ws     : websockets.WebSocketClientProtocol,
+                              ws     : WebsocketWrapper,
                               id     : str,
                               server : str,
                               **_):
@@ -196,8 +192,7 @@ class Layer:
                 child.state   = State.STARTED
                 child.started = datetime.now()
                 child.updated = datetime.now()
-                child.ws      = WebsocketWrapper(ws)
-                child.ws.ws_event.set()
+                child.ws      = ws
                 return { "result": "success" }
             else:
                 await Logger.error(f"Unknown child '{id}'")
@@ -331,17 +326,15 @@ class Layer:
             summary = await self.summarise()
             # Report to parent
             await WebsocketClient.update(id=self.id, **summary)
-            # Launch callback
+            # If a heartbeat callback is registered...
             if self.heartbeat_cb:
-                if cb_async:
-                    await self.heartbeat_cb(**summary)
-                else:
-                    self.heartbeat_cb(**summary)
-            # Get tree
-            if self.is_root:
-                await Logger.warning("STARTING TO CALCULATE TREE")
+                # Gather tree
                 tree = await self.get_tree()
-                await Logger.info(f"TREE: {tree}")
+                # Callback
+                if cb_async:
+                    await self.heartbeat_cb(**summary, tree=tree)
+                else:
+                    self.heartbeat_cb(**summary, tree=tree)
             # Wait for the next heartbeat
             await asyncio.sleep(1)
 

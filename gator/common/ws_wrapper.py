@@ -14,6 +14,7 @@
 
 import asyncio
 import atexit
+import dataclasses
 import functools
 import itertools
 import json
@@ -23,6 +24,12 @@ import websockets
 
 from .ws_router import WebsocketRouter
 
+
+@dataclasses.dataclass
+class WebsocketWrapperPending:
+    req_id   : int
+    event    : asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
+    response : Optional[Dict] = None
 
 class WebsocketWrapperError(Exception):
     pass
@@ -36,18 +43,16 @@ class WebsocketWrapper(WebsocketRouter):
         self.ws = ws
         self.ws_event = asyncio.Event()
         self.__monitor_task = None
-        self.__request_lock = asyncio.Lock()
         self.__next_request_id = itertools.count()
-        self.__pending_req_id = None
-        self.__pending_req_evt = asyncio.Event()
-        self.__pending_response = None
+        self.__request_lock = asyncio.Lock()
+        self.__pending = {}
 
     @property
     def linked(self):
         return self.ws is not None
 
     async def start_monitor(self) -> None:
-        self.__monitor_task = asyncio.create_task(self.__monitor())
+        self.__monitor_task = asyncio.create_task(self.monitor())
         def _teardown() -> None:
             asyncio.run(self.stop())
         atexit.register(_teardown)
@@ -58,17 +63,24 @@ class WebsocketWrapper(WebsocketRouter):
             await self.__monitor_task
             self.__monitor_task = None
 
-    async def __monitor(self) -> None:
+    async def send(self, data : str) -> None:
+        await self.ws.send(data)
+
+    async def monitor(self) -> None:
         try:
             async for raw in self.ws:
                 try:
                     message = json.loads(raw)
-                    if "rsp_id" in message and message["rsp_id"] == self.__pending_req_id:
-                        self.__pending_req_id = None
-                        self.__pending_response = message
-                        self.__pending_req_evt.set()
-                    else:
-                        await self.route(self.ws, message)
+                    # See if a pending request is matched
+                    if (rsp_id := message.get("rsp_id", None)) is not None:
+                        async with self.__request_lock:
+                            if (pend := self.__pending.get(rsp_id, None)) is not None:
+                                pend.response = message
+                                pend.event.set()
+                                del self.__pending[rsp_id]
+                                continue
+                    # Else, route
+                    await self.route(self, message)
                 except json.JSONDecodeError:
                     raise WebsocketWrapperError(f"Failed to decode message: {raw}")
         except asyncio.CancelledError:
@@ -90,40 +102,29 @@ class WebsocketWrapper(WebsocketRouter):
             # Send data to the server
             # NOTE: A lock is used to avoid multiple outstanding requests to the
             #       server at the same time
-            async with self.__request_lock:
-                # For a non-posted request, setup alert for response
-                if not posted:
-                    self.__pending_req_id = next(self.__next_request_id)
-                # Serialise and send the request
-                full_req = { "action": key.lower(),
-                             "req_id": self.__pending_req_id or 0,
-                             "posted": posted,
-                             **kwargs }
-                print(f"SENDING: {full_req} -> {self.ws}")
-                await self.ws.send(json.dumps(full_req))
-                # Posted requests return immediately
-                if posted:
-                    return None
-                # Non-posted requests wait for a response
-                else:
-                    # If a monitor is running, rely on it to capture responses
-                    if self.__monitor_task:
-                        await self.__pending_req_evt.wait()
-                        self.__pending_req_evt.clear()
-                        response = self.__pending_response
-                        self.__pending_response = None
-                    # Otherwise, directly fetch a response
-                    else:
-                        raw = await self.ws.recv()
-                        try:
-                            response = json.loads(raw)
-                        except json.JSONDecodeError:
-                            raise WebsocketWrapperError(f"Failed to decode response from: {raw}")
-                    # Check for result
-                    if response.get("result", "error") != "success":
-                        raise WebsocketWrapperError(f"Server responded with an "
-                                                    f"error for '{key}': {response}")
-                    # Return response
-                    return response
+            # For a non-posted request, setup alert for response
+            pending = None
+            if not posted:
+                async with self.__request_lock:
+                    pending = WebsocketWrapperPending(next(self.__next_request_id))
+                    self.__pending[pending.req_id] = pending
+            # Serialise and send the request
+            full_req = { "action": key.lower(), "posted": posted, "payload": kwargs }
+            if not posted:
+                full_req["req_id"] = pending.req_id
+            await self.ws.send(json.dumps(full_req))
+            # Posted requests return immediately
+            if posted:
+                return None
+            # Non-posted requests wait for a response
+            else:
+                await pending.event.wait()
+                pending.event.clear()
+                # Check for result
+                if pending.response.get("result", "error") != "success":
+                    raise WebsocketWrapperError(f"Server responded with an "
+                                                f"error for '{key}': {pending.response}")
+                # Return response
+                return pending.response.get("payload", {})
 
         return _shim

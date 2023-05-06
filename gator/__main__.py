@@ -28,6 +28,7 @@ from rich.progress import (BarColumn,
                            TaskProgressColumn,
                            TextColumn)
 from rich.table import Table
+from rich.tree import Tree
 
 from .common.ws_client import WebsocketClient
 from .common.logger import Logger
@@ -105,6 +106,9 @@ def main(id       : str,
     # Create a console
     prog_cb = None
     if progress:
+        # Create console
+        console = Console(log_path=False)
+        # Create table
         table = Table(expand=True, show_edge=False, show_header=False)
         # Create a progress bar
         progbar = Progress(TextColumn("{task.description}"),
@@ -119,16 +123,26 @@ def main(id       : str,
         bar_active = progbar.add_task("[cyan]Running", total=1)
         bar_passed = progbar.add_task("[green]Passed", total=1)
         bar_failed = progbar.add_task("[red]Failed",   total=1)
-        def _update(sub_total, sub_active, sub_passed, sub_failed, **_):
+        def _update(sub_total, sub_active, sub_passed, sub_failed, tree=None, **_):
+            # Update the progress bars
             progbar.update(bar_total,  total=sub_total, completed=(sub_passed + sub_failed))
             progbar.update(bar_active, total=sub_total, completed=sub_active)
             progbar.update(bar_passed, total=sub_total, completed=sub_passed)
             progbar.update(bar_failed, total=sub_total, completed=sub_failed)
+            # Display the tree
+            if tree:
+                def _chase(parent, segment):
+                    for key, value in segment.items():
+                        branch = parent.add(key)
+                        if isinstance(value, dict):
+                            _chase(branch, value)
+                r_tree = Tree("Root")
+                _chase(r_tree, tree)
+                console.log(r_tree)
         prog_cb = _update
         # Start console
-        console = Console(log_path=False)
         live = Live(table, refresh_per_second=4, console=console)
-        Logger.CONSOLE = live.console
+        Logger.CONSOLE = console
         live.start(refresh=True)
     else:
         Logger.CONSOLE = Console(log_path=False)
