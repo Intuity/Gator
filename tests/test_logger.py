@@ -14,13 +14,12 @@
 
 import pytest
 
-import logging
 from unittest.mock import AsyncMock, MagicMock
 
 from click.testing import CliRunner
 
 import gator.common.logger
-from gator.common.logger import _Logger, Logger
+from gator.common.logger import _Logger
 
 @pytest.fixture
 def logger(mocker) -> _Logger:
@@ -44,9 +43,9 @@ def logger_linked(logger_local) -> _Logger:
     logger_local.ws_cli.linked = True
     return logger_local
 
-@pytest.mark.asyncio
 class TestLogger:
 
+    @pytest.mark.asyncio
     async def test_unlinked(self, logger):
         """ Local logging goes to the console """
         # Raw
@@ -65,6 +64,7 @@ class TestLogger:
         await logger.error("Testing error")
         assert not logger.ws_cli.log.called
 
+    @pytest.mark.asyncio
     async def test_local(self, logger_local):
         """ Local logging goes to the console """
         logger = logger_local
@@ -94,6 +94,7 @@ class TestLogger:
         logger.console.log.assert_called_with("[bold red][ERROR  ][/bold red] Testing error")
         logger.console.log.reset_mock()
 
+    @pytest.mark.asyncio
     async def test_linked(self, logger_linked):
         """ Local logging goes to the console """
         logger = logger_linked
