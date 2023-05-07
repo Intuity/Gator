@@ -26,7 +26,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
+import asyncio
 import json
 import sys
 from collections import namedtuple
@@ -51,7 +51,10 @@ class WebsocketRouter:
         :param action:  Name of action to register with
         :param handler: Callback method when route is accessed
         """
-        self.__routes[action] = Route(handler, inspect.iscoroutinefunction(handler))
+        # NOTE: Using 'asyncio.iscoroutinefunction' as the 'inspect' variant does
+        #       not correctly identify AsyncMock under Python 3.8 and 3.9, see
+        #       Python issue 40573 for more details
+        self.__routes[action] = Route(handler, asyncio.iscoroutinefunction(handler))
 
     async def route(self, ws : Any, data : Dict[str, Any]) -> None:
         # Check for a supported action
