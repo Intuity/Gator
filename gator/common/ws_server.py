@@ -14,7 +14,6 @@
 
 import asyncio
 import atexit
-import json
 import socket
 from contextlib import closing
 from datetime import datetime
@@ -23,7 +22,6 @@ from typing import Optional
 import websockets
 
 from .db import Database
-from .logger import Logger
 from ..types import LogEntry, LogSeverity
 from .ws_router import WebsocketRouter
 from .ws_wrapper import WebsocketWrapper

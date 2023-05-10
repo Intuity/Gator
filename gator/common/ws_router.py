@@ -62,7 +62,9 @@ class WebsocketRouter:
         posted = data.get("posted", False)
         if not action:
             if not posted:
-                await ws.send(json.dumps({ "tool": "gator", "version": "1.0" }))
+                await ws.send(json.dumps({ "action" : "identify",
+                                           "tool"   : "gator",
+                                           "version": "1.0" }))
         elif action not in self.__routes:
             if self.fallback:
                 await self.fallback(ws, data)

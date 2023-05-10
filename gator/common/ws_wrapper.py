@@ -49,7 +49,7 @@ class WebsocketWrapper(WebsocketRouter):
 
     @property
     def linked(self):
-        return self.ws is not None
+        return self.ws is not None and self.ws.open
 
     async def start_monitor(self) -> None:
         self.__monitor_task = asyncio.create_task(self.monitor())
@@ -63,8 +63,13 @@ class WebsocketWrapper(WebsocketRouter):
             await self.__monitor_task
             self.__monitor_task = None
 
-    async def send(self, data : str) -> None:
-        await self.ws.send(data)
+    async def send(self, data : Union[str, dict]) -> None:
+        await self.ws.send(data if isinstance(data, str) else json.dumps(data))
+
+    async def measure_latency(self) -> float:
+        pong = await self.ws.ping()
+        latency = await pong
+        return latency
 
     async def monitor(self) -> None:
         try:
@@ -112,7 +117,7 @@ class WebsocketWrapper(WebsocketRouter):
             full_req = { "action": key.lower(), "posted": posted, "payload": kwargs }
             if not posted:
                 full_req["req_id"] = pending.req_id
-            await self.ws.send(json.dumps(full_req))
+            await self.send(full_req)
             # Posted requests return immediately
             if posted:
                 return None

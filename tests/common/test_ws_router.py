@@ -30,7 +30,9 @@ class TestWebsocketRouter:
         router = WebsocketRouter()
         # Make a request without an action
         await router.route(ws, {})
-        ws.send.assert_called_with(json.dumps({ "tool": "gator", "version": "1.0" }))
+        ws.send.assert_called_with(json.dumps({ "action": "identify",
+                                               "tool": "gator",
+                                               "version": "1.0" }))
         ws.send.reset_mock()
         # Make a posted request without an action
         await router.route(ws, {"posted": True})
