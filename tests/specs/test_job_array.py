@@ -13,28 +13,31 @@
 # limitations under the License.
 
 from gator.specs import Spec
-from gator.specs.jobs import Job, JobGroup
+from gator.specs.jobs import Job, JobArray, JobArray
 
-def test_spec_job_group_positional():
-    """ A job group should preserve all positional arguments provided to it """
+def test_spec_job_array_positional():
+    """ A job array should preserve all positional arguments provided to it """
     jobs = [Job() for _ in range(5)]
-    group = JobGroup("grp_123", jobs)
-    assert group.id == "grp_123"
-    assert group.jobs == jobs
+    array = JobArray("arr_123", 3, jobs)
+    assert array.id == "arr_123"
+    assert array.repeats == 3
+    assert array.jobs == jobs
 
-def test_spec_job_group_named():
-    """ A job group should preserve all named arguments provided to it """
+def test_spec_job_array_named():
+    """ A job array should preserve all named arguments provided to it """
     jobs = [Job() for _ in range(5)]
-    group = JobGroup(id="grp_123", jobs=jobs)
-    assert group.id == "grp_123"
-    assert group.jobs == jobs
+    array = JobArray(id="arr_123", repeats=3, jobs=jobs)
+    assert array.id == "arr_123"
+    assert array.repeats == 3
+    assert array.jobs == jobs
 
-def test_spec_job_group_parse(tmp_path):
+def test_spec_job_array_parse(tmp_path):
     """ Parse a specification from a YAML string """
-    spec_file = tmp_path / "job_group.yaml"
+    spec_file = tmp_path / "job_array.yaml"
     spec_file.write_text(
-        "!JobGroup\n"
-        "  id: grp_123\n"
+        "!JobArray\n"
+        "  id: arr_123\n"
+        "  repeats: 3\n"
         "  jobs:\n"
         "  - !Job\n"
         "      id: id_123\n"
@@ -45,8 +48,8 @@ def test_spec_job_group_parse(tmp_path):
         "      command: echo\n"
         "      args:\n"
         "        - String to print A\n"
-        "  - !JobGroup\n"
-        "      id: grp_234\n"
+        "  - !JobArray\n"
+        "      id: arr_234\n"
         "      jobs: \n"
         "      - !Job\n"
         "          id: id_234\n"
@@ -58,35 +61,38 @@ def test_spec_job_group_parse(tmp_path):
         "          args:\n"
         "            - String to print B\n"
     )
-    group = Spec.parse(spec_file)
-    assert isinstance(group, JobGroup)
-    assert group.id == "grp_123"
-    assert len(group.jobs) == 2
+    array = Spec.parse(spec_file)
+    assert isinstance(array, JobArray)
+    assert array.id == "arr_123"
+    assert array.repeats == 3
+    assert len(array.jobs) == 2
     # JOBS[0]
-    assert isinstance(group.jobs[0], Job)
-    assert group.jobs[0].id == "id_123"
-    assert group.jobs[0].env == { "key_a": 2345, "key_b": False }
-    assert group.jobs[0].cwd == "/path/to/working/dir_a"
-    assert group.jobs[0].command == "echo"
-    assert group.jobs[0].args == ["String to print A"]
+    assert isinstance(array.jobs[0], Job)
+    assert array.jobs[0].id == "id_123"
+    assert array.jobs[0].env == { "key_a": 2345, "key_b": False }
+    assert array.jobs[0].cwd == "/path/to/working/dir_a"
+    assert array.jobs[0].command == "echo"
+    assert array.jobs[0].args == ["String to print A"]
     # JOBS[1]
-    assert isinstance(group.jobs[1], JobGroup)
-    assert group.jobs[1].id == "grp_234"
-    assert len(group.jobs[1].jobs) == 1
+    assert isinstance(array.jobs[1], JobArray)
+    assert array.jobs[1].id == "arr_234"
+    assert array.jobs[1].repeats == 1
+    assert len(array.jobs[1].jobs) == 1
     # JOBS[1].JOBS[0]
-    assert group.jobs[1].jobs[0].id == "id_234"
-    assert group.jobs[1].jobs[0].env == { "key_a": 3456, "key_b": True }
-    assert group.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
-    assert group.jobs[1].jobs[0].command == "echo"
-    assert group.jobs[1].jobs[0].args == ["String to print B"]
+    assert array.jobs[1].jobs[0].id == "id_234"
+    assert array.jobs[1].jobs[0].env == { "key_a": 3456, "key_b": True }
+    assert array.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
+    assert array.jobs[1].jobs[0].command == "echo"
+    assert array.jobs[1].jobs[0].args == ["String to print B"]
     # Check estimation of number of jobs to run
-    assert group.expected_jobs == 2
+    assert array.expected_jobs == 6
 
-def test_spec_job_group_parse_str():
+def test_spec_job_array_parse_str():
     """ Parse a specification from a YAML string """
     spec_str = (
-        "!JobGroup\n"
-        "  id: grp_123\n"
+        "!JobArray\n"
+        "  id: arr_123\n"
+        "  repeats: 3\n"
         "  jobs:\n"
         "  - !Job\n"
         "      id: id_123\n"
@@ -97,8 +103,8 @@ def test_spec_job_group_parse_str():
         "      command: echo\n"
         "      args:\n"
         "        - String to print A\n"
-        "  - !JobGroup\n"
-        "      id: grp_234\n"
+        "  - !JobArray\n"
+        "      id: arr_234\n"
         "      jobs: \n"
         "      - !Job\n"
         "          id: id_234\n"
@@ -110,44 +116,46 @@ def test_spec_job_group_parse_str():
         "          args:\n"
         "            - String to print B\n"
     )
-    group = Spec.parse_str(spec_str)
-    assert isinstance(group, JobGroup)
-    assert group.id == "grp_123"
-    assert len(group.jobs) == 2
+    array = Spec.parse_str(spec_str)
+    assert isinstance(array, JobArray)
+    assert array.id == "arr_123"
+    assert array.repeats == 3
+    assert len(array.jobs) == 2
     # JOBS[0]
-    assert isinstance(group.jobs[0], Job)
-    assert group.jobs[0].id == "id_123"
-    assert group.jobs[0].env == { "key_a": 2345, "key_b": False }
-    assert group.jobs[0].cwd == "/path/to/working/dir_a"
-    assert group.jobs[0].command == "echo"
-    assert group.jobs[0].args == ["String to print A"]
+    assert isinstance(array.jobs[0], Job)
+    assert array.jobs[0].id == "id_123"
+    assert array.jobs[0].env == { "key_a": 2345, "key_b": False }
+    assert array.jobs[0].cwd == "/path/to/working/dir_a"
+    assert array.jobs[0].command == "echo"
+    assert array.jobs[0].args == ["String to print A"]
     # JOBS[1]
-    assert isinstance(group.jobs[1], JobGroup)
-    assert group.jobs[1].id == "grp_234"
-    assert len(group.jobs[1].jobs) == 1
+    assert isinstance(array.jobs[1], JobArray)
+    assert array.jobs[1].repeats == 1
+    assert array.jobs[1].id == "arr_234"
+    assert len(array.jobs[1].jobs) == 1
     # JOBS[1].JOBS[0]
-    assert group.jobs[1].jobs[0].id == "id_234"
-    assert group.jobs[1].jobs[0].env == { "key_a": 3456, "key_b": True }
-    assert group.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
-    assert group.jobs[1].jobs[0].command == "echo"
-    assert group.jobs[1].jobs[0].args == ["String to print B"]
+    assert array.jobs[1].jobs[0].id == "id_234"
+    assert array.jobs[1].jobs[0].env == { "key_a": 3456, "key_b": True }
+    assert array.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
+    assert array.jobs[1].jobs[0].command == "echo"
+    assert array.jobs[1].jobs[0].args == ["String to print B"]
     # Check estimation of number of jobs to run
-    assert group.expected_jobs == 2
+    assert array.expected_jobs == 6
 
-def test_spec_job_group_dump():
+def test_spec_job_array_dump():
     """ Dump a specification to a YAML string """
     job = Job(id     ="id_123",
               env    ={ "key_a": 2345, "key_b": False },
               cwd    ="/path/to/working/dir",
               command="echo",
               args   =["String to print"])
-    grp = JobGroup(id="grp_123", jobs=[job])
+    grp = JobArray(id="arr_123", repeats=5, jobs=[job])
     spec_str = Spec.dump(grp)
     assert spec_str == (
-        "!JobGroup\n"
+        "!JobArray\n"
         "cwd: null\n"
         "env: {}\n"
-        "id: grp_123\n"
+        "id: arr_123\n"
         "jobs:\n"
         "- !Job\n"
         "  args:\n"
@@ -164,4 +172,5 @@ def test_spec_job_group_dump():
         "on_done: []\n"
         "on_fail: []\n"
         "on_pass: []\n"
+        "repeats: 5\n"
     )
