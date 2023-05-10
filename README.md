@@ -73,3 +73,14 @@ To run the hub:
 ```bash
 $> poe hub
 ```
+
+## TODO
+
+ * [ ] Get hub working
+ * [ ] Pass artefacts between jobs and form artefact based dependencies
+ * [ ] Arbitrary metrics gathering - replace warning and error counts with a generalised mechanism that supports aggregation while summarising min, max, mean, sum, and count of metrics recorded
+ * [ ] Random number seeding
+ * [ ] Hooks
+ * [ ] Tool based log parsers
+ * [ ] Custom runners - currently everything is shell, perhaps support other things?
+ * [ ] Non-environment variable based parameters
