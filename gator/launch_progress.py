@@ -47,7 +47,7 @@ async def launch(**kwargs) -> None:
     bar_active = progbar.add_task("[cyan]Running", total=1)
     bar_passed = progbar.add_task("[green]Passed", total=1)
     bar_failed = progbar.add_task("[red]Failed",   total=1)
-    def _update(sub_total, sub_active, sub_passed, sub_failed, tree=None, **_):
+    def _update(_, sub_total, sub_active, sub_passed, sub_failed, tree=None, **__):
         # Update the progress bars
         progbar.update(bar_total,  total=sub_total, completed=(sub_passed + sub_failed))
         progbar.update(bar_active, total=sub_total, completed=sub_active)

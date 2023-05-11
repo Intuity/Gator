@@ -19,10 +19,11 @@ from unittest.mock import AsyncMock, MagicMock
 from click.testing import CliRunner
 
 import gator.common.logger
-from gator.common.logger import _Logger
+from gator.common.logger import Logger
+from gator.common.types import LogSeverity
 
 @pytest.fixture
-def logger(mocker) -> _Logger:
+def logger(mocker) -> Logger:
     mock_time = mocker.patch("gator.common.logger.time")
     mock_time.time.return_value = 1234
     # Create a fake websocket interface
@@ -30,16 +31,16 @@ def logger(mocker) -> _Logger:
     ws_cli.linked = False
     ws_cli.log    = AsyncMock()
     # Create a logger
-    logger = _Logger(ws_cli)
+    logger = Logger(ws_cli, verbosity=LogSeverity.DEBUG)
     return logger
 
 @pytest.fixture
-def logger_local(logger) -> _Logger:
+def logger_local(logger) -> Logger:
     logger.set_console(MagicMock())
     return logger
 
 @pytest.fixture
-def logger_linked(logger_local) -> _Logger:
+def logger_linked(logger_local) -> Logger:
     logger_local.ws_cli.linked = True
     return logger_local
 
@@ -49,7 +50,7 @@ class TestLogger:
     async def test_unlinked(self, logger):
         """ Local logging goes to the console """
         # Raw
-        await logger.log("INFO", "Testing info")
+        await logger.log(LogSeverity.INFO, "Testing info")
         assert not logger.ws_cli.log.called
         # Debug
         await logger.debug("Testing debug")
@@ -69,7 +70,7 @@ class TestLogger:
         """ Local logging goes to the console """
         logger = logger_local
         # Raw
-        await logger.log("INFO", "Testing info")
+        await logger.log(LogSeverity.INFO, "Testing info")
         assert not logger.ws_cli.log.called
         logger.console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
         logger.console.log.reset_mock()
@@ -99,7 +100,7 @@ class TestLogger:
         """ Local logging goes to the console """
         logger = logger_linked
         # Raw
-        await logger.log("INFO", "Testing info")
+        await logger.log(LogSeverity.INFO, "Testing info")
         assert not logger.console.log.called
         logger.ws_cli.log.assert_called_with(timestamp=1234,
                                              severity="INFO",
@@ -143,7 +144,8 @@ class TestLogger:
         """ Log via the command line interface """
         mk_time = mocker.patch("gator.common.logger.time")
         mk_time.time.return_value = 1234
-        ws_cli = mocker.patch("gator.common.logger.Logger.ws_cli")
+        wc_cls = mocker.patch("gator.common.logger.WebsocketClient")
+        wc_cls.return_value = (ws_cli := AsyncMock())
         ws_cli.linked = True
         runner = CliRunner()
         # Default (info severity)

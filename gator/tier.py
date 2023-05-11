@@ -13,25 +13,18 @@
 # limitations under the License.
 
 import asyncio
-import inspect
-import os
 from copy import copy, deepcopy
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import auto, Enum
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Union, Optional
+from typing import Any, Dict, List, Union, Optional
 
-from .common.ws_client import WebsocketClient
-from .common.ws_wrapper import WebsocketWrapper
-from .common.db import Database
+from .common.layer import BaseLayer
 from .common.logger import Logger
-from .common.ws_server import WebsocketServer
-from .hub.api import HubAPI
+from .common.ws_wrapper import WebsocketWrapper
 from .scheduler import Scheduler
 from .specs import Job, JobArray, JobGroup, Spec
-from .types import LogEntry
 
 class State(Enum):
     LAUNCHED = auto()
@@ -61,24 +54,13 @@ class Child:
     # Socket
     ws         : Optional[WebsocketWrapper] = None
 
-class Layer:
-    """ Layer of the process tree """
+class Tier(BaseLayer):
+    """ Tier of the job tree """
 
-    def __init__(self,
-                 spec         : Union[JobArray, JobGroup],
-                 tracking     : Path               = Path.cwd() / "tracking",
-                 quiet        : bool               = False,
-                 all_msg      : bool               = False,
-                 heartbeat_cb : Optional[Callable] = None) -> None:
-        self.spec         = spec
-        self.tracking     = tracking
-        self.quiet        = quiet
-        self.all_msg      = all_msg
-        self.heartbeat_cb = heartbeat_cb
-        self.db           = None
-        self.server       = None
-        self.scheduler    = None
-        self.lock         = asyncio.Lock()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.scheduler = None
+        self.lock      = asyncio.Lock()
         # Tracking for jobs in different phases
         self.launched  = {}
         self.pending   = {}
@@ -87,57 +69,34 @@ class Layer:
         self.job_tasks = []
 
     async def launch(self, *args, **kwargs) -> None:
-        # Setup database
-        self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
-        async def _log_cb(entry : LogEntry) -> None:
-            await Logger.log(entry.severity.name, entry.message)
-        await self.db.start()
-        await self.db.register(LogEntry, None if self.quiet else _log_cb)
-        # Setup server
-        self.server = WebsocketServer(db=self.db)
+        await self.setup(*args, **kwargs)
+        # Register server handlers for the upwards calls
         self.server.add_route("children", self.__list_children)
         self.server.add_route("spec", self.__child_query)
         self.server.add_route("register", self.__child_started)
         self.server.add_route("update", self.__child_updated)
         self.server.add_route("complete", self.__child_completed)
-        server_address = await self.server.start()
-        # Add handlers for downwards calls
-        WebsocketClient.add_route("get_tree", self.get_tree)
-        WebsocketClient.add_route("stop",     self.stop    )
-        # If an immediate parent is known, register with it
-        if WebsocketClient.linked:
-            await WebsocketClient.register(id=self.id, server=server_address)
-        # Otherwise, if a hub is known register to it
-        elif HubAPI.linked:
-            HubAPI.register(self.spec.id, self.server.address)
+        # Register client handlers for downwards calls
+        self.client.add_route("get_tree", self.get_tree)
         # Create a scheduler
-        self.scheduler = Scheduler(parent=server_address, quiet=not self.all_msg)
+        self.scheduler = Scheduler(parent=await self.server.get_address(),
+                                   quiet =not self.all_msg)
         # Launch jobs
-        await Logger.info(f"Layer '{self.id}' launching sub-jobs")
+        await self.logger.info(f"Layer '{self.id}' launching sub-jobs")
         await self.__launch()
         # Report
         summary = await self.summarise()
-        await Logger.info(f"Complete - W: {summary['warnings']}, E: {summary['errors']}, "
-                          f"T: {summary['sub_total']}, A: {summary['sub_active']}, "
-                          f"P: {summary['sub_passed']}, F: {summary['sub_failed']}")
-        # Shutdown the server
-        await self.server.stop()
-        # Shutdown the database
-        await self.db.stop()
+        await self.logger.info(f"Complete - W: {summary['warnings']}, E: {summary['errors']}, "
+                               f"T: {summary['sub_total']}, A: {summary['sub_active']}, "
+                               f"P: {summary['sub_passed']}, F: {summary['sub_failed']}")
+        # Teardown
+        await self.teardown(*args, **kwargs)
 
     async def stop(self, **kwargs) -> None:
-        await Logger.info("Stopping all jobs")
+        await self.logger.warning("Stopping all jobs")
         async with self.lock:
             for child in self.launched.values():
                 await child.ws.stop(posted=True)
-
-    @property
-    def id(self) -> str:
-        return self.spec.id or str(os.getpid())
-
-    @property
-    def is_root(self) -> bool:
-        return not WebsocketClient.linked
 
     async def get_tree(self, **_) -> Dict[str, Any]:
         tree = {}
@@ -175,7 +134,7 @@ class Layer:
             if id in self.launched:
                 return { "spec": Spec.dump(self.launched[id].spec) }
             else:
-                await Logger.error(f"Unknown child '{id}'")
+                await self.logger.error(f"Unknown child of {self.id} query '{id}'")
                 return { "result": "error" }
 
     async def __child_started(self,
@@ -192,7 +151,8 @@ class Layer:
             if id in self.launched:
                 child = self.launched[id]
                 if child.state is not State.LAUNCHED:
-                    await Logger.error(f"Duplicate start detected for child '{child.id}'")
+                    await self.logger.error(f"Duplicate start detected for child '{child.id}'")
+                await self.logger.debug(f"Child {id} of {self.id} has started")
                 child.server  = server
                 child.state   = State.STARTED
                 child.started = datetime.now()
@@ -200,7 +160,7 @@ class Layer:
                 child.ws      = ws
                 return { "result": "success" }
             else:
-                await Logger.error(f"Unknown child '{id}'")
+                await self.logger.error(f"Unknown child of {self.id} start '{id}'")
                 return { "result": "error" }
 
     async def __child_updated(self,
@@ -221,7 +181,8 @@ class Layer:
             if id in self.launched:
                 child = self.launched[id]
                 if child.state is not State.STARTED:
-                    await Logger.error(f"Update received for child '{child.id}' before start")
+                    await self.logger.error(f"Update received for child '{child.id}' before start")
+                await self.logger.debug(f"Received update from child {id} of {self.id}")
                 child.warnings   = int(warnings)
                 child.errors     = int(errors)
                 child.updated    = datetime.now()
@@ -230,8 +191,10 @@ class Layer:
                 child.sub_passed = sub_passed
                 child.sub_failed = sub_failed
                 return { "result": "success" }
+            elif id in self.complete:
+                await self.logger.error(f"Child {id} of {self.id} sent update after completion")
             else:
-                await Logger.error(f"Unknown child '{id}'")
+                await self.logger.error(f"Unknown child {id} of {self.id} update")
                 return { "result": "error" }
 
     async def __child_completed(self,
@@ -250,6 +213,7 @@ class Layer:
         """
         async with self.lock:
             if id in self.launched:
+                await self.logger.debug(f"Child {id} of {self.id} has completed")
                 child = self.launched[id]
                 # Apply updates
                 child.state      = State.COMPLETE
@@ -268,13 +232,15 @@ class Layer:
                 # Trigger complete event
                 child.e_complete.set()
                 return { "result": "success" }
+            elif id in self.complete:
+                await self.logger.error(f"Child {id} of {self.id} sent repeated completion")
             else:
-                await Logger.error(f"Unknown child '{id}'")
+                await self.logger.error(f"Unknown child of {self.id} completion '{id}'")
                 return { "result": "error" }
 
     async def __postpone(self, id : str, wait_for : List[Child], to_launch : List[Child]) -> None:
         await asyncio.gather(*(x.e_complete.wait() for x in wait_for))
-        await Logger.info(f"Dependencies of {id} complete, now launching")
+        await self.logger.info(f"Dependencies of {id} complete, now launching")
         # Accumulate errors and absolute exit codes for all dependencies
         by_id = defaultdict(lambda: 0)
         for child in wait_for:
@@ -285,13 +251,13 @@ class Layer:
             for result, dep_ids in ((True, spec.on_pass), (False, spec.on_fail)):
                 for id in dep_ids:
                     if result and by_id[id] != 0:
-                        await Logger.warning(f"Dependency '{id}' failed so "
+                        await self.logger.warning(f"Dependency '{id}' failed so "
                                             f"{type(spec).__name__} '{spec.id}' "
                                             f"will be pruned")
                         all_ok = False
                         break
                     elif not result and by_id[id] == 0:
-                        await Logger.warning(f"Dependency '{id}' passed so "
+                        await self.logger.warning(f"Dependency '{id}' passed so "
                                             f"{type(spec).__name__} '{spec.id}' "
                                             f"will be pruned")
                         all_ok = False
@@ -312,6 +278,7 @@ class Layer:
 
     async def summarise(self) -> Dict[str, int]:
         data = defaultdict(lambda: 0)
+        data.update(await super().summarise())
         async with self.lock:
             for child in (list(self.launched.values()) + list(self.complete.values())):
                 data["errors"]     += child.errors
@@ -323,25 +290,6 @@ class Layer:
         # While jobs are still starting up, estimate the total number expected
         data["sub_total"] = max(data["sub_total"], self.spec.expected_jobs)
         return data
-
-    async def __heartbeat(self, done_evt : asyncio.Event) -> None:
-        cb_async = self.heartbeat_cb and inspect.iscoroutinefunction(self.heartbeat_cb)
-        while not done_evt.is_set():
-            # Summarise state
-            summary = await self.summarise()
-            # Report to parent
-            await WebsocketClient.update(id=self.id, **summary)
-            # If a heartbeat callback is registered...
-            if self.heartbeat_cb:
-                # Gather tree
-                tree = await self.get_tree()
-                # Callback
-                if cb_async:
-                    await self.heartbeat_cb(**summary, tree=tree)
-                else:
-                    self.heartbeat_cb(**summary, tree=tree)
-            # Wait for the next heartbeat
-            await asyncio.sleep(1)
 
     async def __launch(self):
         # Construct each child
@@ -380,7 +328,7 @@ class Layer:
                     bad_deps = False
                     for dep_id in (spec.on_pass + spec.on_fail + spec.on_done):
                         if dep_id not in grouped or len(grouped[dep_id]) == 0:
-                            await Logger.error(f"Could not resolve dependency '{dep_id}' "
+                            await self.logger.error(f"Could not resolve dependency '{dep_id}' "
                                                f"of job '{id}', so job will never be "
                                                f"launched")
                             bad_deps = True
@@ -399,30 +347,15 @@ class Layer:
                         self.launched[child.id] = child
             # Schedule all 'launched' jobs
             await self.scheduler.launch(list(self.launched.keys()))
-        # Launch the heartbeat
-        e_done = asyncio.Event()
-        t_beat = asyncio.create_task(self.__heartbeat(e_done))
         # Wait for all dependency tasks to complete
-        await Logger.info(f"Waiting for {len(self.job_tasks)} dependency tasks to complete")
+        await self.logger.info(f"Waiting for {len(self.job_tasks)} dependency tasks to complete")
         await asyncio.gather(*self.job_tasks)
         # Wait until all launched jobs complete
         async with self.lock:
             all_launched = list(self.launched.values())
-        await Logger.info(f"Dependency tasks complete, waiting for "
+        await self.logger.info(f"Dependency tasks complete, waiting for "
                           f"{len(all_launched)} launched jobs to complete")
         await asyncio.gather(*(x.e_complete.wait() for x in all_launched))
         # Wait until complete
-        await Logger.info("Waiting for scheduler to finish")
+        await self.logger.info("Waiting for scheduler to finish")
         await self.scheduler.wait_for_all()
-        # Stop the heartbeat
-        e_done.set()
-        await t_beat
-        # Mark this layer as complete
-        summary = await self.summarise()
-        await WebsocketClient.complete(id=self.id, code=0, **summary)
-        # Final heartbeat update
-        if self.heartbeat_cb:
-            if inspect.iscoroutinefunction(self.heartbeat_cb):
-                await self.heartbeat_cb(**summary)
-            else:
-                self.heartbeat_cb(**summary)

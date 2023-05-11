@@ -21,7 +21,7 @@ from flask import Flask, render_template, request
 import uwsgi
 
 from ..common.db import Base, Database
-from ..types import Attribute
+from ..common.types import Attribute
 
 react_dir = uwsgi.opt["react_root"].decode("utf-8")
 print(f"Static content: {react_dir}")

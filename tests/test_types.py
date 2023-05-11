@@ -17,7 +17,7 @@ from datetime import datetime
 import pytest
 
 from gator.common.db import Query
-from gator.types import Attribute, LogEntry, LogSeverity, ProcStat
+from gator.common.types import Attribute, LogEntry, LogSeverity, ProcStat
 
 from .common.test_db import database
 

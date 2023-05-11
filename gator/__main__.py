@@ -19,7 +19,6 @@ import click
 
 from . import launch
 from . import launch_progress
-from .common.ws_client import WebsocketClient
 from .hub.api import HubAPI
 
 
@@ -31,6 +30,7 @@ from .hub.api import HubAPI
 @click.option("--tracking", default=None,  type=click.Path(), help="Tracking directory")
 @click.option("--quiet",    default=False, count=True,        help="Silence STDOUT logging")
 @click.option("--all-msg",  default=False, count=True,        help="Propagate all messages to the top level")
+@click.option("--verbose",  default=False, count=True,        help="Show debug messages")
 @click.option("--progress", default=False, count=True,        help="Show progress bar")
 @click.argument("spec", type=click.Path(exists=True), required=False)
 def main(id       : str,
@@ -40,22 +40,23 @@ def main(id       : str,
          tracking : str,
          quiet    : bool,
          all_msg  : bool,
+         verbose  : bool,
          progress : bool,
          spec     : str) -> None:
     if hub:
         HubAPI.url = hub
-    if parent:
-        WebsocketClient.address = parent
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
     # Launch with optional progress tracking
     asyncio.run((launch_progress if progress else launch).launch(
         id      =id,
+        parent  =parent,
         spec    =Path(spec) if spec is not None else None,
         tracking=tracking,
         interval=interval,
         quiet   =quiet,
-        all_msg =all_msg
+        all_msg =all_msg,
+        verbose =verbose
     ))
 
 

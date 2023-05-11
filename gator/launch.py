@@ -20,31 +20,37 @@ from typing import Callable, Optional, Union
 from rich.console import Console
 
 from .common.logger import Logger
+from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
-from .layer import Layer
+from .tier import Tier
 from .specs import Job, JobArray, JobGroup, Spec
 from .wrapper import Wrapper
 
 
 async def launch(id           : Optional[str]               = None,
+                 parent       : Optional[str]               = None,
                  spec         : Optional[Union[Spec, Path]] = None,
                  tracking     : Path                        = Path.cwd(),
                  interval     : int                         = 5,
                  quiet        : bool                        = False,
                  all_msg      : bool                        = False,
+                 verbose      : bool                        = False,
                  heartbeat_cb : Optional[Callable]          = None,
                  console      : Optional[Console]           = None) -> None:
     # If a console isn't given, create one
     if not console:
         console = Console(log_path=False)
         console.log("Starting Gator :crocodile:")
-    # Ensure logger has a pointer to the console
-    Logger.set_console(console)
     # Start client
-    await WebsocketClient.start()
+    client = WebsocketClient(address=parent)
+    await client.start()
+    # Create a logger with a pointer to the console
+    logger = Logger(ws_cli   =client,
+                    console  =console,
+                    verbosity=[LogSeverity.INFO, LogSeverity.DEBUG][verbose])
     # Work out where the spec is coming from
-    if spec is None and WebsocketClient.linked and id:
-        raw_spec = await WebsocketClient.spec(id=id)
+    if spec is None and client.linked and id:
+        raw_spec = await client.spec(id=id)
         spec     = Spec.parse_str(raw_spec.get("spec", ""))
     elif spec is not None and not isinstance(spec, Spec):
         spec = Spec.parse(Path(spec))
@@ -53,16 +59,20 @@ async def launch(id           : Optional[str]               = None,
     # If an ID has been provided, override whatever the spec gives
     if id is not None:
         spec.id = id
-    # If a JobArray or JobGroup is provided, launch a layer
+    # If a JobArray or JobGroup is provided, launch a tier
     if isinstance(spec, (JobArray, JobGroup)):
-        top = Layer(spec        =spec,
-                    tracking    =tracking,
-                    quiet       =quiet and not all_msg,
-                    all_msg     =all_msg,
-                    heartbeat_cb=heartbeat_cb)
+        top = Tier(spec        =spec,
+                   client      =client,
+                   logger      =logger,
+                   tracking    =tracking,
+                   quiet       =quiet and not all_msg,
+                   all_msg     =all_msg,
+                   heartbeat_cb=heartbeat_cb)
     # If a Job is provided, launch a wrapper
     elif isinstance(spec, Job):
         top = Wrapper(spec    =spec,
+                      client  =client,
+                      logger  =logger,
                       tracking=tracking,
                       interval=interval,
                       quiet   =quiet and not all_msg)
@@ -70,7 +80,7 @@ async def launch(id           : Optional[str]               = None,
     else:
         raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
     # Setup signal handler to capture CTRL+C events
-    def _handler(sig : signal, evt_loop : asyncio.BaseEventLoop, top : Union[Layer, Wrapper]):
+    def _handler(sig : signal, evt_loop : asyncio.BaseEventLoop, top : Union[Tier, Wrapper]):
         if top.is_root:
             evt_loop.create_task(top.stop())
     evt_loop = asyncio.get_event_loop()
@@ -79,4 +89,4 @@ async def launch(id           : Optional[str]               = None,
     # Wait for the executor to complete
     await top.launch()
     # Shutdown client
-    await WebsocketClient.stop()
+    await client.stop()

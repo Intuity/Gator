@@ -19,10 +19,11 @@ from typing import Optional
 import click
 from rich.console import Console
 
-from .ws_client import _WebsocketClient, WebsocketClient
+from .types import LogSeverity
+from .ws_client import WebsocketClient
 
 
-class _Logger:
+class Logger:
 
     FORMAT = {
         "DEBUG"  : ("[bold cyan]", "[/bold cyan]"),
@@ -32,44 +33,47 @@ class _Logger:
     }
 
     def __init__(self,
-                 ws_cli  : _WebsocketClient,
-                 console : Optional[Console] = None) -> None:
-        self.ws_cli  = ws_cli
+                 ws_cli    : Optional[WebsocketClient] = None,
+                 console   : Optional[Console]         = None,
+                 verbosity : LogSeverity               = LogSeverity.INFO) -> None:
+        # Create a client if necessary (uses an environment variable to find the parent)
+        if ws_cli is None:
+            self.ws_cli = WebsocketClient()
+        else:
+            self.ws_cli = ws_cli
         self.console = console
+        self.verbosity = verbosity
 
     def set_console(self, console : Console) -> None:
         self.console = console
 
-    async def log(self, severity : str, message : str) -> None:
-        severity = severity.strip().upper()
+    async def log(self, severity : LogSeverity, message : str) -> None:
         if self.ws_cli.linked:
             await self.ws_cli.log(timestamp=time.time(),
-                                  severity =severity,
+                                  severity =severity.name,
                                   message  =message,
                                   posted   =True)
-        elif self.console:
-            prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
-            self.console.log(f"{prefix}[{severity:<7s}]{suffix} {message}")
+        elif self.console and severity >= self.verbosity:
+            prefix, suffix = self.FORMAT.get(severity.name, ("[bold]", "[/bold]"))
+            self.console.log(f"{prefix}[{severity.name:<7s}]{suffix} {message}")
 
     async def debug(self, message : str) -> None:
-        await self.log("DEBUG", message)
+        await self.log(LogSeverity.DEBUG, message)
 
     async def info(self, message : str) -> None:
-        await self.log("INFO", message)
+        await self.log(LogSeverity.INFO, message)
 
     async def warning(self, message : str) -> None:
-        await self.log("WARNING", message)
+        await self.log(LogSeverity.WARNING, message)
 
     async def error(self, message : str) -> None:
-        await self.log("ERROR", message)
-
-Logger = _Logger(WebsocketClient)
+        await self.log(LogSeverity.ERROR, message)
 
 @click.command()
 @click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
 @click.argument("message")
 def logger(severity, message):
-    asyncio.run(Logger.log(severity.upper(), message))
+    asyncio.run(Logger().log(getattr(LogSeverity, severity.upper()), message))
 
 if __name__ == "__main__":
     logger(prog_name="logger")

@@ -17,7 +17,7 @@ import logging
 from enum import IntEnum
 from datetime import datetime
 
-from .common.db import Base
+from .db import Base
 
 
 @dataclasses.dataclass

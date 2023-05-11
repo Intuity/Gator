@@ -22,7 +22,7 @@ from typing import Optional
 import websockets
 
 from .db import Database
-from ..types import LogEntry, LogSeverity
+from .types import LogEntry, LogSeverity
 from .ws_router import WebsocketRouter
 from .ws_wrapper import WebsocketWrapper
 

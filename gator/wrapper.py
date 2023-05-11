@@ -19,110 +19,65 @@ import subprocess
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict
 
 import expandvars
 import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
-from .common.ws_client import WebsocketClient
-from .common.db import Database, Query
-from .common.ws_server import WebsocketServer
-from .hub.api import HubAPI
-from .common.logger import Logger
-from .specs import Job
-from .types import Attribute, LogEntry, LogSeverity, ProcStat
+from .common.layer import BaseLayer
+from .common.types import Attribute, LogEntry, LogSeverity, ProcStat
 
 
-class Wrapper:
+class Wrapper(BaseLayer):
     """ Wraps a single process and tracks logging & process statistics """
 
     def __init__(self,
-                 spec     : Job,
-                 tracking : Path = Path.cwd() / "tracking",
-                 interval : int  = 5,
-                 quiet    : bool = False,
+                 *args,
+                 plotting : bool = False,
                  summary  : bool = False,
-                 plotting : Optional[Path] = None) -> None:
+                 **kwargs) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
-        :param *cmd:     Command line to execute (process and arguments)
-        :param env:      Modified environment to pass to the job, if no value is
-                         provided then the current environment is replicated.
-        :param cwd:      Set the initial working directory, if no value is
-                         provided then the current working path is replicated.
-        :param tracking: Path to directory to store tracking files, if no
-                         directory is given then a 'tracking' directory will be
-                         created in the current working path.
-        :param interval: Specify the interval to record process statistics, the
-                         more frequent the higher the resource usage of the
-                         wrapper process will be. Defaults to 5 seconds.
         :param plotting: Plot the resource usage once the job completes.
         :param summary:  Display a tabulated summary of resource usage
         """
-        self.spec = spec
-        self.tracking = tracking
-        self.interval = interval
+        super().__init__(*args, **kwargs)
         self.plotting = plotting
-        self.quiet = quiet
-        self.summary = summary
-        self.code = None
-        self.db = None
-        self.server = None
-        self.proc = None
+        self.summary  = summary
+        self.proc     = None
+        self.complete = False
 
     async def launch(self, *args, **kwargs) -> None:
-        # Setup database
-        self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
-        self.db.define_transform(LogSeverity, "INTEGER", int, LogSeverity)
-        async def _log_cb(entry : LogEntry) -> None:
-            await Logger.log(entry.severity.name, entry.message)
-        await self.db.start()
-        await self.db.register(LogEntry, None if self.quiet else _log_cb)
+        await self.setup(*args, **kwargs)
+        # Register additional data types
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
-        # Setup server
-        self.server = WebsocketServer(db=self.db)
-        server_address = await self.server.start()
-        # Add handlers for downwards calls
-        WebsocketClient.add_route("stop", self.stop)
-        # If an immediate parent is known, register with it
-        if WebsocketClient.linked:
-            await WebsocketClient.register(id=self.id, server=server_address)
-        # Otherwise, if a hub is known register to it
-        elif HubAPI.linked:
-            HubAPI.register(self.id, server_address)
         # Launch
         await self.__launch()
         # Report
         await self.__report()
-        # Shutdown the server
-        await self.server.stop()
-        # Shutdown the database
-        await self.db.stop()
+        # Teardown
+        await self.teardown(*args, **kwargs)
 
     async def stop(self, **kwargs) -> None:
-        await Logger.info("Stopping leaf job")
+        await self.logger.warning("Stopping leaf job")
         if self.proc:
             try:
                 self.proc.terminate()
             except ProcessLookupError:
                 pass
 
-    @property
-    def id(self) -> str:
-        return self.spec.id
-
-    @property
-    def is_root(self) -> bool:
-        return not WebsocketClient.linked
-
-    async def count_messages(self):
-        wrn_count = await self.db.get_logentry(sql_count=True, severity=LogSeverity.WARNING)
-        err_count = await self.db.get_logentry(sql_count=True, severity=Query(gte=LogSeverity.ERROR))
-        return wrn_count, err_count
+    async def summarise(self) -> Dict[str, int]:
+        summary = await super().summarise()
+        passed  = self.complete and (self.code == 0) and (summary.get("errors", 0) == 0)
+        summary["sub_total" ] = 1
+        summary["sub_active"] = [1, 0][self.complete]
+        summary["sub_passed"] = [0, 1][passed]
+        summary["sub_failed"] = [0, 1][self.complete and not passed]
+        return summary
 
     async def __monitor_stdio(self,
                               pipe     : asyncio.subprocess.PIPE,
@@ -146,7 +101,7 @@ class Wrapper:
             try:
                 # Capture statistics
                 with ps.oneshot():
-                    await Logger.debug(f"Capturing statistics for {proc.pid}")
+                    await self.logger.debug(f"Capturing statistics for {proc.pid}")
                     nproc    = 1
                     cpu_perc = ps.cpu_percent()
                     mem_stat = ps.memory_info()
@@ -167,22 +122,12 @@ class Wrapper:
                     await self.db.push_procstat(ProcStat(datetime.now(), nproc, cpu_perc, rss, vms))
             except psutil.NoSuchProcess:
                 break
+            # If process complete or done event set, break out
+            if proc.returncode is not None or done_evt.is_set():
+                break
             # Count up to the interval so that process is regularly polled
             try:
-                await asyncio.wait_for(done_evt.wait(), self.interval)
-            except asyncio.exceptions.TimeoutError:
-                pass
-
-    async def __heartbeat(self, done_evt : asyncio.Event) -> None:
-        while not done_evt.is_set():
-            num_wrn, num_err = await self.count_messages()
-            await WebsocketClient.update(id        =self.id,
-                                      warnings  =num_wrn,
-                                      errors    =num_err,
-                                      sub_total =1,
-                                      sub_active=1)
-            try:
-                await asyncio.wait_for(done_evt.wait(), 1)
+                await asyncio.wait_for(done_evt.wait(), timeout=self.interval)
             except asyncio.exceptions.TimeoutError:
                 pass
 
@@ -206,7 +151,7 @@ class Wrapper:
         await self.db.push_attribute(Attribute(name="host",    value=socket.gethostname()))
         await self.db.push_attribute(Attribute(name="started", value=str(datetime.now().timestamp())))
         # Launch the process
-        await Logger.info(f"Launching task: {full_cmd}")
+        await self.logger.info(f"Launching task: {full_cmd}")
         self.proc = await asyncio.create_subprocess_shell(full_cmd,
                                                           cwd=working_dir,
                                                           env=env,
@@ -220,32 +165,24 @@ class Wrapper:
         # Monitor process usage
         e_done = asyncio.Event()
         t_pmon = asyncio.create_task(self.__monitor_usage(self.proc, e_done))
-        # Deliver heartbeat to the server
-        t_beat = asyncio.create_task(self.__heartbeat(e_done))
         # Run until process complete & STDOUT/STDERR digested
-        await Logger.info("Monitoring task")
+        await self.logger.info("Monitoring task")
         await asyncio.gather(self.proc.wait(), t_stdout, t_stderr)
         e_done.set()
-        await asyncio.gather(t_pmon, t_beat)
+        # Wait for process monitor to drain
+        try:
+            await asyncio.wait_for(asyncio.gather(t_pmon), timeout=5)
+        except asyncio.exceptions.TimeoutError:
+            await self.logger.warning("Timed out waiting for process monitor to stop")
         # Capture the exit code
         self.code = self.proc.returncode
-        await Logger.info(f"Task completed with return code {self.code}")
+        await self.logger.info(f"Task completed with return code {self.code}")
         # Insert final attributes
         await self.db.push_attribute(Attribute(name="pid",     value=str(self.proc.pid)))
         await self.db.push_attribute(Attribute(name="stopped", value=str(datetime.now().timestamp())))
         await self.db.push_attribute(Attribute(name="exit",    value=str(self.code)))
-        # Count messages
-        num_wrn, num_err = await self.count_messages()
-        await Logger.info(f"Recorded {num_wrn} warnings and {num_err} errors")
-        # Mark job complete
-        passed = (num_err == 0) and (self.code == 0)
-        await WebsocketClient.complete(id        =self.id,
-                                       code      =self.code,
-                                       warnings  =num_wrn,
-                                       errors    =num_err,
-                                       sub_total =1,
-                                       sub_passed=[0, 1][passed],
-                                       sub_failed=[1, 0][passed])
+        # Mark complete
+        self.complete = True
 
     async def __report(self) -> None:
         # Pull data back from resource tracking

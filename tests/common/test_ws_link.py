@@ -19,9 +19,9 @@ import pytest
 import pytest_asyncio
 
 from gator.common.db import Database
-from gator.common.ws_client import _WebsocketClient as WebsocketClient
+from gator.common.ws_client import WebsocketClient
 from gator.common.ws_server import WebsocketServer
-from gator.types import LogEntry, LogSeverity
+from gator.common.types import LogEntry, LogSeverity
 
 
 @pytest.mark.asyncio
