@@ -1,4 +1,4 @@
-# Gator
+# 🐊 Gator
 
 Gator is a combination of a task runner and a logging system. Every job is
 managed by a wrapper layer that monitors its progress, resource usage, and
