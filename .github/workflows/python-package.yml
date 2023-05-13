@@ -13,6 +13,7 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +33,7 @@ jobs:
       run: |
         poetry install --with dev
     - name: Run tests
+      timeout-minutes: 5
       run: |
         poetry run pytest
     - name: Archive code coverage results
