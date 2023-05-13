@@ -22,7 +22,9 @@ distinct object types:
 
  * `!Job` that describes a single task to perform;
  * `!JobGroup` that describes a set of tasks to perform, also supporting layers
-   of nested groups.
+   of nested groups;
+ * `!JobArray` similar to a `!JobGroup`, but repeats the set of described tasks
+   a specified number of times.
 
 A simple specification may look like this:
 
@@ -38,20 +40,24 @@ A simple specification may look like this:
           id     : say_hi
           command: echo
           args   : ["hi"]
-  # Directly attached to root
-  - !Job
-      id     : say_bye
-      command: echo
-      args   : ["bye"]
-  # Arrayed job
+  # Arrayed job - waits for 'say_hi' to complete
   - !JobArray
       id     : counting
+      on_pass:
+        - say_hi
       repeats: 4
       jobs   :
       - !Job
           id     : echo_count
           command: echo
           args   : ["$GATOR_ARRAY_INDEX"]
+  # Directly attached to root - waits for 'counting' to complete
+  - !Job
+      id     : say_bye
+      on_pass:
+        - counting
+      command: echo
+      args   : ["bye"]
 ```
 
 ## Executing a Job Specification
@@ -59,11 +65,13 @@ A simple specification may look like this:
 To run a given job specification, use the Gator CLI:
 
 ```bash
-$> poetry run python3 -m gator job_spec.yaml
-[04/27/23 21:06:18] INFO     Layer 'top' launching sub-jobs
-[04/27/23 21:06:18] INFO     Layer 'T0_inner' launching sub-jobs
-                    INFO     Wrapper 'T1_say_bye' monitoring child PID 45138
-                    INFO     Wrapper 'T1_say_bye' child PID 45138 finished
+$> python3 -m gator examples/job.yaml
+[17:58:50] Starting Gator 🐊
+           [INFO   ] Launching task: echo hey there you
+           [INFO   ] Monitoring task
+           [INFO   ] hey there you
+           [INFO   ] Task completed with return code 0
+           [INFO   ] Recorded 0 warnings and 0 errors
 ```
 
 ## Hub
