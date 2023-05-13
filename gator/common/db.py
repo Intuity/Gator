@@ -176,8 +176,8 @@ class Database:
             async def _push(object : descr) -> None:
                 nonlocal sql_put, transforms_put
                 assert isinstance(object, descr)
-                async with self.__db.execute(sql_put,
-                                             [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object)[1:])]) as cursor:
+                values = [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object)[1:])]
+                async with self.__db.execute(sql_put, values) as cursor:
                     object.db_uid = cursor.lastrowid
                 if push_callback is not None:
                     await push_callback(object)
@@ -238,7 +238,8 @@ class Database:
                 else:
                     objects = []
                     for db_uid, *raw_vals in data:
-                        objects.append(descr(**{n: y(z) for n, y, z in zip(fnames, transforms_get, raw_vals)}, db_uid=db_uid))
+                        mapped = {n: y(z) for n, y, z in zip(fnames, transforms_get, raw_vals)}
+                        objects.append(descr(**mapped, db_uid=db_uid))
                     return objects
             setattr(self, f"get_{descr.__name__.lower()}", _get)
             # Track registration

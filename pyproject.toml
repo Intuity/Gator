@@ -31,10 +31,14 @@ mkdocs = "^1.4.2"
 mkdocs-material = "^9.1.6"
 poethepoet = "^0.19.0"
 pytest-asyncio = "^0.21.0"
+ruff = "^0.0.267"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
 
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -49,6 +53,12 @@ shell = "cd gator-hub && npm run build_dev"
 
 [tool.poe.tasks.uwsgi]
 shell = "uwsgi --http 127.0.0.1:8080 --master -p 4 -w gator.hub.app:hub --set react_root=$(PWD)/gator-hub/src/dist"
+
+[tool.poe.tasks.lint]
+shell = "poetry run ruff check gator"
+
+[tool.poe.tasks.test]
+shell = "poetry run pytest"
 
 [tool.poe.tasks]
 hub = ["npm_build", "uwsgi"]

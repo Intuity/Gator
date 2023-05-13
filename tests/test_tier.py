@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import asyncio
-import socket
 from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock
 
@@ -21,7 +20,6 @@ import pytest
 import pytest_asyncio
 
 from gator.common.logger import Logger
-from gator.common.types import Attribute, LogSeverity, ProcStat
 from gator.common.ws_client import WebsocketClient
 from gator.specs import Job, JobArray, JobGroup
 from gator.tier import Tier
