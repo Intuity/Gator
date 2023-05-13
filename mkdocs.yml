@@ -11,4 +11,5 @@ nav:
   - Welcome: "index.md"
   - "YAML Specification":
     - "!Job": "specs/job.md"
+    - "!JobArray": "specs/job_array.md"
     - "!JobGroup": "specs/job_group.md"
