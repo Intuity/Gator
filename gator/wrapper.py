@@ -45,11 +45,9 @@ class Wrapper(BaseLayer):
         :param summary:  Display a tabulated summary of resource usage
         """
         super().__init__(*args, **kwargs)
-        self.plotting   = plotting
-        self.summary    = summary
-        self.proc       = None
-        self.complete   = False
-        self.terminated = False
+        self.plotting = plotting
+        self.summary  = summary
+        self.proc     = None
 
     async def launch(self, *args, **kwargs) -> None:
         await self.setup(*args, **kwargs)
@@ -64,12 +62,15 @@ class Wrapper(BaseLayer):
         await self.teardown(*args, **kwargs)
 
     async def stop(self, **kwargs) -> None:
+        await super().stop(**kwargs)
         await self.logger.warning("Stopping leaf job")
         if self.proc and not self.complete:
-            self.terminated = True
             try:
-                self.proc.terminate()
-            except ProcessLookupError:
+                top = psutil.Process(self.proc.pid)
+                for child in top.children(recursive=True):
+                    child.kill()
+                top.kill()
+            except psutil.NoSuchProcess:
                 pass
 
     async def summarise(self) -> Dict[str, int]:

@@ -52,6 +52,9 @@ class BaseLayer:
         self.server     = None
         self.__hb_event = None
         self.__hb_task  = None
+        # State
+        self.complete   = False
+        self.terminated = False
 
     async def setup(self,
                     *args    : List[Any],
@@ -98,7 +101,7 @@ class BaseLayer:
         await self.db.stop()
 
     async def stop(self, **kwargs) -> None:
-        raise NotImplementedError()
+        self.terminated = True
 
     async def __heartbeat_loop(self, done_evt : asyncio.Event) -> None:
         cb_async = self.heartbeat_cb and asyncio.iscoroutinefunction(self.heartbeat_cb)

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import asyncio
-import json
 import socket
 from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock
@@ -22,7 +21,7 @@ import pytest
 import pytest_asyncio
 
 from gator.common.logger import Logger
-from gator.common.types import Attribute, LogEntry, LogSeverity, ProcStat
+from gator.common.types import Attribute, LogSeverity, ProcStat
 from gator.common.ws_client import WebsocketClient
 from gator.specs import Job
 from gator.wrapper import Wrapper
@@ -55,7 +54,7 @@ class TestWrapper:
         # Allow test to run
         yield
 
-    async def test_wrapper(self, tmp_path) -> None:
+    async def test_wrapper_basic(self, tmp_path) -> None:
         # Define a job specification
         job = Job("test", cwd=tmp_path.as_posix(), command="echo", args=["hi"])
         # Create a wrapper
