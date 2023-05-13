@@ -244,6 +244,8 @@ class Tier(BaseLayer):
         # If terminated, then don't launch further jobs
         if self.terminated:
             await self.logger.info(f"Skipping {id} as tier has been terminated")
+            for child in to_launch:
+                child.e_complete.set()
             return
         # Accumulate errors and absolute exit codes for all dependencies
         await self.logger.info(f"Dependencies of {id} complete, testing for launch")
