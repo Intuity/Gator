@@ -45,10 +45,11 @@ class Wrapper(BaseLayer):
         :param summary:  Display a tabulated summary of resource usage
         """
         super().__init__(*args, **kwargs)
-        self.plotting = plotting
-        self.summary  = summary
-        self.proc     = None
-        self.complete = False
+        self.plotting   = plotting
+        self.summary    = summary
+        self.proc       = None
+        self.complete   = False
+        self.terminated = False
 
     async def launch(self, *args, **kwargs) -> None:
         await self.setup(*args, **kwargs)
@@ -64,7 +65,8 @@ class Wrapper(BaseLayer):
 
     async def stop(self, **kwargs) -> None:
         await self.logger.warning("Stopping leaf job")
-        if self.proc:
+        if self.proc and not self.complete:
+            self.terminated = True
             try:
                 self.proc.terminate()
             except ProcessLookupError:
@@ -119,7 +121,11 @@ class Wrapper(BaseLayer):
                         vms      += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
-                    await self.db.push_procstat(ProcStat(datetime.now(), nproc, cpu_perc, rss, vms))
+                    await self.db.push_procstat(ProcStat(timestamp=datetime.now(),
+                                                         nproc=nproc,
+                                                         cpu=cpu_perc,
+                                                         mem=rss,
+                                                         vmem=vms))
             except psutil.NoSuchProcess:
                 break
             # If process complete or done event set, break out
@@ -175,7 +181,7 @@ class Wrapper(BaseLayer):
         except asyncio.exceptions.TimeoutError:
             await self.logger.warning("Timed out waiting for process monitor to stop")
         # Capture the exit code
-        self.code = self.proc.returncode
+        self.code = 255 if self.terminated else self.proc.returncode
         await self.logger.info(f"Task completed with return code {self.code}")
         # Insert final attributes
         await self.db.push_attribute(Attribute(name="pid",     value=str(self.proc.pid)))
@@ -197,7 +203,7 @@ class Wrapper(BaseLayer):
             dates = []
             series = defaultdict(list)
             for entry in data:
-                dates.append(entry.time)
+                dates.append(entry.timestamp)
                 series["Processes"].append(entry.nproc)
                 series["CPU %"].append(entry.cpu)
                 series["Memory (MB)"].append(entry.mem / (1024**3))
