@@ -3,6 +3,8 @@
   env:
     test_key_a: hey
     test_key_b: you
-  command: sleep
+  command: echo
   args   :
-    - 10
+    - ${test_key_a}
+    - there
+    - ${test_key_b}

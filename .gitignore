@@ -137,3 +137,6 @@ dmypy.json
 
 # Test directories
 tracking
+
+# Ruff
+.ruff_cache
