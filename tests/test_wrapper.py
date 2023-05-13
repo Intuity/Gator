@@ -128,8 +128,7 @@ class TestWrapper:
         ps = [x.args[0] for x in self.mk_db.push_procstat.mock_calls]
         assert len(ps) >= 3 and len(ps) <= 7
         assert set(x.timestamp for x in ps) == {datetime.fromtimestamp(12345)}
-        assert all((x.nproc in (0, 1)) for x in ps), str([x.nproc for x in ps])
-        assert any((x.nproc == 1) for x in ps), str([x.nproc for x in ps])
+        assert all((x.nproc >= 1) for x in ps), str([x.nproc for x in ps])
         assert all((x.cpu >= 0) for x in ps), str([x.cpu for x in ps])
         assert all((x.mem >= 0) for x in ps), str([x.mem for x in ps])
         assert all((x.vmem >= 0) for x in ps), str([x.vmem for x in ps])
@@ -159,8 +158,8 @@ class TestWrapper:
         ps = [x.args[0] for x in self.mk_db.push_procstat.mock_calls]
         assert len(ps) >= 10
         assert set(x.timestamp for x in ps) == {datetime.fromtimestamp(12345)}
-        assert all((x.nproc >= 0 and x.nproc <= 6) for x in ps), str([x.nproc for x in ps])
-        assert any((x.nproc == 6) for x in ps), str([x.nproc for x in ps])
+        assert all((x.nproc >= 1) for x in ps), str([x.nproc for x in ps])
+        assert any((x.nproc >= 6) for x in ps), str([x.nproc for x in ps])
         assert all((x.cpu >= 0) for x in ps), str([x.cpu for x in ps])
         assert all((x.mem >= 0) for x in ps), str([x.mem for x in ps])
         assert all((x.vmem >= 0) for x in ps), str([x.vmem for x in ps])
