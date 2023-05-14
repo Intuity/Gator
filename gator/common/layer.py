@@ -22,7 +22,6 @@ from .db import Database, Query
 from .logger import Logger
 from .ws_server import WebsocketServer
 from ..specs import Job, JobArray, JobGroup
-from ..specs.common import SpecError
 from .types import LogEntry, LogSeverity
 
 

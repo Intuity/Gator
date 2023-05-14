@@ -6,6 +6,9 @@ captures the messages that it emits via STDOUT or STDERR. Execution is managed
 in a hierarchical structure, with jobs at the leaves reporting back to layers of
 parent processes.
 
+**NOTE** This project is under development is not feature complete, nor has it
+been battle tested.
+
 ## Setting Up
 
 Gator has been developed using `poetry` for package management:
