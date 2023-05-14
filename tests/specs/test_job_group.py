@@ -12,19 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
+
 from gator.specs import Spec
+from gator.specs.common import SpecError
 from gator.specs.jobs import Job, JobGroup
 
 def test_spec_job_group_positional():
     """ A job group should preserve all positional arguments provided to it """
-    jobs = [Job() for _ in range(5)]
+    jobs = [JobGroup() for _ in range(5)]
     group = JobGroup("grp_123", jobs)
     assert group.id == "grp_123"
     assert group.jobs == jobs
 
 def test_spec_job_group_named():
     """ A job group should preserve all named arguments provided to it """
-    jobs = [Job() for _ in range(5)]
+    jobs = [JobGroup() for _ in range(5)]
     group = JobGroup(id="grp_123", jobs=jobs)
     assert group.id == "grp_123"
     assert group.jobs == jobs
@@ -165,3 +168,58 @@ def test_spec_job_group_dump():
         "on_fail: []\n"
         "on_pass: []\n"
     )
+
+def test_spec_job_group_bad_fields():
+    """ Bad field values should be flagged """
+    # Check ID
+    with pytest.raises(SpecError) as exc:
+        JobGroup(id=123).check()
+    assert str(exc.value) == "ID must be a string"
+    assert exc.value.field == "id"
+    # Check jobs (non-list)
+    with pytest.raises(SpecError) as exc:
+        JobGroup(jobs={"a": 1}).check()
+    assert str(exc.value) == "Jobs must be a list"
+    assert exc.value.field == "jobs"
+    # Check jobs (bad types)
+    with pytest.raises(SpecError) as exc:
+        JobGroup(jobs=[123, "hey"]).check()
+    assert str(exc.value) == "Expecting a list of only Job, JobArray, and JobGroup"
+    assert exc.value.field == "jobs"
+    # Check jobs (duplicate IDs)
+    with pytest.raises(SpecError) as exc:
+        JobGroup(jobs=[Job("a"), Job("a")]).check()
+    assert str(exc.value) == "Duplicated keys for jobs: a"
+    assert exc.value.field == "jobs"
+    # Check environment (non-dictionary)
+    with pytest.raises(SpecError) as exc:
+        JobGroup(env=[1, 2, 3]).check()
+    assert str(exc.value) == "Environment must be a dictionary"
+    assert exc.value.field == "env"
+    # Check environment (non-string keys)
+    with pytest.raises(SpecError) as exc:
+        JobGroup(env={True: 123, False: 345}).check()
+    assert str(exc.value) == "Environment keys must be strings"
+    assert exc.value.field == "env"
+    # Check environment (non-string/integer values)
+    with pytest.raises(SpecError) as exc:
+        JobGroup(env={"hi": 123.23, "bye": False}).check()
+    assert str(exc.value) == "Environment values must be strings or integers"
+    assert exc.value.field == "env"
+    # Check CWD
+    with pytest.raises(SpecError) as exc:
+        JobGroup(cwd=123).check()
+    assert str(exc.value) == "Working directory must be a string"
+    assert exc.value.field == "cwd"
+    # Check on done/fail/pass
+    for field in ("on_done", "on_fail", "on_pass"):
+        # Check non-list
+        with pytest.raises(SpecError) as exc:
+            JobGroup(**{field: {"a": 1}}).check()
+        assert str(exc.value) == f"The {field} dependencies must be a list"
+        assert exc.value.field == field
+        # Check non-string values
+        with pytest.raises(SpecError) as exc:
+            JobGroup(**{field: [123.2, False]}).check()
+        assert str(exc.value) == f"The {field} entries must be strings"
+        assert exc.value.field == field

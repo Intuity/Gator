@@ -22,6 +22,7 @@ from .db import Database, Query
 from .logger import Logger
 from .ws_server import WebsocketServer
 from ..specs import Job, JobArray, JobGroup
+from ..specs.common import SpecError
 from .types import LogEntry, LogSeverity
 
 
@@ -29,7 +30,7 @@ class BaseLayer:
     """ Shared behaviours for all layers in the job tree """
 
     def __init__(self,
-                 spec         : Optional[Union[Job, JobArray, JobGroup]] = None,
+                 spec         : Union[Job, JobArray, JobGroup],
                  client       : Optional[WebsocketClient] = None,
                  logger       : Optional[Logger] = None,
                  tracking     : Path = Path.cwd() / "tracking",
@@ -46,6 +47,8 @@ class BaseLayer:
         self.quiet        = quiet
         self.all_msg      = all_msg
         self.heartbeat_cb = heartbeat_cb
+        # Check spec object
+        self.spec.check()
         # Create empty pointers in advance
         self.code       = 0
         self.db         = None

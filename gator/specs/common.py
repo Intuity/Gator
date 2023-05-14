@@ -27,3 +27,14 @@ class SpecBase(yaml.YAMLObject):
     @classmethod
     def from_yaml(cls, loader : Loader, node : yaml.Node) -> "SpecBase":
         return cls(**loader.construct_mapping(node, deep=True))
+
+    def check(self) -> None:
+        pass
+
+class SpecError(Exception):
+    """ Custom exception type for syntax errors in specifications """
+
+    def __init__(self, obj : SpecBase, field : str, msg : str) -> None:
+        super().__init__(msg)
+        self.obj = obj
+        self.field = field

@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
+
 from gator.specs import Spec
+from gator.specs.common import SpecError
 from gator.specs.jobs import Job, JobArray, JobArray
 
 def test_spec_job_array_positional():
@@ -174,3 +177,63 @@ def test_spec_job_array_dump():
         "on_pass: []\n"
         "repeats: 5\n"
     )
+
+def test_spec_job_array_bad_fields():
+    """ Bad field values should be flagged """
+    # Check ID
+    with pytest.raises(SpecError) as exc:
+        JobArray(id=123).check()
+    assert str(exc.value) == "ID must be a string"
+    assert exc.value.field == "id"
+    # Check repeats
+    with pytest.raises(SpecError) as exc:
+        JobArray(repeats=-1).check()
+    assert str(exc.value) == "Repeats must be a positive integer"
+    assert exc.value.field == "repeats"
+    # Check jobs (non-list)
+    with pytest.raises(SpecError) as exc:
+        JobArray(jobs={"a": 1}).check()
+    assert str(exc.value) == "Jobs must be a list"
+    assert exc.value.field == "jobs"
+    # Check jobs (bad types)
+    with pytest.raises(SpecError) as exc:
+        JobArray(jobs=[123, "hey"]).check()
+    assert str(exc.value) == "Expecting a list of only Job, JobArray, and JobGroup"
+    assert exc.value.field == "jobs"
+    # Check jobs (duplicate IDs)
+    with pytest.raises(SpecError) as exc:
+        JobArray(jobs=[Job("a"), Job("a")]).check()
+    assert str(exc.value) == "Duplicated keys for jobs: a"
+    assert exc.value.field == "jobs"
+    # Check environment (non-dictionary)
+    with pytest.raises(SpecError) as exc:
+        JobArray(env=[1, 2, 3]).check()
+    assert str(exc.value) == "Environment must be a dictionary"
+    assert exc.value.field == "env"
+    # Check environment (non-string keys)
+    with pytest.raises(SpecError) as exc:
+        JobArray(env={True: 123, False: 345}).check()
+    assert str(exc.value) == "Environment keys must be strings"
+    assert exc.value.field == "env"
+    # Check environment (non-string/integer values)
+    with pytest.raises(SpecError) as exc:
+        JobArray(env={"hi": 123.23, "bye": False}).check()
+    assert str(exc.value) == "Environment values must be strings or integers"
+    assert exc.value.field == "env"
+    # Check CWD
+    with pytest.raises(SpecError) as exc:
+        JobArray(cwd=123).check()
+    assert str(exc.value) == "Working directory must be a string"
+    assert exc.value.field == "cwd"
+    # Check on done/fail/pass
+    for field in ("on_done", "on_fail", "on_pass"):
+        # Check non-list
+        with pytest.raises(SpecError) as exc:
+            JobArray(**{field: {"a": 1}}).check()
+        assert str(exc.value) == f"The {field} dependencies must be a list"
+        assert exc.value.field == field
+        # Check non-string values
+        with pytest.raises(SpecError) as exc:
+            JobArray(**{field: [123.2, False]}).check()
+        assert str(exc.value) == f"The {field} entries must be strings"
+        assert exc.value.field == field

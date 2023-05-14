@@ -13,9 +13,10 @@
 # limitations under the License.
 
 import functools
+from collections import Counter
 from typing import Dict, List, Optional, Union
 
-from .common import SpecBase
+from .common import SpecBase, SpecError
 
 
 class Job(SpecBase):
@@ -27,18 +28,41 @@ class Job(SpecBase):
                  cwd     : Optional[str] = None,
                  command : Optional[str] = None,
                  args    : Optional[List[str]] = None,
+                 on_done : Optional[List[str]] = None,
                  on_fail : Optional[List[str]] = None,
-                 on_pass : Optional[List[str]] = None,
-                 on_done : Optional[List[str]] = None) -> None:
+                 on_pass : Optional[List[str]] = None) -> None:
         self.id = id
         self.env = env or {}
         self.cwd = cwd
         self.command = command
         self.args = args or []
+        self.on_done = on_done or []
         self.on_fail = on_fail or []
         self.on_pass = on_pass or []
-        self.on_done = on_done or []
 
+    def check(self) -> None:
+        if self.id is not None and not isinstance(self.id, str):
+            raise SpecError(self, "id", "ID must be a string")
+        if not isinstance(self.env, dict):
+            raise SpecError(self, "env", "Environment must be a dictionary")
+        if set(map(type, self.env.keys())).difference({str}):
+            raise SpecError(self, "env", "Environment keys must be strings")
+        if set(map(type, self.env.values())).difference({str, int}):
+            raise SpecError(self, "env", "Environment values must be strings or integers")
+        if self.cwd is not None and not isinstance(self.cwd, str):
+            raise SpecError(self, "cwd", "Working directory must be a string")
+        if self.command is not None and not isinstance(self.command, str):
+            raise SpecError(self, "command", "Command must be a string")
+        if not isinstance(self.args, list):
+            raise SpecError(self, "args", "Arguments must be a list")
+        if set(map(type, self.args)).difference({str, int}):
+            raise SpecError(self, "args", "Arguments must be strings or integers")
+        for field in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, field)
+            if not isinstance(value, list):
+                raise SpecError(self, field, f"The {field} dependencies must be a list")
+            if set(map(type, value)).difference({str}):
+                raise SpecError(self, field, f"The {field} entries must be strings")
 
 class JobArray(SpecBase):
     yaml_tag = "!JobArray"
@@ -69,6 +93,37 @@ class JobArray(SpecBase):
             expected += self.repeats * (1 if isinstance(job, Job) else job.expected_jobs)
         return expected
 
+    def check(self) -> None:
+        if self.id is not None and not isinstance(self.id, str):
+            raise SpecError(self, "id", "ID must be a string")
+        if not isinstance(self.repeats, int) or self.repeats < 0:
+            raise SpecError(self, "repeats", "Repeats must be a positive integer")
+        if not isinstance(self.jobs, list):
+            raise SpecError(self, "jobs", "Jobs must be a list")
+        if set(map(type, self.jobs)).difference({Job, JobArray, JobGroup}):
+            raise SpecError(self, "jobs", "Expecting a list of only Job, JobArray, and JobGroup")
+        id_count = Counter(x.id for x in self.jobs)
+        duplicated = [k for k, v in id_count.items() if v > 1]
+        if duplicated:
+            raise SpecError(self, "jobs", f"Duplicated keys for jobs: {', '.join(duplicated)}")
+        if not isinstance(self.env, dict):
+            raise SpecError(self, "env", "Environment must be a dictionary")
+        if set(map(type, self.env.keys())).difference({str}):
+            raise SpecError(self, "env", "Environment keys must be strings")
+        if set(map(type, self.env.values())).difference({str, int}):
+            raise SpecError(self, "env", "Environment values must be strings or integers")
+        if self.cwd is not None and not isinstance(self.cwd, str):
+            raise SpecError(self, "cwd", "Working directory must be a string")
+        for field in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, field)
+            if not isinstance(value, list):
+                raise SpecError(self, field, f"The {field} dependencies must be a list")
+            if set(map(type, value)).difference({str}):
+                raise SpecError(self, field, f"The {field} entries must be strings")
+        # Recurse
+        for job in self.jobs:
+            job.check()
+
 
 class JobGroup(SpecBase):
     yaml_tag = "!JobGroup"
@@ -96,3 +151,32 @@ class JobGroup(SpecBase):
         for job in self.jobs:
             expected += 1 if isinstance(job, Job) else job.expected_jobs
         return expected
+
+    def check(self) -> None:
+        if self.id is not None and not isinstance(self.id, str):
+            raise SpecError(self, "id", "ID must be a string")
+        if not isinstance(self.jobs, list):
+            raise SpecError(self, "jobs", "Jobs must be a list")
+        if set(map(type, self.jobs)).difference({Job, JobArray, JobGroup}):
+            raise SpecError(self, "jobs", "Expecting a list of only Job, JobArray, and JobGroup")
+        id_count = Counter(x.id for x in self.jobs)
+        duplicated = [k for k, v in id_count.items() if v > 1]
+        if duplicated:
+            raise SpecError(self, "jobs", f"Duplicated keys for jobs: {', '.join(duplicated)}")
+        if not isinstance(self.env, dict):
+            raise SpecError(self, "env", "Environment must be a dictionary")
+        if set(map(type, self.env.keys())).difference({str}):
+            raise SpecError(self, "env", "Environment keys must be strings")
+        if set(map(type, self.env.values())).difference({str, int}):
+            raise SpecError(self, "env", "Environment values must be strings or integers")
+        if self.cwd is not None and not isinstance(self.cwd, str):
+            raise SpecError(self, "cwd", "Working directory must be a string")
+        for field in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, field)
+            if not isinstance(value, list):
+                raise SpecError(self, field, f"The {field} dependencies must be a list")
+            if set(map(type, value)).difference({str}):
+                raise SpecError(self, field, f"The {field} entries must be strings")
+        # Recurse
+        for job in self.jobs:
+            job.check()
