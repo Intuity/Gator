@@ -83,17 +83,24 @@ class Wrapper(BaseLayer):
         return summary
 
     async def __monitor_stdio(self,
-                              pipe     : asyncio.subprocess.PIPE,
-                              severity : LogSeverity) -> None:
-        log_fh = (self.tracking / f"{severity.name}.log").open("w", encoding="utf-8")
-        while not pipe.at_eof():
-            line = await pipe.readline()
-            line = line.decode("utf-8")
-            log_fh.write(line)
-            clean = line.rstrip()
-            if len(clean) > 0:
-                await self.db.push_logentry(LogEntry(severity=severity,
-                                                     message =clean))
+                              proc   : asyncio.subprocess.Process,
+                              stdout : asyncio.subprocess.PIPE,
+                              stderr : asyncio.subprocess.PIPE) -> None:
+        log_fh = (self.tracking / f"{proc.pid}.log").open("w", encoding="utf-8")
+        log_lk = asyncio.Lock()
+        async def _monitor(pipe, severity):
+            while not pipe.at_eof():
+                line = await pipe.readline()
+                line = line.decode("utf-8")
+                async with log_lk:
+                    log_fh.write(line)
+                clean = line.rstrip()
+                if len(clean) > 0:
+                    await self.db.push_logentry(LogEntry(severity=severity,
+                                                         message =clean))
+        t_stdout = asyncio.create_task(_monitor(stdout, LogSeverity.INFO))
+        t_stderr = asyncio.create_task(_monitor(stderr, LogSeverity.ERROR))
+        await asyncio.gather(t_stdout, t_stderr)
         log_fh.flush()
         log_fh.close()
 
@@ -173,15 +180,13 @@ class Wrapper(BaseLayer):
                                                           stdout=subprocess.PIPE,
                                                           stderr=subprocess.PIPE,
                                                           close_fds=True)
-        # Capture STDOUT and STDERR
-        t_stdout = asyncio.create_task(self.__monitor_stdio(self.proc.stdout, LogSeverity.INFO))
-        t_stderr = asyncio.create_task(self.__monitor_stdio(self.proc.stderr, LogSeverity.ERROR))
         # Monitor process usage
-        e_done = asyncio.Event()
-        t_pmon = asyncio.create_task(self.__monitor_usage(self.proc, e_done))
+        e_done  = asyncio.Event()
+        t_pmon  = asyncio.create_task(self.__monitor_usage(self.proc, e_done))
+        t_stdio = asyncio.create_task(self.__monitor_stdio(self.proc, self.proc.stdout, self.proc.stderr))
         # Run until process complete & STDOUT/STDERR digested
         await self.logger.info("Monitoring task")
-        await asyncio.gather(self.proc.wait(), t_stdout, t_stderr)
+        await asyncio.gather(self.proc.wait(), t_stdio)
         e_done.set()
         # Wait for process monitor to drain
         try:

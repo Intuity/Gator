@@ -21,7 +21,7 @@ from .ws_client import WebsocketClient
 from .db import Database, Query
 from .logger import Logger
 from .ws_server import WebsocketServer
-from ..specs import Job, JobArray, JobGroup
+from ..specs import Job, JobArray, JobGroup, Spec
 from .types import LogEntry, LogSeverity
 
 
@@ -61,6 +61,10 @@ class BaseLayer:
     async def setup(self,
                     *args    : List[Any],
                     **kwargs : Dict[str, Any]) -> None:
+        # Ensure the tracking directory exists
+        self.tracking.mkdir(exist_ok=True, parents=True)
+        # Dump the spec into the tracking directory
+        (self.tracking / "spec.yaml").write_text(Spec.dump(self.spec))
         # Create a local database
         self.db = Database(self.tracking / "db.sqlite")
         async def _log_cb(entry : LogEntry) -> None:
