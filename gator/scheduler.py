@@ -14,7 +14,8 @@
 
 import asyncio
 import subprocess
-from typing import List
+from pathlib import Path
+from typing import List, Tuple
 
 class Scheduler:
     """ Launches a set of tasks on a particular infrastructure """
@@ -38,15 +39,15 @@ class Scheduler:
             del self.launched[id]
             del self.monitors[id]
 
-    async def launch(self, tasks : List[str]) -> None:
+    async def launch(self, tasks : List[Tuple[str, Path]]) -> None:
         common = ["python3", "-m", "gator",
                   "--parent", self.parent,
                   "--interval", f"{self.interval}",
                   ["--all-msg", "--quiet"][self.quiet]]
         async with self.lock:
-            for task in tasks:
+            for task, trk_dir in tasks:
                 self.launched[task] = await asyncio.create_subprocess_shell(
-                    " ".join(common + ["--id", f"{task}"]),
+                    " ".join(common + ["--id", f"{task}", "--tracking", trk_dir.as_posix()]),
                     stdin =subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL
                 )

@@ -23,7 +23,7 @@ from gator.scheduler import Scheduler
 @pytest.mark.asyncio
 class TestScheduler:
 
-    async def test_scheduling(self, mocker):
+    async def test_scheduling(self, mocker, tmp_path):
         """ Launch a number of tasks """
         # Create an scheduler
         sched = Scheduler(parent="test:1234", interval=7, quiet=False)
@@ -43,10 +43,11 @@ class TestScheduler:
             return proc
         as_sub.side_effect = _create_proc
         # Launch some tasks
-        await sched.launch([f"T{x}" for x in range(10)])
+        await sched.launch([(f"T{x}", tmp_path / f"T{x}") for x in range(10)])
         # Check for launch calls
         as_sub.assert_has_calls([
-            call(f"python3 -m gator --parent test:1234 --interval 7 --all-msg --id T{x}",
+            call(f"python3 -m gator --parent test:1234 --interval 7 --all-msg "
+                 f"--id T{x} --tracking {(tmp_path / f'T{x}').as_posix()}",
                  stdin =subprocess.DEVNULL,
                  stdout=subprocess.DEVNULL)
             for x in range(10)

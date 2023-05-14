@@ -332,10 +332,10 @@ class TestTier:
         ws_cli = WebsocketClient(address=await tier.server.get_address())
         await ws_cli.start()
         response = await ws_cli.children()
-        assert set(response["launched"].keys()) == {"T0_c", "T1_mid"}
+        assert set(response["launched"].keys()) == {"c", "mid"}
         # Report the tree structure
         tree = await tier.get_tree()
-        assert tree == { "T0_c": "STARTED", "T1_mid": { "T0_b": "STARTED", "T1_low": { "T0_a": "STARTED" } } }
+        assert tree == { "c": "STARTED", "mid": { "b": "STARTED", "low": { "a": "STARTED" } } }
         # Stop the jobs
         await tier.stop()
         # Wait for the jobs to stop

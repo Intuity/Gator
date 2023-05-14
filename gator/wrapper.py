@@ -85,12 +85,17 @@ class Wrapper(BaseLayer):
     async def __monitor_stdio(self,
                               pipe     : asyncio.subprocess.PIPE,
                               severity : LogSeverity) -> None:
+        log_fh = (self.tracking / f"{severity.name}.log").open("w", encoding="utf-8")
         while not pipe.at_eof():
             line = await pipe.readline()
-            line = line.decode("utf-8").rstrip()
-            if len(line) > 0:
+            line = line.decode("utf-8")
+            log_fh.write(line)
+            clean = line.rstrip()
+            if len(clean) > 0:
                 await self.db.push_logentry(LogEntry(severity=severity,
-                                                     message =line))
+                                                     message =clean))
+        log_fh.flush()
+        log_fh.close()
 
     async def __monitor_usage(self,
                               proc     : asyncio.subprocess.Process,
@@ -152,6 +157,8 @@ class Wrapper(BaseLayer):
         # Expand variables in the command
         all_args = [str(x) for x in ([self.spec.command] + self.spec.args)]
         full_cmd = " ".join(expandvars.expand(x, environ=env) for x in all_args)
+        # Ensure the tracking directory exists
+        self.tracking.mkdir(parents=True, exist_ok=True)
         # Setup initial attributes
         await self.db.push_attribute(Attribute(name="cmd",     value=full_cmd))
         await self.db.push_attribute(Attribute(name="cwd",     value=working_dir.as_posix()))

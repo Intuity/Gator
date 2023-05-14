@@ -62,7 +62,7 @@ class BaseLayer:
                     *args    : List[Any],
                     **kwargs : Dict[str, Any]) -> None:
         # Create a local database
-        self.db = Database(self.tracking / f"{os.getpid()}.sqlite")
+        self.db = Database(self.tracking / "db.sqlite")
         async def _log_cb(entry : LogEntry) -> None:
             await self.logger.log(entry.severity, entry.message)
         await self.db.start()

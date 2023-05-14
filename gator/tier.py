@@ -18,6 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import auto, Enum
+from pathlib import Path
 from typing import Any, Dict, List, Union, Optional
 
 from .common.layer import BaseLayer
@@ -34,23 +35,24 @@ class State(Enum):
 @dataclass
 class Child:
     spec       : Union[Job, JobArray, JobGroup]
-    id         : str           = "N/A"
-    state      : State         = State.LAUNCHED
-    server     : str           = ""
-    exitcode   : int           = 0
+    id         : str            = "N/A"
+    tracking   : Optional[Path] = None
+    state      : State          = State.LAUNCHED
+    server     : str            = ""
+    exitcode   : int            = 0
     # Message counting
-    warnings   : int           = 0
-    errors     : int           = 0
+    warnings   : int            = 0
+    errors     : int            = 0
     # Tracking of childrens' state
-    sub_total  : int           = 0
-    sub_active : int           = 0
-    sub_passed : int           = 0
-    sub_failed : int           = 0
+    sub_total  : int            = 0
+    sub_active : int            = 0
+    sub_passed : int            = 0
+    sub_failed : int            = 0
     # Timestamping
-    started    : datetime      = datetime.min
-    updated    : datetime      = datetime.min
-    completed  : datetime      = datetime.min
-    e_complete : asyncio.Event = field(default_factory=asyncio.Event)
+    started    : datetime       = datetime.min
+    updated    : datetime       = datetime.min
+    completed  : datetime       = datetime.min
+    e_complete : asyncio.Event  = field(default_factory=asyncio.Event)
     # Socket
     ws         : Optional[WebsocketWrapper] = None
 
@@ -281,7 +283,7 @@ class Tier(BaseLayer):
             for child in to_launch:
                 self.jobs_launched[child.id] = child
                 del self.jobs_pending[child.id]
-            await self.scheduler.launch([x.id for x in to_launch])
+            await self.scheduler.launch([(x.id, x.tracking) for x in to_launch])
 
     async def summarise(self) -> Dict[str, int]:
         data = defaultdict(lambda: 0)
@@ -314,17 +316,22 @@ class Tier(BaseLayer):
             # Propagate working directory from parent to child
             job.cwd = job.cwd or self.spec.cwd
             # Vary behaviour depending if this a job array or not
+            base_job_id  = job.id if job.id else f"T{idx_job}"
+            base_trk_dir = self.tracking / base_job_id
             for idx_jarr in range(self.spec.repeats if is_jarr else 1):
+                child_id  = base_job_id
+                child_dir = base_trk_dir
                 if is_jarr:
                     job_cp = deepcopy(job)
                     job_cp.env["GATOR_ARRAY_INDEX"] = idx_jarr
-                    child_id = f"T{idx_job}_A{idx_jarr}"
+                    child_id  += f"_{idx_jarr}"
+                    child_dir  = base_trk_dir / str(idx_jarr)
                 else:
                     job_cp = job
-                    child_id = f"T{idx_job}"
-                if job.id:
-                    child_id += f"_{job.id}"
-                grouped[job.id].append(Child(spec=job_cp, id=child_id))
+                child_dir.mkdir(parents=True, exist_ok=True)
+                grouped[job.id].append(Child(spec    =job_cp,
+                                             id      =child_id,
+                                             tracking=child_dir))
         # Launch or create dependencies
         async with self.lock:
             bad_deps = False
@@ -364,7 +371,7 @@ class Tier(BaseLayer):
                 self.terminated = True
                 return
             # Schedule all 'launched' jobs
-            await self.scheduler.launch(list(self.jobs_launched.keys()))
+            await self.scheduler.launch([(k, v.tracking) for k, v in self.jobs_launched.items()])
         # Wait for all dependency tasks to complete
         await self.logger.info(f"Waiting for {len(self.job_tasks)} dependency tasks to complete")
         await asyncio.gather(*self.job_tasks)
