@@ -13,13 +13,17 @@
 # limitations under the License.
 
 import asyncio
+import sys
 from pathlib import Path
 
 import click
+import rich
 
 from . import launch
 from . import launch_progress
 from .hub.api import HubAPI
+from .specs import Spec
+from .specs.common import SpecError
 
 
 @click.command()
@@ -48,16 +52,27 @@ def main(id       : str,
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
     # Launch with optional progress tracking
-    asyncio.run((launch_progress if progress else launch).launch(
-        id      =id,
-        parent  =parent,
-        spec    =Path(spec) if spec is not None else None,
-        tracking=tracking,
-        interval=interval,
-        quiet   =quiet,
-        all_msg =all_msg,
-        verbose =verbose
-    ))
+    try:
+        asyncio.run((launch_progress if progress else launch).launch(
+            id      =id,
+            parent  =parent,
+            spec    =Path(spec) if spec is not None else None,
+            tracking=tracking,
+            interval=interval,
+            quiet   =quiet,
+            all_msg =all_msg,
+            verbose =verbose
+        ))
+    except SpecError as e:
+        rich.print(f"[bold red][ERROR][/bold red] Issue in {type(e.obj).__name__} "
+                   f"specification field '{e.field}': {str(e)}[/bold red]")
+        if hasattr(e.obj, "jobs"):
+            e.obj.jobs = ["..."]
+        rich.print(Spec.dump([e.obj]))
+        sys.exit(1)
+    except Exception as e:
+        rich.print(f"[bold red][ERROR][/bold red] {str(e)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

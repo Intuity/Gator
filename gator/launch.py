@@ -14,7 +14,6 @@
 
 import asyncio
 import signal
-import sys
 from pathlib import Path
 from typing import Callable, Optional, Union
 
@@ -25,7 +24,6 @@ from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
 from .tier import Tier
 from .specs import Job, JobArray, JobGroup, Spec
-from .specs.common import SpecError
 from .wrapper import Wrapper
 
 
@@ -62,14 +60,7 @@ async def launch(id           : Optional[str]               = None,
     if id is not None:
         spec.id = id
     # Check the spec object
-    try:
-        spec.check()
-    except SpecError as e:
-        console.log(f"[bold red]Error in {type(e.obj).__name__} field '{e.field}': {str(e)}[/bold red]")
-        if hasattr(e.obj, "jobs"):
-            e.obj.jobs = ["..."]
-        console.log(Spec.dump([e.obj]))
-        sys.exit(1)
+    spec.check()
     # If a JobArray or JobGroup is provided, launch a tier
     if isinstance(spec, (JobArray, JobGroup)):
         top = Tier(spec        =spec,
