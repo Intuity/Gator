@@ -23,7 +23,7 @@ import websockets
 
 from .db import Database
 from .logger import Logger
-from .types import LogEntry, LogSeverity
+from .types import LogSeverity
 from .ws_router import WebsocketRouter
 from .ws_wrapper import WebsocketWrapper
 
