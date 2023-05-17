@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
+from gator.common.child import Child
 from gator.scheduler import Scheduler
 
 @pytest.mark.asyncio
@@ -43,7 +44,8 @@ class TestScheduler:
             return proc
         as_sub.side_effect = _create_proc
         # Launch some tasks
-        await sched.launch([(f"T{x}", tmp_path / f"T{x}") for x in range(10)])
+        await sched.launch([Child(None, id=f"T{x}", tracking=tmp_path / f"T{x}")
+                            for x in range(10)])
         # Check for launch calls
         as_sub.assert_has_calls([
             call(f"python3 -m gator --parent test:1234 --interval 7 --all-msg "
@@ -60,37 +62,3 @@ class TestScheduler:
         as_mon.assert_has_calls([
             call(f"T{x}", y) for x, y in zip(range(10), procs)
         ])
-
-
-# def test_scheduler(mocker):
-#     """ Test the basic local scheduler """
-#     mocker.patch("gator.scheduler.subprocess")
-#     procs = []
-#     def create_proc(*args, **kwargs):
-#         nonlocal procs
-#         procs.append(proc := MagicMock())
-#         proc.wait.return_value = True
-#         return proc
-#     gator.scheduler.subprocess.Popen.side_effect = create_proc
-#     # Create a scheduler
-#     sched = Scheduler([f"task_{x}" for x in range(10)],
-#                       "localhost:1234",
-#                       interval=9)
-#     assert sched.tasks == [f"task_{x}" for x in range(10)]
-#     assert sched.parent == "localhost:1234"
-#     assert sched.interval == 9
-#     # Check that all tasks are launched
-#     calls = [
-#         call(["python3", "-m", "gator",
-#               "--parent", "localhost:1234",
-#               "--quiet",
-#               "--interval", "9",
-#               "--id", f"task_{x}"],
-#               stdin =gator.scheduler.subprocess.DEVNULL,
-#               stdout=gator.scheduler.subprocess.DEVNULL)
-#         for x in range(10)
-#     ]
-#     gator.scheduler.subprocess.Popen.assert_has_calls(calls)
-#     # Wait for completions
-#     sched.wait_for_all()
-#     assert all([x.wait.called for x in procs])

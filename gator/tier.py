@@ -15,46 +15,16 @@
 import asyncio
 from copy import copy, deepcopy
 from collections import defaultdict
-from dataclasses import dataclass, field
 from datetime import datetime
-from enum import auto, Enum
-from pathlib import Path
-from typing import Any, Dict, List, Union, Optional
+from typing import Any, Dict, List
 
+from .common.child import Child, ChildState
 from .common.layer import BaseLayer
 from .common.logger import Logger
 from .common.ws_wrapper import WebsocketWrapper
 from .scheduler import Scheduler
 from .specs import Job, JobArray, JobGroup, Spec
 
-class State(Enum):
-    LAUNCHED = auto()
-    STARTED  = auto()
-    COMPLETE = auto()
-
-@dataclass
-class Child:
-    spec       : Union[Job, JobArray, JobGroup]
-    id         : str            = "N/A"
-    tracking   : Optional[Path] = None
-    state      : State          = State.LAUNCHED
-    server     : str            = ""
-    exitcode   : int            = 0
-    # Message counting
-    warnings   : int            = 0
-    errors     : int            = 0
-    # Tracking of childrens' state
-    sub_total  : int            = 0
-    sub_active : int            = 0
-    sub_passed : int            = 0
-    sub_failed : int            = 0
-    # Timestamping
-    started    : datetime       = datetime.min
-    updated    : datetime       = datetime.min
-    completed  : datetime       = datetime.min
-    e_complete : asyncio.Event  = field(default_factory=asyncio.Event)
-    # Socket
-    ws         : Optional[WebsocketWrapper] = None
 
 class Tier(BaseLayer):
     """ Tier of the job tree """
@@ -153,11 +123,11 @@ class Tier(BaseLayer):
         async with self.lock:
             if id in self.jobs_launched:
                 child = self.jobs_launched[id]
-                if child.state is not State.LAUNCHED:
+                if child.state is not ChildState.LAUNCHED:
                     await self.logger.error(f"Duplicate start detected for child '{child.id}'")
                 await self.logger.debug(f"Child {id} of {self.id} has started")
                 child.server  = server
-                child.state   = State.STARTED
+                child.state   = ChildState.STARTED
                 child.started = datetime.now()
                 child.updated = datetime.now()
                 child.ws      = ws
@@ -183,7 +153,7 @@ class Tier(BaseLayer):
         async with self.lock:
             if id in self.jobs_launched:
                 child = self.jobs_launched[id]
-                if child.state is not State.STARTED:
+                if child.state is not ChildState.STARTED:
                     await self.logger.error(f"Update received for child '{child.id}' before start")
                 await self.logger.debug(f"Received update from child {id} of {self.id}")
                 child.warnings   = int(warnings)
@@ -219,7 +189,7 @@ class Tier(BaseLayer):
                 await self.logger.debug(f"Child {id} of {self.id} has completed")
                 child = self.jobs_launched[id]
                 # Apply updates
-                child.state      = State.COMPLETE
+                child.state      = ChildState.COMPLETE
                 child.warnings   = int(warnings)
                 child.errors     = int(errors)
                 child.exitcode   = int(code)
@@ -283,7 +253,7 @@ class Tier(BaseLayer):
             for child in to_launch:
                 self.jobs_launched[child.id] = child
                 del self.jobs_pending[child.id]
-            await self.scheduler.launch([(x.id, x.tracking) for x in to_launch])
+            await self.scheduler.launch(to_launch)
 
     async def summarise(self) -> Dict[str, int]:
         data = defaultdict(lambda: 0)
@@ -371,7 +341,7 @@ class Tier(BaseLayer):
                 self.terminated = True
                 return
             # Schedule all 'launched' jobs
-            await self.scheduler.launch([(k, v.tracking) for k, v in self.jobs_launched.items()])
+            await self.scheduler.launch(list(self.jobs_launched.values()))
         # Wait for all dependency tasks to complete
         await self.logger.info(f"Waiting for {len(self.job_tasks)} dependency tasks to complete")
         await asyncio.gather(*self.job_tasks)
