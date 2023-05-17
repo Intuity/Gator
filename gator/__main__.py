@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 import click
-import rich
+from rich.console import Console
 
 from . import launch
 from . import launch_progress
@@ -64,14 +64,18 @@ def main(id       : str,
             verbose =verbose
         ))
     except SpecError as e:
-        rich.print(f"[bold red][ERROR][/bold red] Issue in {type(e.obj).__name__} "
+        con = Console()
+        con.log(f"[bold red][ERROR][/bold red] Issue in {type(e.obj).__name__} "
                    f"specification field '{e.field}': {str(e)}[/bold red]")
         if hasattr(e.obj, "jobs"):
             e.obj.jobs = ["..."]
-        rich.print(Spec.dump([e.obj]))
+        con.log(Spec.dump([e.obj]))
         sys.exit(1)
     except Exception as e:
-        rich.print(f"[bold red][ERROR][/bold red] {str(e)}")
+        con = Console()
+        con.log(f"[bold red][ERROR][/bold red] {str(e)}")
+        if verbose:
+            con.print_exception(show_locals=True)
         sys.exit(1)
 
 

@@ -51,7 +51,8 @@ class TestTier:
         # Create logger
         mk_console = MagicMock()
         mk_console.log = lambda x: print(x)
-        self.logger = Logger(self.client, console=mk_console)
+        self.logger = Logger(self.client)
+        self.logger.set_console(mk_console)
         # Allow test to run
         yield
 

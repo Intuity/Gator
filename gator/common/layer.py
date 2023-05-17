@@ -22,7 +22,7 @@ from .db import Database, Query
 from .logger import Logger
 from .ws_server import WebsocketServer
 from ..specs import Job, JobArray, JobGroup, Spec
-from .types import LogEntry, LogSeverity
+from .types import LogSeverity
 
 
 class BaseLayer:
@@ -67,13 +67,12 @@ class BaseLayer:
         (self.tracking / "spec.yaml").write_text(Spec.dump(self.spec))
         # Create a local database
         self.db = Database(self.tracking / "db.sqlite")
-        async def _log_cb(entry : LogEntry) -> None:
-            await self.logger.log(entry.severity, entry.message)
         await self.db.start()
-        self.db.define_transform(LogSeverity, "INTEGER", int, LogSeverity)
-        await self.db.register(LogEntry, None if self.quiet else _log_cb)
+        # Setup logger
+        await self.logger.set_database(self.db)
+        self.logger.tee_to_file(self.tracking / "messages.log")
         # Setup server
-        self.server    = WebsocketServer(db=self.db)
+        self.server    = WebsocketServer(db=self.db, logger=self.logger)
         server_address = await self.server.start()
         # Add handlers for downwards calls
         self.client.add_route("stop", self.stop)

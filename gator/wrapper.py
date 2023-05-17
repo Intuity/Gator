@@ -27,7 +27,7 @@ import psutil
 from tabulate import tabulate
 
 from .common.layer import BaseLayer
-from .common.types import Attribute, LogEntry, LogSeverity, ProcStat
+from .common.types import Attribute, LogSeverity, ProcStat
 
 
 class Wrapper(BaseLayer):
@@ -86,7 +86,7 @@ class Wrapper(BaseLayer):
                               proc   : asyncio.subprocess.Process,
                               stdout : asyncio.subprocess.PIPE,
                               stderr : asyncio.subprocess.PIPE) -> None:
-        log_fh = (self.tracking / f"{proc.pid}.log").open("w", encoding="utf-8")
+        log_fh = (self.tracking / f"raw_{proc.pid}.log").open("w", encoding="utf-8", buffering=1)
         log_lk = asyncio.Lock()
         async def _monitor(pipe, severity):
             while not pipe.at_eof():
@@ -96,8 +96,7 @@ class Wrapper(BaseLayer):
                     log_fh.write(line)
                 clean = line.rstrip()
                 if len(clean) > 0:
-                    await self.db.push_logentry(LogEntry(severity=severity,
-                                                         message =clean))
+                    await self.logger.log(severity, clean)
         t_stdout = asyncio.create_task(_monitor(stdout, LogSeverity.INFO))
         t_stderr = asyncio.create_task(_monitor(stderr, LogSeverity.ERROR))
         await asyncio.gather(t_stdout, t_stderr)

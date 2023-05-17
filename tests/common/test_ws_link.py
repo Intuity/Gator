@@ -19,6 +19,7 @@ import pytest
 import pytest_asyncio
 
 from gator.common.db import Database
+from gator.common.logger import Logger
 from gator.common.ws_client import WebsocketClient
 from gator.common.ws_server import WebsocketServer
 from gator.common.types import LogEntry, LogSeverity
@@ -29,12 +30,14 @@ class TestWebsocketLink:
 
     @pytest_asyncio.fixture(autouse=True)
     async def setup_teardown(self, tmp_path):
-        # Setup database, server, and client
+        # Create a database
         self.db = Database(tmp_path / "test.sqlite")
         await self.db.start()
-        self.db.define_transform(LogSeverity, "INTEGER", lambda x: int(x), lambda x: LogSeverity(x))
-        await self.db.register(LogEntry)
-        self.server = WebsocketServer(db=self.db)
+        # Create a logger
+        self.logger = Logger()
+        await self.logger.set_database(self.db)
+        # Setup database, server, and client
+        self.server = WebsocketServer(db=self.db, logger=self.logger)
         await self.server.start()
         srv_address = await self.server.get_address()
         self.client = WebsocketClient(srv_address)
@@ -107,8 +110,6 @@ class TestWebsocketLink:
         # Wait for call to log function
         await evt_log.wait()
         # Check the call
-        log = self.db.push_logentry.mock_calls[-1].args[0]
-        assert isinstance(log, LogEntry)
-        assert log.timestamp == datetime.fromtimestamp(123)
-        assert log.severity is LogSeverity.INFO
-        assert log.message == "Hi"
+        assert any((x.args[0].timestamp == datetime.fromtimestamp(123) and
+                    x.args[0].severity  is LogSeverity.INFO and
+                    x.args[0].message   == "Hi") for x in self.db.push_logentry.mock_calls)

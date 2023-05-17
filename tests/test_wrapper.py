@@ -108,8 +108,8 @@ class TestWrapper:
         # Stopped can vary depending if procstat captured
         assert int(float(values["stopped"])) in (234, 345)
         # Check the 'hi' was captured
-        assert self.mk_db.push_logentry.mock_calls[0].args[0].severity == LogSeverity.INFO
-        assert self.mk_db.push_logentry.mock_calls[0].args[0].message == "hi"
+        mcs = self.mk_db.push_logentry.mock_calls
+        assert any((x.args[0].severity is LogSeverity.INFO and x.args[0].message == "hi") for x in mcs)
 
     async def test_wrapper_procstat(self, tmp_path) -> None:
         """ Check that process statistics are captured at regular intervals """

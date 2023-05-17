@@ -22,6 +22,7 @@ from typing import Optional
 import websockets
 
 from .db import Database
+from .logger import Logger
 from .types import LogEntry, LogSeverity
 from .ws_router import WebsocketRouter
 from .ws_wrapper import WebsocketWrapper
@@ -31,11 +32,13 @@ class WebsocketServer(WebsocketRouter):
     """ Websocket server that exposes a local server with extensible routes """
 
     def __init__(self,
-                 port : Optional[int] = None,
-                 db   : Database      = None) -> None:
+                 db     : Database,
+                 logger : Logger,
+                 port   : Optional[int] = None) -> None:
         super().__init__()
-        # Store the DB pointer
+        # Store the database and logger pointers
         self.db = db
+        self.logger = logger
         # Create a lock which is held until server thread starts
         self.__port     = port
         self.__port_set = asyncio.Event()
@@ -80,9 +83,8 @@ class WebsocketServer(WebsocketRouter):
         else:
             timestamp = datetime.fromtimestamp(int(timestamp))
         severity = getattr(LogSeverity, severity.strip().upper(), LogSeverity.INFO)
-        await self.db.push_logentry(LogEntry(timestamp=timestamp,
-                                             severity =severity,
-                                             message  =message.strip()))
+        # Log the message
+        await self.logger.log(severity, message.strip(), timestamp=timestamp)
 
     # ==========================================================================
     # Server

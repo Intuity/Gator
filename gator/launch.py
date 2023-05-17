@@ -46,8 +46,9 @@ async def launch(id           : Optional[str]               = None,
     await client.start()
     # Create a logger with a pointer to the console
     logger = Logger(ws_cli   =client,
-                    console  =console,
-                    verbosity=[LogSeverity.INFO, LogSeverity.DEBUG][verbose])
+                    verbosity=[LogSeverity.INFO, LogSeverity.DEBUG][verbose],
+                    forward  =all_msg)
+    logger.set_console(console)
     # Work out where the spec is coming from
     if spec is None and client.linked and id:
         raw_spec = await client.spec(id=id)

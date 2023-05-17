@@ -13,13 +13,17 @@
 # limitations under the License.
 
 import asyncio
-import time
+import atexit
+import io
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import click
 from rich.console import Console
 
-from .types import LogSeverity
+from .db import Database
+from .types import LogEntry, LogSeverity
 from .ws_client import WebsocketClient
 
 
@@ -34,46 +38,101 @@ class Logger:
 
     def __init__(self,
                  ws_cli    : Optional[WebsocketClient] = None,
-                 console   : Optional[Console]         = None,
-                 verbosity : LogSeverity               = LogSeverity.INFO) -> None:
+                 verbosity : LogSeverity               = LogSeverity.INFO,
+                 forward   : bool                      = True) -> None:
         # Create a client if necessary (uses an environment variable to find the parent)
         if ws_cli is None:
             self.ws_cli = WebsocketClient()
         else:
             self.ws_cli = ws_cli
-        self.console = console
-        self.verbosity = verbosity
+        self.verbosity  : LogSeverity                = verbosity
+        self.forward    : bool                       = forward
+        self.__console  : Optional[Console]          = None
+        self.__database : Optional[Database]         = None
+        self.__log_fh   : Optional[io.TextIOWrapper] = None
 
     def set_console(self, console : Console) -> None:
-        self.console = console
+        self.__console = console
 
-    async def log(self, severity : LogSeverity, message : str) -> None:
-        if self.ws_cli.linked:
-            await self.ws_cli.log(timestamp=time.time(),
+    async def set_database(self, database : Database) -> None:
+        self.__database = database
+        await self.__database.register(LogEntry)
+        self.__database.define_transform(LogSeverity, "INTEGER", int, LogSeverity)
+
+    def __close_log_file(self) -> None:
+        if self.__log_fh is not None:
+            self.__log_fh.flush()
+            self.__log_fh.close()
+            self.__log_fh = None
+
+    def tee_to_file(self, path : Path) -> None:
+        self.__close_log_file()
+        self.__log_fh = path.open(mode="w", encoding="utf-8", buffering=1)
+        self.__log_fh.write(f"Log started at {datetime.now().strftime(r'%Y-%m-%d %H:%M:%S')}\n")
+        atexit.register(self.__close_log_file)
+
+    async def log(self,
+                  severity  : LogSeverity,
+                  message   : str,
+                  forward   : Optional[bool] = None,
+                  timestamp : Optional[datetime] = None) -> None:
+        # If forward is 'None', use the default value
+        forward = self.forward if forward is None else forward
+        # Generate a timestamp if required
+        if timestamp is None:
+            timestamp = datetime.now()
+        # If linked to parent and forwarding requested, push log upwards
+        if forward and self.ws_cli.linked and severity >= self.verbosity:
+            await self.ws_cli.log(timestamp=int(timestamp.timestamp()),
                                   severity =severity.name,
                                   message  =message,
                                   posted   =True)
-        elif self.console and severity >= self.verbosity:
+        # If a console is attached, log locally
+        if self.__console and severity >= self.verbosity:
             prefix, suffix = self.FORMAT.get(severity.name, ("[bold]", "[/bold]"))
-            self.console.log(f"{prefix}[{severity.name:<7s}]{suffix} {message}")
+            self.__console.log(f"{prefix}[{severity.name:<7s}]{suffix} {message}")
+        # Record to database
+        if self.__database is not None:
+            await self.__database.push_logentry(LogEntry(severity =severity,
+                                                         message  =message,
+                                                         timestamp=timestamp))
+        # Tee to file if configured
+        if self.__log_fh is not None:
+            date = datetime.now().strftime(r"%H:%M:%S")
+            self.__log_fh.write(f"[{date}] [{severity.name:<7s}] {message}\n")
 
-    async def debug(self, message : str) -> None:
-        await self.log(LogSeverity.DEBUG, message)
+    async def debug(self,
+                    message   : str,
+                    forward   : Optional[bool] = None,
+                    timestamp : Optional[datetime] = None) -> None:
+        await self.log(LogSeverity.DEBUG, message, forward, timestamp)
 
-    async def info(self, message : str) -> None:
-        await self.log(LogSeverity.INFO, message)
+    async def info(self,
+                    message   : str,
+                    forward   : Optional[bool] = None,
+                    timestamp : Optional[datetime] = None) -> None:
+        await self.log(LogSeverity.INFO, message, forward, timestamp)
 
-    async def warning(self, message : str) -> None:
-        await self.log(LogSeverity.WARNING, message)
+    async def warning(self,
+                      message   : str,
+                      forward   : Optional[bool] = None,
+                      timestamp : Optional[datetime] = None) -> None:
+        await self.log(LogSeverity.WARNING, message, forward, timestamp)
 
-    async def error(self, message : str) -> None:
-        await self.log(LogSeverity.ERROR, message)
+    async def error(self,
+                    message   : str,
+                    forward   : Optional[bool] = None,
+                    timestamp : Optional[datetime] = None) -> None:
+        await self.log(LogSeverity.ERROR, message, forward, timestamp)
 
 @click.command()
 @click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
 @click.argument("message")
 def logger(severity, message):
-    asyncio.run(Logger().log(getattr(LogSeverity, severity.upper()), message))
+    asyncio.run(Logger(verbosity=LogSeverity.DEBUG).log(
+        severity=getattr(LogSeverity, severity.upper()),
+        message =message
+    ))
 
 if __name__ == "__main__":
     logger(prog_name="logger")

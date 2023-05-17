@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
-
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from click.testing import CliRunner
 
 import gator.common.logger
@@ -24,8 +24,8 @@ from gator.common.types import LogSeverity
 
 @pytest.fixture
 def logger(mocker) -> Logger:
-    mock_time = mocker.patch("gator.common.logger.time")
-    mock_time.time.return_value = 1234
+    mock_time = mocker.patch("gator.common.logger.datetime")
+    mock_time.now.return_value = datetime.fromtimestamp(1234)
     # Create a fake websocket interface
     ws_cli        = MagicMock()
     ws_cli.linked = False
@@ -72,78 +72,84 @@ class TestLogger:
         # Raw
         await logger.log(LogSeverity.INFO, "Testing info")
         assert not logger.ws_cli.log.called
-        logger.console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
-        logger.console.log.reset_mock()
+        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger._Logger__console.log.reset_mock()
         # Debug
         await logger.debug("Testing debug")
         assert not logger.ws_cli.log.called
-        logger.console.log.assert_called_with("[bold cyan][DEBUG  ][/bold cyan] Testing debug")
-        logger.console.log.reset_mock()
+        logger._Logger__console.log.assert_called_with("[bold cyan][DEBUG  ][/bold cyan] Testing debug")
+        logger._Logger__console.log.reset_mock()
         # Info
         await logger.info("Testing info")
         assert not logger.ws_cli.log.called
-        logger.console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
-        logger.console.log.reset_mock()
+        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger._Logger__console.log.reset_mock()
         # Warning
         await logger.warning("Testing warning")
         assert not logger.ws_cli.log.called
-        logger.console.log.assert_called_with("[bold amber][WARNING][/bold amber] Testing warning")
-        logger.console.log.reset_mock()
+        logger._Logger__console.log.assert_called_with("[bold amber][WARNING][/bold amber] Testing warning")
+        logger._Logger__console.log.reset_mock()
         # Error
         await logger.error("Testing error")
         assert not logger.ws_cli.log.called
-        logger.console.log.assert_called_with("[bold red][ERROR  ][/bold red] Testing error")
-        logger.console.log.reset_mock()
+        logger._Logger__console.log.assert_called_with("[bold red][ERROR  ][/bold red] Testing error")
+        logger._Logger__console.log.reset_mock()
 
     @pytest.mark.asyncio
     async def test_linked(self, logger_linked):
         """ Local logging goes to the console """
         logger = logger_linked
+        logger.verbosity = LogSeverity.DEBUG
         # Raw
         await logger.log(LogSeverity.INFO, "Testing info")
-        assert not logger.console.log.called
         logger.ws_cli.log.assert_called_with(timestamp=1234,
                                              severity="INFO",
                                              message="Testing info",
                                              posted=True)
+        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
         logger.ws_cli.log.reset_mock()
+        logger._Logger__console.log.reset_mock()
         # Debug
         await logger.debug("Testing debug")
-        assert not logger.console.log.called
         logger.ws_cli.log.assert_called_with(timestamp=1234,
                                              severity="DEBUG",
                                              message="Testing debug",
                                              posted=True)
+        logger._Logger__console.log.assert_called_with("[bold cyan][DEBUG  ][/bold cyan] Testing debug")
         logger.ws_cli.log.reset_mock()
+        logger._Logger__console.log.reset_mock()
         # Info
         await logger.info("Testing info")
-        assert not logger.console.log.called
         logger.ws_cli.log.assert_called_with(timestamp=1234,
                                              severity="INFO",
                                              message="Testing info",
                                              posted=True)
+        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
         logger.ws_cli.log.reset_mock()
+        logger._Logger__console.log.reset_mock()
         # Warning
         await logger.warning("Testing warning")
-        assert not logger.console.log.called
         logger.ws_cli.log.assert_called_with(timestamp=1234,
                                              severity="WARNING",
                                              message="Testing warning",
                                              posted=True)
+        logger._Logger__console.log.assert_called_with("[bold amber][WARNING][/bold amber] Testing warning")
         logger.ws_cli.log.reset_mock()
+        logger._Logger__console.log.reset_mock()
         # Error
         await logger.error("Testing error")
-        assert not logger.console.log.called
         logger.ws_cli.log.assert_called_with(timestamp=1234,
                                              severity="ERROR",
                                              message="Testing error",
                                              posted=True)
+        logger._Logger__console.log.assert_called_with("[bold red][ERROR  ][/bold red] Testing error")
         logger.ws_cli.log.reset_mock()
+        logger._Logger__console.log.reset_mock()
 
     def test_cli(self, mocker):
         """ Log via the command line interface """
-        mk_time = mocker.patch("gator.common.logger.time")
-        mk_time.time.return_value = 1234
+        mk_time = mocker.patch("gator.common.logger.datetime")
+        mk_time.now.return_value = datetime.fromtimestamp(1234)
         wc_cls = mocker.patch("gator.common.logger.WebsocketClient")
         wc_cls.return_value = (ws_cli := AsyncMock())
         ws_cli.linked = True
