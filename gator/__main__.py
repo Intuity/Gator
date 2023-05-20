@@ -66,7 +66,7 @@ def main(id       : str,
     except SpecError as e:
         con = Console()
         con.log(f"[bold red][ERROR][/bold red] Issue in {type(e.obj).__name__} "
-                   f"specification field '{e.field}': {str(e)}[/bold red]")
+                f"specification field '{e.field}': {str(e)}")
         if hasattr(e.obj, "jobs"):
             e.obj.jobs = ["..."]
         con.log(Spec.dump([e.obj]))

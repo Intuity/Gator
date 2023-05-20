@@ -87,7 +87,7 @@ class TestLogger:
         # Warning
         await logger.warning("Testing warning")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with("[bold amber][WARNING][/bold amber] Testing warning")
+        logger._Logger__console.log.assert_called_with("[bold yellow][WARNING][/bold yellow] Testing warning")
         logger._Logger__console.log.reset_mock()
         # Error
         await logger.error("Testing error")
@@ -133,7 +133,7 @@ class TestLogger:
                                              severity="WARNING",
                                              message="Testing warning",
                                              posted=True)
-        logger._Logger__console.log.assert_called_with("[bold amber][WARNING][/bold amber] Testing warning")
+        logger._Logger__console.log.assert_called_with("[bold yellow][WARNING][/bold yellow] Testing warning")
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Error

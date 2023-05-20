@@ -17,28 +17,51 @@ from collections import Counter
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase, SpecError
+from .resource import Cores, Memory
 
 
 class Job(SpecBase):
     yaml_tag = "!Job"
 
     def __init__(self,
-                 id      : Optional[str] = None,
-                 env     : Optional[Dict[str, str]] = None,
-                 cwd     : Optional[str] = None,
-                 command : Optional[str] = None,
-                 args    : Optional[List[str]] = None,
-                 on_done : Optional[List[str]] = None,
-                 on_fail : Optional[List[str]] = None,
-                 on_pass : Optional[List[str]] = None) -> None:
+                 id        : Optional[str] = None,
+                 env       : Optional[Dict[str, str]] = None,
+                 cwd       : Optional[str] = None,
+                 command   : Optional[str] = None,
+                 args      : Optional[List[str]] = None,
+                 resources : Optional[List[Union[Cores, Memory]]] = None,
+                 on_done   : Optional[List[str]] = None,
+                 on_fail   : Optional[List[str]] = None,
+                 on_pass   : Optional[List[str]] = None) -> None:
         self.id = id
         self.env = env or {}
         self.cwd = cwd
         self.command = command
         self.args = args or []
+        self.resources = resources or []
         self.on_done = on_done or []
         self.on_fail = on_fail or []
         self.on_pass = on_pass or []
+
+    @property
+    @functools.lru_cache()
+    def requested_cores(self) -> int:
+        """ Return the number of requested cores or 0 if not specified """
+        for resource in self.resources:
+            if isinstance(resource, Cores):
+                return resource.count
+        else:
+            return 0
+
+    @property
+    @functools.lru_cache()
+    def requested_memory(self) -> int:
+        """ Return the amount of memory requested in megabytes or 0 if not specified """
+        for resource in self.resources:
+            if isinstance(resource, Memory):
+                return resource.in_megabytes
+        else:
+            return 0
 
     def check(self) -> None:
         if self.id is not None and not isinstance(self.id, str):
@@ -57,6 +80,15 @@ class Job(SpecBase):
             raise SpecError(self, "args", "Arguments must be a list")
         if set(map(type, self.args)).difference({str, int}):
             raise SpecError(self, "args", "Arguments must be strings or integers")
+        if not isinstance(self.resources, list):
+            raise SpecError(self, "resources", "Resources must be a list")
+        if set(map(type, self.resources)).difference({Cores, Memory}):
+            raise SpecError(self, "resources", "Resources must be !Cores or !Memory")
+        type_count = Counter(type(x) for x in self.resources)
+        if type_count[Cores] > 1:
+            raise SpecError(self, "resources", "More than one !Cores resource request")
+        if type_count[Memory] > 1:
+            raise SpecError(self, "resources", "More than one !Memory resource request")
         for field in ("on_done", "on_fail", "on_pass"):
             value = getattr(self, field)
             if not isinstance(value, list):

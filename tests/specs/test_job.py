@@ -108,6 +108,7 @@ def test_spec_job_dump():
         "on_done: []\n"
         "on_fail: []\n"
         "on_pass: []\n"
+        "resources: []\n"
     )
 
 def test_spec_job_bad_fields():

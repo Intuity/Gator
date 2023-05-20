@@ -172,6 +172,7 @@ def test_spec_job_array_dump():
         "  on_done: []\n"
         "  on_fail: []\n"
         "  on_pass: []\n"
+        "  resources: []\n"
         "on_done: []\n"
         "on_fail: []\n"
         "on_pass: []\n"

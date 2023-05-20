@@ -4,7 +4,10 @@
     test_key_a: hey
     test_key_b: you
   command: echo
-  args   :
+  args:
     - ${test_key_a}
     - there
     - ${test_key_b}
+  resources:
+    - !Cores [1]
+    - !Memory [10, MB]

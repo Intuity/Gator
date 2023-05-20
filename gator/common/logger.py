@@ -33,7 +33,7 @@ class Logger:
     FORMAT = {
         LogSeverity.DEBUG   : ("[bold cyan]", "[/bold cyan]"),
         LogSeverity.INFO    : ("[bold]", "[/bold]"),
-        LogSeverity.WARNING : ("[bold amber]", "[/bold amber]"),
+        LogSeverity.WARNING : ("[bold yellow]", "[/bold yellow]"),
         LogSeverity.ERROR   : ("[bold red]", "[/bold red]"),
         LogSeverity.CRITICAL: ("[bold white on red]", "[/bold white on red]"),
     }

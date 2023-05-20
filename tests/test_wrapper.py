@@ -95,13 +95,15 @@ class TestWrapper:
         self.mk_db.register.assert_any_call(ProcStat)
         # Check attributes pushed into the database
         values = {}
-        for idx, (key, val) in enumerate((("cmd",     "echo hi"               ),
-                                          ("cwd",     tmp_path.as_posix()     ),
-                                          ("host",    socket.gethostname()    ),
-                                          ("started", None                    ),
-                                          ("pid",     str(wrp.proc.pid)       ),
-                                          ("stopped", None                    ),
-                                          ("exit",    str(wrp.proc.returncode)))):
+        for idx, (key, val) in enumerate((("cmd",        "echo hi"               ),
+                                          ("cwd",        tmp_path.as_posix()     ),
+                                          ("host",       socket.gethostname()    ),
+                                          ("started",    None                    ),
+                                          ("req_cores",  "0"                     ),
+                                          ("req_memory", "0"                     ),
+                                          ("pid",        str(wrp.proc.pid)       ),
+                                          ("stopped",    None                    ),
+                                          ("exit",       str(wrp.proc.returncode)))):
             assert self.mk_db.push_attribute.mock_calls[idx].args[0].name == key
             if key in ("started", "stopped"):
                 values[key] = self.mk_db.push_attribute.mock_calls[idx].args[0].value
@@ -125,8 +127,9 @@ class TestWrapper:
             assert mtc in metrics
             if mtc.value > final.get(mtc.name, 0):
                 final[mtc.name] = mtc.value
-        assert set(final.keys()) == {"msg_info"}
+        assert set(final.keys()) == {"msg_info", "msg_debug"}
         assert final["msg_info"] > 0
+        assert final["msg_debug"] > 0
 
     async def test_wrapper_procstat(self, tmp_path) -> None:
         """ Check that process statistics are captured at regular intervals """

@@ -128,13 +128,18 @@ class Wrapper(BaseLayer):
         log_fh.close()
 
     async def __monitor_usage(self,
-                              proc     : asyncio.subprocess.Process,
-                              done_evt : asyncio.Event) -> None:
+                              proc      : asyncio.subprocess.Process,
+                              done_evt  : asyncio.Event,
+                              cpu_cores : int,
+                              memory_mb : int) -> None:
         # Catch NoSuchProcess in case it exits before monitoring can start
         try:
             ps = psutil.Process(pid=proc.pid)
         except psutil.NoSuchProcess:
             return
+        # Tracks when resources exceed limits to avoid lots of messages
+        exceeding = False
+        # Watch the process
         while not done_evt.is_set():
             try:
                 # Capture statistics
@@ -157,11 +162,23 @@ class Wrapper(BaseLayer):
                         vms      += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
+                    # Push statistics to the databvase
                     await self.db.push_procstat(ProcStat(timestamp=datetime.now(),
                                                          nproc=nproc,
                                                          cpu=cpu_perc,
                                                          mem=rss,
                                                          vmem=vms))
+                    # Check if exceeding the limits
+                    now_exceeding = ((cpu_cores > 0 and cpu_perc > cpu_cores) or
+                                     (memory_mb > 0 and (rss / 1E6) > memory_mb))
+                    if now_exceeding and not exceeding:
+                        await self.logger.warning(
+                            f"Job has exceed it's requested resources of "
+                            f"{cpu_cores} CPU cores and {memory_mb} MB of RAM - "
+                            f"current usage is {cpu_perc:.01f} CPU cores and "
+                            f"{rss / 1E6:0.1} MB of RAM"
+                        )
+                    exceeding = now_exceeding
             except psutil.NoSuchProcess:
                 break
             # If process complete or done event set, break out
@@ -189,11 +206,18 @@ class Wrapper(BaseLayer):
         full_cmd = " ".join(expandvars.expand(x, environ=env) for x in all_args)
         # Ensure the tracking directory exists
         self.tracking.mkdir(parents=True, exist_ok=True)
+        # Pickup resource requirements
+        cpu_cores = self.spec.requested_cores
+        memory_mb = self.spec.requested_memory
+        await self.logger.debug(f"Task requests {cpu_cores} CPU cores and "
+                                f"{memory_mb} MB of RAM")
         # Setup initial attributes
-        await self.db.push_attribute(Attribute(name="cmd",     value=full_cmd))
-        await self.db.push_attribute(Attribute(name="cwd",     value=working_dir.as_posix()))
-        await self.db.push_attribute(Attribute(name="host",    value=socket.gethostname()))
-        await self.db.push_attribute(Attribute(name="started", value=str(datetime.now().timestamp())))
+        await self.db.push_attribute(Attribute(name="cmd",        value=full_cmd))
+        await self.db.push_attribute(Attribute(name="cwd",        value=working_dir.as_posix()))
+        await self.db.push_attribute(Attribute(name="host",       value=socket.gethostname()))
+        await self.db.push_attribute(Attribute(name="started",    value=str(datetime.now().timestamp())))
+        await self.db.push_attribute(Attribute(name="req_cores",  value=str(cpu_cores)))
+        await self.db.push_attribute(Attribute(name="req_memory", value=str(memory_mb)))
         # Launch the process
         await self.logger.info(f"Launching task: {full_cmd}")
         self.proc = await asyncio.create_subprocess_shell(full_cmd,
@@ -205,7 +229,7 @@ class Wrapper(BaseLayer):
                                                           close_fds=True)
         # Monitor process usage
         e_done  = asyncio.Event()
-        t_pmon  = asyncio.create_task(self.__monitor_usage(self.proc, e_done))
+        t_pmon  = asyncio.create_task(self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb))
         t_stdio = asyncio.create_task(self.__monitor_stdio(self.proc, self.proc.stdout, self.proc.stderr))
         # Run until process complete & STDOUT/STDERR digested
         await self.logger.info("Monitoring task")

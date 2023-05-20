@@ -26,7 +26,10 @@ class SpecBase(yaml.YAMLObject):
 
     @classmethod
     def from_yaml(cls, loader : Loader, node : yaml.Node) -> "SpecBase":
-        return cls(**loader.construct_mapping(node, deep=True))
+        if isinstance(node, yaml.nodes.MappingNode):
+            return cls(**loader.construct_mapping(node, deep=True))
+        else:
+            return cls(*loader.construct_sequence(node))
 
     def check(self) -> None:
         pass
