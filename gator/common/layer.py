@@ -18,11 +18,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from .ws_client import WebsocketClient
-from .db import Database, Query
+from .db import Database
 from .logger import Logger
 from .ws_server import WebsocketServer
 from ..specs import Job, JobArray, JobGroup, Spec
-from .types import LogSeverity
+from .types import LogSeverity, Metric, Result
 
 
 class BaseLayer:
@@ -57,6 +57,7 @@ class BaseLayer:
         # State
         self.complete   = False
         self.terminated = False
+        self.metrics    = {}
 
     async def setup(self,
                     *args    : List[Any],
@@ -68,6 +69,12 @@ class BaseLayer:
         # Create a local database
         self.db = Database(self.tracking / "db.sqlite")
         await self.db.start()
+        await self.db.register(Metric)
+        # Setup base metrics
+        for sev in LogSeverity:
+            await self.db.push_metric(metric := Metric(name=f"msg_{sev.name.lower()}",
+                                                       value=0))
+            self.metrics[metric.name] = metric
         # Setup logger
         await self.logger.set_database(self.db)
         self.logger.tee_to_file(self.tracking / "messages.log")
@@ -91,15 +98,19 @@ class BaseLayer:
         # Stop the heartbeat process
         self.__hb_event.set()
         await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
+        # Determine the result
+        num_err = self.logger.get_count(LogSeverity.ERROR, LogSeverity.CRITICAL)
+        result = [Result.FAILURE, Result.SUCCESS][self.code == 0 and num_err == 0]
         # Tell the parent the job is complete
         summary = await self.summarise()
-        await self.client.complete(id  =self.id,
-                                   code=self.code,
-                                   **summary)
+        await self.client.complete(id=self.id, code=self.code, result=result, **summary)
         # Log the warning/error count
-        num_wrn = summary.get("warnings", 0)
-        num_err = summary.get("errors",   0)
-        await self.logger.info(f"Recorded {num_wrn} warnings and {num_err} errors")
+        msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
+        msg_metrics = filter(lambda x: x.name in msg_keys, self.metrics.values())
+        parts = [f"{x.value} {x.name.split('msg_')[1]}" for x in msg_metrics]
+        await self.logger.info(
+            "Recorded " + ", ".join(parts[:-1]) + f" and {parts[-1]} messages"
+        )
         # Shutdown the server
         await self.server.stop()
         # Shutdown the database
@@ -133,6 +144,11 @@ class BaseLayer:
             pass
 
     async def heartbeat(self) -> None:
+        # Update logging metrics
+        for sev in LogSeverity:
+            metric = self.metrics[f"msg_{sev.name.lower()}"]
+            metric.value = self.logger.get_count(sev)
+            await self.db.update_metric(metric)
         # Summarise state
         summary = await self.summarise()
         # Report to parent
@@ -149,6 +165,4 @@ class BaseLayer:
         return (self.client is None) or (not self.client.linked)
 
     async def summarise(self) -> Dict[str, int]:
-        wrn_count = await self.db.get_logentry(sql_count=True, severity=LogSeverity.WARNING)
-        err_count = await self.db.get_logentry(sql_count=True, severity=Query(gte=LogSeverity.ERROR))
-        return { "warnings": wrn_count, "errors": err_count }
+        return { "metrics": { k: x.value for k, x in self.metrics.items() } }

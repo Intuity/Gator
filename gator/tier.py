@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 from .common.child import Child, ChildState
 from .common.layer import BaseLayer
 from .common.logger import Logger
+from .common.types import Metric, Result
 from .common.ws_wrapper import WebsocketWrapper
 from .scheduler import Scheduler
 from .specs import Job, JobArray, JobGroup, Spec
@@ -93,8 +94,7 @@ class Tier(BaseLayer):
                 for child in store.values():
                     state[key][child.id] = { "state"    : child.state.name,
                                              "server"   : child.server,
-                                             "warnings" : child.warnings,
-                                             "errors"   : child.errors,
+                                             "metrics"  : { x.name: x.value for x in child.metrics.values() },
                                              "exitcode" : child.exitcode,
                                              "started"  : child.started.isoformat(),
                                              "updated"  : child.updated.isoformat(),
@@ -138,17 +138,29 @@ class Tier(BaseLayer):
 
     async def __child_updated(self,
                               id         : str,
-                              warnings   : int,
-                              errors     : int,
+                              metrics    : Dict[str, List[int]],
                               sub_total  : int = 0,
                               sub_active : int = 0,
                               sub_passed : int = 0,
                               sub_failed : int = 0,
                               **_):
         """
-        Child can report error and warning counts.
+        Child can report the number of jobs it knows about, how many are running,
+        and how many have passed or failed. The child may also report arbitrary
+        metrics, which are aggregated hierarchically.
 
-        Example: { "errors": 1, "warnings": 3 }
+        Example: { "id"        : "regression",
+                   "sub_total" : 10,
+                   "sub_active": 4,
+                   "sub_passed": 1,
+                   "sub_failed": 2,
+                    "metrics"  : {
+                      "msg_debug"   : 3,
+                      "msg_info"    : 5,
+                      "msg_warning" : 2,
+                      "msg_error"   : 0,
+                      "msg_critical": 0
+                    } }
         """
         async with self.lock:
             if id in self.jobs_launched:
@@ -156,9 +168,11 @@ class Tier(BaseLayer):
                 if child.state is not ChildState.STARTED:
                     await self.logger.error(f"Update received for child '{child.id}' before start")
                 await self.logger.debug(f"Received update from child {id} of {self.id}")
-                child.warnings   = int(warnings)
-                child.errors     = int(errors)
-                child.updated    = datetime.now()
+                child.updated = datetime.now()
+                for m_key, m_val in metrics.items():
+                    if m_key not in child.metrics:
+                        child.metrics[m_key] = Metric(name=m_key)
+                    child.metrics[m_key].value = m_val
                 child.sub_total  = sub_total
                 child.sub_active = sub_active
                 child.sub_passed = sub_passed
@@ -173,8 +187,8 @@ class Tier(BaseLayer):
     async def __child_completed(self,
                                 id         : str,
                                 code       : int,
-                                warnings   : int,
-                                errors     : int,
+                                result     : int,
+                                metrics    : Dict[str, List[int]],
                                 sub_total  : int = 0,
                                 sub_passed : int = 0,
                                 sub_failed : int = 0,
@@ -189,12 +203,15 @@ class Tier(BaseLayer):
                 await self.logger.debug(f"Child {id} of {self.id} has completed")
                 child = self.jobs_launched[id]
                 # Apply updates
-                child.state      = ChildState.COMPLETE
-                child.warnings   = int(warnings)
-                child.errors     = int(errors)
+                child.updated   = datetime.now()
+                child.completed = datetime.now()
+                child.state     = ChildState.COMPLETE
+                child.result    = Result(int(result))
+                for m_key, m_val in metrics.items():
+                    if m_key not in child.metrics:
+                        child.metrics[m_key] = Metric(name=m_key)
+                    child.metrics[m_key].value = m_val
                 child.exitcode   = int(code)
-                child.updated    = datetime.now()
-                child.completed  = datetime.now()
                 child.sub_total  = sub_total
                 child.sub_active = 0
                 child.sub_passed = sub_passed
@@ -219,23 +236,21 @@ class Tier(BaseLayer):
             for child in to_launch:
                 child.e_complete.set()
             return
-        # Accumulate errors and absolute exit codes for all dependencies
+        # Accumulate results for all dependencies
         await self.logger.info(f"Dependencies of {id} complete, testing for launch")
-        by_id = defaultdict(lambda: 0)
-        for child in wait_for:
-            by_id[child.spec.id] += child.errors + abs(child.exitcode)
+        by_id = { x.spec.id: x.result for x in wait_for }
         # Check if pass/fail criteria is met
         all_ok = True
         for spec in set(x.spec for x in to_launch):
             for result, dep_ids in ((True, spec.on_pass), (False, spec.on_fail)):
                 for id in dep_ids:
-                    if result and by_id[id] != 0:
+                    if result and by_id[id] != Result.SUCCESS:
                         await self.logger.warning(f"Dependency '{id}' failed so "
                                                   f"{type(spec).__name__} '{spec.id}' "
                                                   f"will be pruned")
                         all_ok = False
                         break
-                    elif not result and by_id[id] == 0:
+                    elif not result and by_id[id] == Result.SUCCESS:
                         await self.logger.warning(f"Dependency '{id}' passed so "
                                                   f"{type(spec).__name__} '{spec.id}' "
                                                   f"will be pruned")
@@ -260,8 +275,8 @@ class Tier(BaseLayer):
         data.update(await super().summarise())
         async with self.lock:
             for child in (list(self.jobs_launched.values()) + list(self.jobs_completed.values())):
-                data["errors"]     += child.errors
-                data["warnings"]   += child.warnings
+                for metric in child.metrics.values():
+                    data["metrics"][metric.name] += metric.value
                 data["sub_total"]  += child.sub_total
                 data["sub_active"] += child.sub_active
                 data["sub_passed"] += child.sub_passed

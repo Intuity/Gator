@@ -84,7 +84,7 @@ class WebsocketServer(WebsocketRouter):
             timestamp = datetime.fromtimestamp(int(timestamp))
         severity = getattr(LogSeverity, severity.strip().upper(), LogSeverity.INFO)
         # Log the message
-        await self.logger.log(severity, message.strip(), timestamp=timestamp)
+        await self.logger.log(severity, message.strip(), timestamp=timestamp, forwarded=True)
 
     # ==========================================================================
     # Server

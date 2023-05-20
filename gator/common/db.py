@@ -15,6 +15,7 @@
 import asyncio
 import atexit
 import dataclasses
+import functools
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
@@ -25,6 +26,34 @@ import aiosqlite
 @dataclasses.dataclass
 class Base:
     db_uid : Optional[int] = None
+
+    @classmethod
+    @functools.lru_cache
+    def list_fields(cls) -> List[dataclasses.field]:
+        return [f for f in dataclasses.fields(cls) if f.name != "db_uid"]
+
+    def serialize(self,
+                  as_list : bool = False,
+                  omit    : Optional[List[str]] = None) -> Dict[str, int]:
+        omit = omit or []
+        if as_list:
+            return [getattr(self, f.name) for f in self.list_fields() if f.name not in omit]
+        else:
+            return { f.name: getattr(self, f.name) for f in self.list_fields() if f.name not in omit }
+
+    def deserialize(self,
+                    values : Union[Dict[str, int], List[int]],
+                    omit   : Optional[List[str]] = None) -> None:
+        if isinstance(values, list):
+            fields = [x for x in self.list_fields() if x.name not in omit]
+            omit   = omit or []
+            for key, value in zip(fields, values):
+                setattr(self, key.name, value)
+        else:
+            fnames = [x.name for x in self.list_fields()]
+            for key, value in values.items():
+                if key in fnames:
+                    setattr(self, key, value)
 
 
 @dataclasses.dataclass
@@ -145,9 +174,7 @@ class Database:
         # Create the table in the database and collect transformations to/from SQL
         if descr.__name__ not in self.tables:
             fields = []
-            for field in dataclasses.fields(descr):
-                if field.name == "db_uid":
-                    continue
+            for field in descr.list_fields():
                 stype, _, _ = self.get_transform(field.type)
                 fields.append(f"{field.name} {stype}")
             query = (
@@ -161,9 +188,7 @@ class Database:
             fnames = []
             transforms_put = []
             transforms_get = []
-            for field in dataclasses.fields(descr):
-                if field.name == "db_uid":
-                    continue
+            for field in descr.list_fields():
                 fnames.append(field.name)
                 _, tput, tget = self.get_transform(field.type)
                 transforms_put.append(tput)
@@ -175,7 +200,7 @@ class Database:
             )
             async def _push(object : descr) -> None:
                 nonlocal sql_put, transforms_put
-                assert isinstance(object, descr)
+                assert isinstance(object, descr), "Wrong object type"
                 values = [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object)[1:])]
                 async with self.__db.execute(sql_put, values) as cursor:
                     object.db_uid = cursor.lastrowid
@@ -183,6 +208,20 @@ class Database:
                     await push_callback(object)
                 return object.db_uid
             setattr(self, f"push_{descr.__name__.lower()}", _push)
+            # Create an 'update' method
+            sql_update = (
+                f"UPDATE {descr.__name__} SET " +
+                ", ".join(f"{f} = :{f}" for f in fnames) +
+                " WHERE db_uid = :db_uid"
+            )
+            async def _update(object : descr) -> None:
+                nonlocal sql_update, transforms_put
+                assert isinstance(object, descr), "Wrong object type"
+                assert object.db_uid is not None, "Object has no UID field"
+                params = {k: x(y) for k, x, y in zip(fnames, transforms_put, dataclasses.astuple(object)[1:])}
+                params["db_uid"] = object.db_uid
+                await self.__db.execute(sql_update, params)
+            setattr(self, f"update_{descr.__name__.lower()}", _update)
             # Create a 'getter' method
             sql_base_query = f"SELECT * FROM {descr.__name__}"
             sql_base_count = f"SELECT COUNT(db_uid) FROM {descr.__name__}"
@@ -250,6 +289,13 @@ class Database:
         if descr not in self.registered:
             await self.register(descr)
         result = await getattr(self, f"push_{descr.__name__.lower()}")(object)
+        return result
+
+    async def update(self, object : Any) -> None:
+        descr = type(object)
+        if descr not in self.registered:
+            await self.register(descr)
+        result = await getattr(self, f"update_{descr.__name__.lower()}")(object)
         return result
 
     async def get(self,

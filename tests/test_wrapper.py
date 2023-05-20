@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, AsyncMock
 import pytest
 import pytest_asyncio
 
+from gator.common.db import Query
 from gator.common.logger import Logger
 from gator.common.types import Attribute, LogSeverity, ProcStat
 from gator.common.ws_client import WebsocketClient
@@ -41,9 +42,12 @@ class TestWrapper:
         self.mk_db.push_attribute = AsyncMock()
         self.mk_db.push_logentry = AsyncMock()
         self.mk_db.push_procstat = AsyncMock()
+        self.mk_db.push_metric = AsyncMock()
         self.mk_db.get_attribute = AsyncMock()
         self.mk_db.get_logentry = AsyncMock()
         self.mk_db.get_procstat = AsyncMock()
+        self.mk_db.get_metric = AsyncMock()
+        self.mk_db.update_metric = AsyncMock()
         # Patch wrapper timestamping
         self.mk_wrp_dt = mocker.patch("gator.wrapper.datetime")
         self.mk_wrp_dt.now.side_effect = [datetime.fromtimestamp(x) for x in (123, 234, 345, 456)]
@@ -110,6 +114,19 @@ class TestWrapper:
         # Check the 'hi' was captured
         mcs = self.mk_db.push_logentry.mock_calls
         assert any((x.args[0].severity is LogSeverity.INFO and x.args[0].message == "hi") for x in mcs)
+        # Check metrics were pushed into the database
+        # NOTE: Don't check the value because the object is reused
+        metrics = [x.args[0] for x in self.mk_db.push_metric.mock_calls]
+        assert set(x.name for x in metrics) == { f"msg_{x.name.lower()}" for x in LogSeverity }
+        # Check for update calls
+        final = {}
+        for call in self.mk_db.update_metric.mock_calls:
+            mtc = call.args[0]
+            assert mtc in metrics
+            if mtc.value > final.get(mtc.name, 0):
+                final[mtc.name] = mtc.value
+        assert set(final.keys()) == {"msg_info"}
+        assert final["msg_info"] > 0
 
     async def test_wrapper_procstat(self, tmp_path) -> None:
         """ Check that process statistics are captured at regular intervals """
@@ -264,3 +281,60 @@ class TestWrapper:
         assert call.args[0][4][0] == "Total Runtime (H:MM:SS)"
         # NOTE: Second part of runtime is a timedelta - difficult to mock
         assert call.kwargs["tablefmt"] == "simple_grid"
+
+    async def test_wrapper_metric(self, tmp_path, mocker) -> None:
+        """ Check that metrics can be recorded and aggregated """
+        # Define a job specification
+        job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[60])
+        # Create a wrapper
+        trk_dir = tmp_path / "tracking"
+        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
+        # Run the job
+        t_wrp = asyncio.create_task(wrp.launch())
+        # Wait for process to be created
+        while wrp.proc is None:
+            await asyncio.sleep(0.1)
+        # Attach a client as if it's the job
+        sub_cli = WebsocketClient(await wrp.server.get_address())
+        await sub_cli.start()
+        # Push up some metrics
+        await sub_cli.metric(name="widgets", value=123)
+        await sub_cli.metric(name="gizmos",  value=345)
+        await sub_cli.metric(name="gadgets", value=567)
+        # Check for those metrics
+        assert wrp.metrics["widgets"].value == 123
+        assert wrp.metrics["gizmos"].value  == 345
+        assert wrp.metrics["gadgets"].value == 567
+        # Check they've been written to the database
+        assert any((x.args[0].name  == "widgets" and
+                    x.args[0].value == 123) for x in self.mk_db.push_metric.mock_calls)
+        assert any((x.args[0].name  == "gizmos" and
+                    x.args[0].value == 345) for x in self.mk_db.push_metric.mock_calls)
+        assert any((x.args[0].name  == "gadgets" and
+                    x.args[0].value == 567) for x in self.mk_db.push_metric.mock_calls)
+        # Update some metrics
+        await sub_cli.metric(name="widgets", value=678)
+        await sub_cli.metric(name="gizmos",  value=789)
+        await sub_cli.metric(name="gadgets", value=890)
+        # Check for those metrics
+        assert wrp.metrics["widgets"].value == 678
+        assert wrp.metrics["gizmos"].value  == 789
+        assert wrp.metrics["gadgets"].value == 890
+        # Check they've been written to the database
+        assert any((x.args[0].name  == "widgets" and
+                    x.args[0].value == 678) for x in self.mk_db.update_metric.mock_calls)
+        assert any((x.args[0].name  == "gizmos" and
+                    x.args[0].value == 789) for x in self.mk_db.update_metric.mock_calls)
+        assert any((x.args[0].name  == "gadgets" and
+                    x.args[0].value == 890) for x in self.mk_db.update_metric.mock_calls)
+        # Check that the metrics are included in the summary
+        summary = await wrp.summarise()
+        assert summary["metrics"]["widgets"] == 678
+        assert summary["metrics"]["gizmos"]  == 789
+        assert summary["metrics"]["gadgets"] == 890
+        # Stop the client
+        await sub_cli.stop()
+        # Stop the job
+        await wrp.stop()
+        # Wait for task to complete
+        await t_wrp

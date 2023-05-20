@@ -27,7 +27,7 @@ import psutil
 from tabulate import tabulate
 
 from .common.layer import BaseLayer
-from .common.types import Attribute, LogSeverity, ProcStat
+from .common.types import Attribute, LogSeverity, Metric, ProcStat
 
 
 class Wrapper(BaseLayer):
@@ -51,6 +51,8 @@ class Wrapper(BaseLayer):
 
     async def launch(self, *args, **kwargs) -> None:
         await self.setup(*args, **kwargs)
+        # Register endpoint for metrics
+        self.server.add_route("metric", self.__handle_metric)
         # Register additional data types
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
@@ -81,6 +83,28 @@ class Wrapper(BaseLayer):
         summary["sub_passed"] = [0, 1][passed]
         summary["sub_failed"] = [0, 1][self.complete and not passed]
         return summary
+
+    async def __handle_metric(self, name : str, value : int, **_) -> Dict[str, str]:
+        """
+        Handle an arbitrary metric being reported from a child, the only names
+        that cannot be used are those reserved for message statistics (e.g.
+        msg_debug, msg_info, etc).
+
+        Example: { "name": "lint_warnings", "value": 12 }
+        """
+        # Check name doesn't clash
+        if name in (f"msg_{x.name.lower()}" for x in LogSeverity):
+            return { "result": "error", "reason": f"Reserved metric name '{name}'"}
+        # Check if a metric already exists
+        if (metric := self.metrics.get(name, None)) is not None:
+            metric.value = value
+            await self.db.update_metric(metric)
+        # Otherwise create it
+        else:
+            self.metrics[name] = (metric := Metric(name=name, value=value))
+            await self.db.push_metric(metric)
+        # Return success
+        return { "result": "success" }
 
     async def __monitor_stdio(self,
                               proc   : asyncio.subprocess.Process,

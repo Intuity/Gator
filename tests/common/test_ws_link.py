@@ -52,7 +52,7 @@ class TestWebsocketLink:
         await self.server.stop()
         await self.db.stop()
 
-    async def test_double_start(self) -> None:
+    async def test_ws_link_double_start(self) -> None:
         """ Starting client again should have no effect """
         # Normal
         await self.client.start()
@@ -64,18 +64,18 @@ class TestWebsocketLink:
         assert self.client.ws_event.is_set()
         assert self.client.linked
 
-    async def test_double_stop(self) -> None:
+    async def test_ws_link_double_stop(self) -> None:
         """ Stopping database, server, or client twice should have no effect """
         await self.client.stop()
         await self.server.stop()
         await self.db.stop()
 
-    async def test_link(self) -> None:
+    async def test_ws_link_link(self) -> None:
         """ Send a ping from client to server to measure latency """
         latency = await self.client.measure_latency()
         assert latency > 0
 
-    async def test_version(self, mocker) -> None:
+    async def test_ws_link_version(self, mocker) -> None:
         """ Send an empty message, should return the version info """
         # Capture routing requests on the client side
         evt_route = asyncio.Event()
@@ -93,23 +93,29 @@ class TestWebsocketLink:
                                                                "tool": "gator",
                                                                "version": "1.0"}
 
-    async def test_logging(self, mocker) -> None:
+    async def test_ws_link_logging(self, mocker) -> None:
         """ Log to the server """
         # Patch the log entry function
         evt_log = asyncio.Event()
-        async def _log(_):
-            nonlocal evt_log
-            evt_log.set()
-        mocker.patch.object(self.db, "push_logentry")
-        self.db.push_logentry.side_effect = _log
-        # Send a logging request
-        await self.client.log(timestamp=123,
-                              severity="INFO",
-                              message="Hi",
-                              posted=True)
+        hit_count = 0
+        async def _log(*_args, **_kwargs):
+            nonlocal evt_log, hit_count
+            hit_count += 1
+            if hit_count == len(LogSeverity):
+                evt_log.set()
+        mocker.patch.object(self.logger, "log")
+        self.logger.log.side_effect = _log
+        # Send logging requests
+        for sev in LogSeverity:
+            await self.client.log(timestamp=123,
+                                  severity=sev.name,
+                                  message=f"Hi {sev.name}",
+                                  posted=True)
         # Wait for call to log function
         await evt_log.wait()
         # Check the call
-        assert any((x.args[0].timestamp == datetime.fromtimestamp(123) and
-                    x.args[0].severity  is LogSeverity.INFO and
-                    x.args[0].message   == "Hi") for x in self.db.push_logentry.mock_calls)
+        for idx, sev in enumerate(LogSeverity):
+            assert self.logger.log.mock_calls[idx].args[0] == sev
+            assert self.logger.log.mock_calls[idx].args[1] == f"Hi {sev.name}"
+            assert self.logger.log.mock_calls[idx].kwargs["timestamp"] == datetime.fromtimestamp(123)
+            assert self.logger.log.mock_calls[idx].kwargs["forwarded"]

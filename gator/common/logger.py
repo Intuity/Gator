@@ -15,9 +15,10 @@
 import asyncio
 import atexit
 import io
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Dict, Optional
 
 import click
 from rich.console import Console
@@ -30,10 +31,11 @@ from .ws_client import WebsocketClient
 class Logger:
 
     FORMAT = {
-        "DEBUG"  : ("[bold cyan]", "[/bold cyan]"),
-        "INFO"   : ("[bold]", "[/bold]"),
-        "WARNING": ("[bold amber]", "[/bold amber]"),
-        "ERROR"  : ("[bold red]", "[/bold red]"),
+        LogSeverity.DEBUG   : ("[bold cyan]", "[/bold cyan]"),
+        LogSeverity.INFO    : ("[bold]", "[/bold]"),
+        LogSeverity.WARNING : ("[bold amber]", "[/bold amber]"),
+        LogSeverity.ERROR   : ("[bold red]", "[/bold red]"),
+        LogSeverity.CRITICAL: ("[bold white on red]", "[/bold white on red]"),
     }
 
     def __init__(self,
@@ -50,6 +52,8 @@ class Logger:
         self.__console  : Optional[Console]          = None
         self.__database : Optional[Database]         = None
         self.__log_fh   : Optional[io.TextIOWrapper] = None
+        # Retain counts of different verbosity levels
+        self.__counts : Dict[LogSeverity, int] = defaultdict(lambda: 0)
 
     def set_console(self, console : Console) -> None:
         self.__console = console
@@ -58,6 +62,9 @@ class Logger:
         self.__database = database
         await self.__database.register(LogEntry)
         self.__database.define_transform(LogSeverity, "INTEGER", int, LogSeverity)
+
+    def get_count(self, *severity : List[LogSeverity]) -> int:
+        return sum(self.__counts[x] for x in severity)
 
     def __close_log_file(self) -> None:
         if self.__log_fh is not None:
@@ -75,7 +82,28 @@ class Logger:
                   severity  : LogSeverity,
                   message   : str,
                   forward   : Optional[bool] = None,
-                  timestamp : Optional[datetime] = None) -> None:
+                  timestamp : Optional[datetime] = None,
+                  forwarded : bool = False) -> None:
+        """
+        Distribute a log message to various endpoints based on the setup of the
+        logger and the arguments provided.
+
+        :param severity:    Severity level of the logged message
+        :param message:     Text of the message being logged
+        :param forward:     Whether to forward the message onto the parent layer,
+                            if this is not provided then it will default to the
+                            logger's forward parameter (set during construction)
+        :param timestamp:   Optional timestamp that the message was produced, if
+                            not provided then one will be generated
+        :param forwarded:   Whether the message has been forwarded from another
+                            layer, if set to True this excludes it from the
+                            message counting (to avoid double counting in
+                            aggregated metrics) and does not submit it to either
+                            the log file or the database.
+        """
+        # Record the number of messages from this level
+        if not forwarded:
+            self.__counts[severity] += 1
         # If forward is 'None', use the default value
         forward = self.forward if forward is None else forward
         # Generate a timestamp if required
@@ -89,41 +117,45 @@ class Logger:
                                   posted   =True)
         # If a console is attached, log locally
         if self.__console and severity >= self.verbosity:
-            prefix, suffix = self.FORMAT.get(severity.name, ("[bold]", "[/bold]"))
+            prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
             self.__console.log(f"{prefix}[{severity.name:<7s}]{suffix} {message}")
         # Record to database
-        if self.__database is not None:
+        if not forwarded and self.__database is not None:
             await self.__database.push_logentry(LogEntry(severity =severity,
                                                          message  =message,
                                                          timestamp=timestamp))
         # Tee to file if configured
-        if self.__log_fh is not None:
+        if not forwarded and self.__log_fh is not None:
             date = datetime.now().strftime(r"%H:%M:%S")
             self.__log_fh.write(f"[{date}] [{severity.name:<7s}] {message}\n")
 
     async def debug(self,
                     message   : str,
                     forward   : Optional[bool] = None,
-                    timestamp : Optional[datetime] = None) -> None:
-        await self.log(LogSeverity.DEBUG, message, forward, timestamp)
+                    timestamp : Optional[datetime] = None,
+                    forwarded : bool = False) -> None:
+        await self.log(LogSeverity.DEBUG, message, forward, timestamp, forwarded)
 
     async def info(self,
                     message   : str,
                     forward   : Optional[bool] = None,
-                    timestamp : Optional[datetime] = None) -> None:
-        await self.log(LogSeverity.INFO, message, forward, timestamp)
+                    timestamp : Optional[datetime] = None,
+                    forwarded : bool = False) -> None:
+        await self.log(LogSeverity.INFO, message, forward, timestamp, forwarded)
 
     async def warning(self,
                       message   : str,
                       forward   : Optional[bool] = None,
-                      timestamp : Optional[datetime] = None) -> None:
-        await self.log(LogSeverity.WARNING, message, forward, timestamp)
+                      timestamp : Optional[datetime] = None,
+                      forwarded : bool = False) -> None:
+        await self.log(LogSeverity.WARNING, message, forward, timestamp, forwarded)
 
     async def error(self,
                     message   : str,
                     forward   : Optional[bool] = None,
-                    timestamp : Optional[datetime] = None) -> None:
-        await self.log(LogSeverity.ERROR, message, forward, timestamp)
+                    timestamp : Optional[datetime] = None,
+                    forwarded : bool = False) -> None:
+        await self.log(LogSeverity.ERROR, message, forward, timestamp, forwarded)
 
 @click.command()
 @click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
