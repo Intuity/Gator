@@ -94,12 +94,13 @@ class Tier(BaseLayer):
                 state[key] = {}
                 for child in store.values():
                     state[key][child.id] = { "state"    : child.state.name,
+                                             "result"   : child.result.name,
                                              "server"   : child.server,
                                              "metrics"  : { x.name: x.value for x in child.metrics.values() },
                                              "exitcode" : child.exitcode,
-                                             "started"  : child.started.isoformat(),
-                                             "updated"  : child.updated.isoformat(),
-                                             "completed": child.completed.isoformat() }
+                                             "started"  : int(child.started.timestamp()),
+                                             "updated"  : int(child.updated.timestamp()),
+                                             "completed": int(child.completed.timestamp()) }
         return state
 
     async def __child_query(self, id : str, **_):
@@ -267,6 +268,7 @@ class Tier(BaseLayer):
         # Launch
         async with self.lock:
             for child in to_launch:
+                child.state = ChildState.LAUNCHED
                 self.jobs_launched[child.id] = child
                 del self.jobs_pending[child.id]
             await self.scheduler.launch(to_launch)
@@ -349,6 +351,7 @@ class Tier(BaseLayer):
                 # Otherwise launch the child immediately
                 else:
                     for child in children:
+                        child.state = ChildState.LAUNCHED
                         self.jobs_launched[child.id] = child
             # If bad dependencies detected, stop
             if bad_deps:

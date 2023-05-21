@@ -24,6 +24,7 @@ from ..specs import Job, JobArray, JobGroup
 from .types import Metric, Result
 
 class ChildState(Enum):
+    PENDING  = auto()
     LAUNCHED = auto()
     STARTED  = auto()
     COMPLETE = auto()
@@ -33,7 +34,7 @@ class Child:
     spec       : Union[Job, JobArray, JobGroup]
     id         : str               = "N/A"
     tracking   : Optional[Path]    = None
-    state      : ChildState        = ChildState.LAUNCHED
+    state      : ChildState        = ChildState.PENDING
     result     : Result            = Result.UNKNOWN
     server     : str               = ""
     exitcode   : int               = 0
@@ -45,9 +46,9 @@ class Child:
     sub_passed : int               = 0
     sub_failed : int               = 0
     # Timestamping
-    started    : datetime          = datetime.min
-    updated    : datetime          = datetime.min
-    completed  : datetime          = datetime.min
+    started    : datetime          = field(default_factory=lambda: datetime.fromtimestamp(0))
+    updated    : datetime          = field(default_factory=lambda: datetime.fromtimestamp(0))
+    completed  : datetime          = field(default_factory=lambda: datetime.fromtimestamp(0))
     e_complete : asyncio.Event     = field(default_factory=asyncio.Event)
     # Socket
     ws         : Optional[WebsocketWrapper] = None
