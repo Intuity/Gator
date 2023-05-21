@@ -18,8 +18,9 @@ import yaml
 
 from .common import Dumper, Loader, SpecBase
 from .jobs import Job, JobArray, JobGroup
+from .resource import Cores, License, Memory
 
-assert all((Job, JobArray, JobGroup))
+assert all((Job, JobArray, JobGroup, Cores, License, Memory))
 
 class Spec:
     """ Methods to parse and dump YAML specification objects """

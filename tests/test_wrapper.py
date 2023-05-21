@@ -20,11 +20,10 @@ from unittest.mock import MagicMock, AsyncMock
 import pytest
 import pytest_asyncio
 
-from gator.common.db import Query
 from gator.common.logger import Logger
 from gator.common.types import Attribute, LogSeverity, ProcStat
 from gator.common.ws_client import WebsocketClient
-from gator.specs import Job
+from gator.specs import Cores, Job, License, Memory
 from gator.wrapper import Wrapper
 
 @pytest.mark.asyncio
@@ -60,7 +59,8 @@ class TestWrapper:
 
     async def test_wrapper_basic(self, tmp_path) -> None:
         # Define a job specification
-        job = Job("test", cwd=tmp_path.as_posix(), command="echo", args=["hi"])
+        job = Job("test", cwd=tmp_path.as_posix(), command="echo", args=["hi"],
+                  resources=[Cores(2), License("A", 1), License("B", 3), Memory(1.5, "GB")])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
         wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
@@ -95,15 +95,16 @@ class TestWrapper:
         self.mk_db.register.assert_any_call(ProcStat)
         # Check attributes pushed into the database
         values = {}
-        for idx, (key, val) in enumerate((("cmd",        "echo hi"               ),
-                                          ("cwd",        tmp_path.as_posix()     ),
-                                          ("host",       socket.gethostname()    ),
-                                          ("started",    None                    ),
-                                          ("req_cores",  "0"                     ),
-                                          ("req_memory", "0"                     ),
-                                          ("pid",        str(wrp.proc.pid)       ),
-                                          ("stopped",    None                    ),
-                                          ("exit",       str(wrp.proc.returncode)))):
+        for idx, (key, val) in enumerate((("cmd",          "echo hi"               ),
+                                          ("cwd",          tmp_path.as_posix()     ),
+                                          ("host",         socket.gethostname()    ),
+                                          ("started",      None                    ),
+                                          ("req_cores",    "2"                     ),
+                                          ("req_memory",   "1500.0"                ),
+                                          ("req_licenses", "A=1,B=3"               ),
+                                          ("pid",          str(wrp.proc.pid)       ),
+                                          ("stopped",      None                    ),
+                                          ("exit",         str(wrp.proc.returncode)))):
             assert self.mk_db.push_attribute.mock_calls[idx].args[0].name == key
             if key in ("started", "stopped"):
                 values[key] = self.mk_db.push_attribute.mock_calls[idx].args[0].value
