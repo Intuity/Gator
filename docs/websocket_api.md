@@ -262,15 +262,155 @@ The response fields of this action are as follows:
 
 ### Register
 
-...
+When child tiers and wrappers are launched, the parent tier changes their state
+to `LAUNCHED`. When the child is scheduled, it connects to the parent's websocket
+and sends the `register` action which updates its state to `STARTED`.
+
+=== "Request"
+
+    ```json
+    {
+        "action" : "register",
+        "req_id" : 1,
+        "posted" : false,
+        "payload": {
+            "id"    : "child_job_a",
+            "server": "192.168.0.65:54241"
+        }
+    }
+    ```
+
+=== "Response"
+
+    ```json
+    {
+        "action" : "register",
+        "rsp_id" : 1,
+        "result" : "success",
+        "payload": {}
+    }
+    ```
+
+The request fields of this action are as follows:
+
+| Field  | Required         | Type    | Description                             |
+|--------|:----------------:|---------|-----------------------------------------|
+| id     | :material-check: | string  | Identifier of the child tier or wrapper |
+| server | :material-check: | string  | URL of the child's websocket            |
 
 ### Update
 
-...
+While a child tier or wrapper is running, it should provide periodic updates to
+the parent tier, this is known as the 'heartbeat'. These updates are provided
+via the `update` action.
+
+=== "Request"
+
+    ```json
+    {
+        "action" : "update",
+        "req_id" : 1,
+        "posted" : false,
+        "payload": {
+            "id"        : "child_a",
+            "sub_total" : 10,
+            "sub_active": 4,
+            "sub_passed": 2,
+            "sub_failed": 1,
+            "metrics"   : {
+                "msg_debug"    : 3,
+                "msg_info"     : 5,
+                "msg_warning"  : 2,
+                "msg_error"    : 3,
+                "msg_critical" : 0,
+                "lint_warnings": 123
+            }
+        }
+    }
+    ```
+
+=== "Response"
+
+    ```json
+    {
+        "action" : "update",
+        "rsp_id" : 1,
+        "result" : "success",
+        "payload": {}
+    }
+    ```
+
+The request fields of this action are as follows:
+
+| Field      | Required         | Type    | Description                                                           |
+|------------|:----------------:|---------|-----------------------------------------------------------------------|
+| id         | :material-check: | string  | Identifier of the child tier or wrapper                               |
+| sub_total  | :material-check: | integer | Number of total jobs expected to run at or beneath the child layer    |
+| sub_active | :material-check: | integer | Number of currently active jobs running at or beneath the child layer |
+| sub_passed | :material-check: | integer | Number of jobs completed successful at or beneath the child layer     |
+| sub_failed | :material-check: | integer | Number of jobs that have failed at or beneath the child layer         |
+| metrics    | :material-check: | dict    | Dictionary of metric values aggregated to this layer                  |
+
+!!! note
+
+    In many cases it may be best to send `update` actions with the `posted` field
+    set to `true` to lower the amount of communication from the parent to the
+    child. However, using non-posted requests is a useful way of determining that
+    the parent tier is still alive.
 
 ### Complete
 
-...
+While a child tier or wrapper is completes, it should send a final status update
+to the parent tier using the `complete` action.
+
+=== "Request"
+
+    ```json
+    {
+        "action" : "complete",
+        "req_id" : 1,
+        "posted" : false,
+        "payload": {
+            "id"        : "child_a",
+            "result"    : "SUCCESS",
+            "code"      : 0,
+            "sub_total" : 10,
+            "sub_passed": 2,
+            "sub_failed": 1,
+            "metrics"   : {
+                "msg_debug"    : 3,
+                "msg_info"     : 5,
+                "msg_warning"  : 2,
+                "msg_error"    : 3,
+                "msg_critical" : 0,
+                "lint_warnings": 123
+            }
+        }
+    }
+    ```
+
+=== "Response"
+
+    ```json
+    {
+        "action" : "complete",
+        "rsp_id" : 1,
+        "result" : "success",
+        "payload": {}
+    }
+    ```
+
+The request fields of this action are as follows:
+
+| Field      | Required         | Type    | Description                                                        |
+|------------|:----------------:|---------|--------------------------------------------------------------------|
+| id         | :material-check: | string  | Identifier of the child tier or wrapper                            |
+| result     | :material-check: | string  | Child's result either `SUCCESS` or `FAILURE`                       |
+| code       | :material-check: | integer | Exit code of the child wrapper's task                              |
+| sub_total  | :material-check: | integer | Number of total jobs expected to run at or beneath the child layer |
+| sub_passed | :material-check: | integer | Number of jobs completed successful at or beneath the child layer  |
+| sub_failed | :material-check: | integer | Number of jobs that have failed at or beneath the child layer      |
+| metrics    | :material-check: | dict    | Dictionary of metric values aggregated to this layer               |
 
 ## Wrapper Actions
 

@@ -110,7 +110,7 @@ class Tier(BaseLayer):
                 return { "spec": Spec.dump(self.jobs_launched[id].spec) }
             else:
                 await self.logger.error(f"Unknown child of {self.id} query '{id}'")
-                return { "result": "error" }
+                raise Exception(f"Bad child ID {id}")
 
     async def __child_started(self,
                               ws     : WebsocketWrapper,
@@ -133,10 +133,9 @@ class Tier(BaseLayer):
                 child.started = datetime.now()
                 child.updated = datetime.now()
                 child.ws      = ws
-                return { "result": "success" }
             else:
                 await self.logger.error(f"Unknown child of {self.id} start '{id}'")
-                return { "result": "error" }
+                raise Exception(f"Bad child ID {id}")
 
     async def __child_updated(self,
                               id         : str,
@@ -156,13 +155,13 @@ class Tier(BaseLayer):
                    "sub_active": 4,
                    "sub_passed": 1,
                    "sub_failed": 2,
-                    "metrics"  : {
-                      "msg_debug"   : 3,
-                      "msg_info"    : 5,
-                      "msg_warning" : 2,
-                      "msg_error"   : 0,
-                      "msg_critical": 0
-                    } }
+                   "metrics"  : {
+                     "msg_debug"   : 3,
+                     "msg_info"    : 5,
+                     "msg_warning" : 2,
+                     "msg_error"   : 0,
+                     "msg_critical": 0
+                   } }
         """
         async with self.lock:
             if id in self.jobs_launched:
@@ -179,17 +178,17 @@ class Tier(BaseLayer):
                 child.sub_active = sub_active
                 child.sub_passed = sub_passed
                 child.sub_failed = sub_failed
-                return { "result": "success" }
             elif id in self.jobs_completed:
                 await self.logger.error(f"Child {id} of {self.id} sent update after completion")
+                raise Exception("Child sent update after completion")
             else:
                 await self.logger.error(f"Unknown child {id} of {self.id} update")
-                return { "result": "error" }
+                raise Exception(f"Bad child ID {id}")
 
     async def __child_completed(self,
                                 id         : str,
+                                result     : str,
                                 code       : int,
-                                result     : int,
                                 metrics    : Dict[str, List[int]],
                                 sub_total  : int = 0,
                                 sub_passed : int = 0,
@@ -198,7 +197,19 @@ class Tier(BaseLayer):
         """
         Mark that a child process has completed.
 
-        Example: { "code": 1, "warnings": 1, "errors": 2 }
+        Example: { "id"        : "regression",
+                   "result"    : "SUCCESS",
+                   "code"      : 0,
+                   "sub_total" : 10,
+                   "sub_passed": 1,
+                   "sub_failed": 2,
+                   "metrics"  : {
+                     "msg_debug"   : 3,
+                     "msg_info"    : 5,
+                     "msg_warning" : 2,
+                     "msg_error"   : 0,
+                     "msg_critical": 0
+                   } }
         """
         async with self.lock:
             if id in self.jobs_launched:
@@ -208,7 +219,7 @@ class Tier(BaseLayer):
                 child.updated   = datetime.now()
                 child.completed = datetime.now()
                 child.state     = ChildState.COMPLETE
-                child.result    = Result(int(result))
+                child.result    = getattr(Result, result.strip().upper())
                 for m_key, m_val in metrics.items():
                     if m_key not in child.metrics:
                         child.metrics[m_key] = Metric(name=m_key)
@@ -223,12 +234,12 @@ class Tier(BaseLayer):
                 del self.jobs_launched[child.id]
                 # Trigger complete event
                 child.e_complete.set()
-                return { "result": "success" }
             elif id in self.jobs_completed:
                 await self.logger.error(f"Child {id} of {self.id} sent repeated completion")
+                raise Exception("Child sent a second completion message")
             else:
                 await self.logger.error(f"Unknown child of {self.id} completion '{id}'")
-                return { "result": "error" }
+                raise Exception(f"Bad child ID {id}")
 
     async def __postpone(self, id : str, wait_for : List[Child], to_launch : List[Child]) -> None:
         await asyncio.gather(*(x.e_complete.wait() for x in wait_for))

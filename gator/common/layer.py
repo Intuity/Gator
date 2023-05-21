@@ -103,7 +103,7 @@ class BaseLayer:
         result = [Result.FAILURE, Result.SUCCESS][self.code == 0 and num_err == 0]
         # Tell the parent the job is complete
         summary = await self.summarise()
-        await self.client.complete(id=self.id, code=self.code, result=result, **summary)
+        await self.client.complete(id=self.id, code=self.code, result=result.name, **summary)
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
         msg_metrics = filter(lambda x: x.name in msg_keys, self.metrics.values())
