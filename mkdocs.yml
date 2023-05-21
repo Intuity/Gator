@@ -7,9 +7,19 @@ theme:
     primary: amber
 markdown_extensions:
   - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
 nav:
   - Welcome: "index.md"
   - "YAML Specification":
     - "!Job": "specs/job.md"
     - "!JobArray": "specs/job_array.md"
     - "!JobGroup": "specs/job_group.md"
+    - "!Cores": "specs/cores.md"
+    - "!License": "specs/license.md"
+    - "!Memory": "specs/memory.md"

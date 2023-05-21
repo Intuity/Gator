@@ -60,6 +60,12 @@ shell = "poetry run ruff check gator"
 [tool.poe.tasks.test]
 shell = "poetry run pytest"
 
+[tool.poe.tasks.docs]
+shell = "poetry run mkdocs build"
+
+[tool.poe.tasks.docs_serve]
+shell = "poetry run mkdocs serve"
+
 [tool.poe.tasks]
 hub = ["npm_build", "uwsgi"]
 hub_dev = ["npm_build_dev", "uwsgi"]
