@@ -1,10 +1,18 @@
-site_name: Gator
+site_name: Gator Aid
+repo_name: intuity/gator
+repo_url: https://github.com/intuity/Gator
 theme:
   name: material
   logo: assets/mascot_black.svg
   palette:
     scheme: slate
     primary: amber
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: sphinx
 markdown_extensions:
   - attr_list
   - pymdownx.highlight:
@@ -23,6 +31,8 @@ markdown_extensions:
       emoji_generator: !!python/name:materialx.emoji.to_svg
 nav:
   - Welcome: "index.md"
+  - "How Gator Works": "how_it_works.md"
+  - Schedulers: "schedulers.md"
   - "YAML Specification":
     - "!Job": "specs/job.md"
     - "!JobArray": "specs/job_array.md"
@@ -30,3 +40,4 @@ nav:
     - "!Cores": "specs/cores.md"
     - "!License": "specs/license.md"
     - "!Memory": "specs/memory.md"
+  - "Websocket API": "websocket_api.md"

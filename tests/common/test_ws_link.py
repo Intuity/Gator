@@ -89,9 +89,13 @@ class TestWebsocketLink:
         # Wait for a response
         await evt_route.wait()
         # Check for the response captured
-        assert self.client.fallback.mock_calls[-1].args[1] == {"action": "identify",
-                                                               "tool": "gator",
-                                                               "version": "1.0"}
+        assert self.client.fallback.mock_calls[-1].args[1] == {"action" : "identify",
+                                                               "result" : "success",
+                                                               "rsp_id" : 0,
+                                                               "payload": {
+                                                                   "tool": "gator",
+                                                                   "version": "1.0"
+                                                               }}
 
     async def test_ws_link_logging(self, mocker) -> None:
         """ Log to the server """

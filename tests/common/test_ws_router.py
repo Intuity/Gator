@@ -31,8 +31,12 @@ class TestWebsocketRouter:
         # Make a request without an action
         await router.route(ws, {})
         ws.send.assert_called_with(json.dumps({ "action": "identify",
-                                               "tool": "gator",
-                                               "version": "1.0" }))
+                                                "rsp_id": 0,
+                                                "result": "success",
+                                                "payload": {
+                                                    "tool": "gator",
+                                                    "version": "1.0" }
+                                                }))
         ws.send.reset_mock()
         # Make a posted request without an action
         await router.route(ws, {"posted": True})
@@ -159,9 +163,11 @@ class TestWebsocketRouter:
         assert not ws.send.called
         # Non-posted request should be replied to with an error
         await router.route(ws, { "action" : "bad_route",
+                                 "req_id" : 2,
                                  "payload": { "word": "hello" },
                                  "posted" : False })
         ws.send.assert_called_with(json.dumps({ "result": "error",
+                                                "rsp_id": 2,
                                                 "reason": "Unknown action 'bad_route'" }))
         assert not h_sync.handler.called
 
@@ -187,17 +193,18 @@ class TestWebsocketRouter:
         h_async.handler.side_effect = _async
         # Posted request should not incur a response
         for action in ("sync", "async"):
-            await router.route(ws, { "action" : action, "posted" : True })
+            await router.route(ws, { "action" : action, "req_id": 3, "posted" : True })
             mk_print.assert_called_with(f"Caught Exception on route {action}: This is {action} error",
                                         file=mk_sys.stderr)
             assert not ws.send.called
             mk_print.reset_mock()
         # Non-posted request should have a response
         for action in ("sync", "async"):
-            await router.route(ws, { "action" : action, "posted" : False })
+            await router.route(ws, { "action" : action, "req_id": 3, "posted" : False })
             mk_print.assert_called_with(f"Caught Exception on route {action}: This is {action} error",
                                         file=mk_sys.stderr)
             ws.send.assert_called_with(json.dumps({ "result": "error",
+                                                    "rsp_id": 3,
                                                     "reason": f"This is {action} error" }))
             ws.send.reset_mock()
             mk_print.reset_mock()

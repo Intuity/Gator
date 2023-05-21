@@ -60,17 +60,23 @@ class WebsocketRouter:
         # Check for a supported action
         action = data.get("action", None)
         posted = data.get("posted", False)
+        req_id = data.get("req_id", 0)
         if not action:
             if not posted:
                 await ws.send(json.dumps({ "action" : "identify",
-                                           "tool"   : "gator",
-                                           "version": "1.0" }))
+                                           "rsp_id" : req_id,
+                                           "result" : "success",
+                                           "payload": {
+                                               "tool"   : "gator",
+                                               "version": "1.0"
+                                           } }))
         elif action not in self.__routes:
             if self.fallback:
                 await self.fallback(ws, data)
             else:
                 if not posted:
                     await ws.send(json.dumps({ "result": "error",
+                                               "rsp_id": req_id,
                                                "reason": f"Unknown action '{action}'" }))
         else:
             try:
@@ -80,7 +86,7 @@ class WebsocketRouter:
                     call_rsp = await call_rsp
                 if not posted:
                     response = { "action" : action,
-                                 "rsp_id" : data.get("req_id", 0),
+                                 "rsp_id" : req_id,
                                  "result" : "success",
                                  "payload": (call_rsp or {}) }
                     await ws.send(json.dumps(response))
@@ -89,4 +95,5 @@ class WebsocketRouter:
                       file=sys.stderr)
                 if not posted:
                     await ws.send(json.dumps({ "result": "error",
+                                               "rsp_id": req_id,
                                                "reason": str(e) }))

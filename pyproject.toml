@@ -32,6 +32,7 @@ mkdocs-material = "^9.1.6"
 poethepoet = "^0.19.0"
 pytest-asyncio = "^0.21.0"
 ruff = "^0.0.267"
+mkdocstrings = {extras = ["python"], version = "^0.21.2"}
 
 [tool.poetry.scripts]
 gator = "gator.__main__:main"

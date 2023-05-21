@@ -98,3 +98,6 @@ A simple example of the syntax can be seen below:
 ## Acknowledgements
 
 Project mascot: Alligator by TRAVIS BIRD from the Noun Project
+
+A lot of the ideas in this project have been taken from the experiments detailed
+on [Rich Porter's blog](http://dungspreader.blogspot.com) from 2013 and 2014.

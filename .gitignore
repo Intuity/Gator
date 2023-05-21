@@ -140,3 +140,7 @@ tracking
 
 # Ruff
 .ruff_cache
+
+# Drawio
+*.drawio.bkp
+*.drawio.dtmp
