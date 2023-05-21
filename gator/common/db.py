@@ -41,19 +41,23 @@ class Base:
         else:
             return { f.name: getattr(self, f.name) for f in self.list_fields() if f.name not in omit }
 
-    def deserialize(self,
+    @classmethod
+    def deserialize(cls,
                     values : Union[Dict[str, int], List[int]],
-                    omit   : Optional[List[str]] = None) -> None:
+                    omit   : Optional[List[str]] = None) -> "Base":
+        inst = cls()
+        omit = omit or []
         if isinstance(values, list):
-            fields = [x for x in self.list_fields() if x.name not in omit]
+            fields = [x for x in cls.list_fields() if x.name not in omit]
             omit   = omit or []
             for key, value in zip(fields, values):
-                setattr(self, key.name, value)
+                setattr(inst, key.name, value)
         else:
-            fnames = [x.name for x in self.list_fields()]
+            fnames = [x.name for x in inst.list_fields()]
             for key, value in values.items():
                 if key in fnames:
-                    setattr(self, key, value)
+                    setattr(inst, key, value)
+        return inst
 
 
 @dataclasses.dataclass

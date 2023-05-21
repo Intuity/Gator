@@ -17,7 +17,7 @@ from collections import Counter
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase, SpecError
-from .resource import Cores, Memory
+from .resource import Cores, License, Memory
 
 
 class Job(SpecBase):
@@ -29,7 +29,7 @@ class Job(SpecBase):
                  cwd       : Optional[str] = None,
                  command   : Optional[str] = None,
                  args      : Optional[List[str]] = None,
-                 resources : Optional[List[Union[Cores, Memory]]] = None,
+                 resources : Optional[List[Union[Cores, License, Memory]]] = None,
                  on_done   : Optional[List[str]] = None,
                  on_fail   : Optional[List[str]] = None,
                  on_pass   : Optional[List[str]] = None) -> None:
@@ -63,6 +63,12 @@ class Job(SpecBase):
         else:
             return 0
 
+    @property
+    @functools.lru_cache()
+    def requested_licenses(self) -> Dict[str, int]:
+        """ Return a summary of all of the licenses requested """
+        return { x.name: x.count for x in self.resources if isinstance(x, License) }
+
     def check(self) -> None:
         if self.id is not None and not isinstance(self.id, str):
             raise SpecError(self, "id", "ID must be a string")
@@ -82,13 +88,18 @@ class Job(SpecBase):
             raise SpecError(self, "args", "Arguments must be strings or integers")
         if not isinstance(self.resources, list):
             raise SpecError(self, "resources", "Resources must be a list")
-        if set(map(type, self.resources)).difference({Cores, Memory}):
-            raise SpecError(self, "resources", "Resources must be !Cores or !Memory")
+        if set(map(type, self.resources)).difference({Cores, Memory, License}):
+            raise SpecError(self, "resources", "Resources must be !Cores, !Memory, or !License")
         type_count = Counter(type(x) for x in self.resources)
         if type_count[Cores] > 1:
             raise SpecError(self, "resources", "More than one !Cores resource request")
         if type_count[Memory] > 1:
             raise SpecError(self, "resources", "More than one !Memory resource request")
+        # NOTE: Any number of licenses may be specified
+        lic_name_count = Counter(x.name for x in self.resources if isinstance(x, License))
+        for name, count in lic_name_count.items():
+            if count > 1:
+                raise SpecError(self, "resources", f"More than one entry for license '{name}'")
         for field in ("on_done", "on_fail", "on_pass"):
             value = getattr(self, field)
             if not isinstance(value, list):

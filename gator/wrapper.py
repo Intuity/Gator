@@ -206,11 +206,18 @@ class Wrapper(BaseLayer):
         full_cmd = " ".join(expandvars.expand(x, environ=env) for x in all_args)
         # Ensure the tracking directory exists
         self.tracking.mkdir(parents=True, exist_ok=True)
-        # Pickup resource requirements
+        # Pickup CPU and RAM resource requirements
         cpu_cores = self.spec.requested_cores
         memory_mb = self.spec.requested_memory
         await self.logger.debug(f"Task requests {cpu_cores} CPU cores and "
                                 f"{memory_mb} MB of RAM")
+        # Pickup license requests
+        licenses = self.spec.requested_licenses
+        if licenses:
+            await self.logger.debug("Task requests the following licenses\n" +
+                                    tabulate(list(licenses.items()),
+                                             ("License", "Count"),
+                                             tablefmt="simple_grid"))
         # Setup initial attributes
         await self.db.push_attribute(Attribute(name="cmd",        value=full_cmd))
         await self.db.push_attribute(Attribute(name="cwd",        value=working_dir.as_posix()))

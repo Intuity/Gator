@@ -53,3 +53,21 @@ class Memory(SpecBase):
             raise SpecError(self, "unit", "Unit must be a string")
         if self.unit.strip().upper() not in ("KB", "MB", "GB", "TB"):
             raise SpecError(self, "unit", f"Unknown unit '{self.unit}'")
+
+
+class License(SpecBase):
+    yaml_tag = "!License"
+
+    def __init__(self, name : str, count : int = 1) -> None:
+        self.name = name
+        self.count = count
+
+    def check(self) -> None:
+        if not isinstance(self.name, str):
+            raise SpecError(self, "name", "Name must be a string")
+        if not isinstance(self.count, int):
+            raise SpecError(self, "count", "Count must be an integer")
+        if self.count < 0:
+            # NOTE: Zero is valid - if a job doesn't consume much resource then
+            #       it may be desirable to run it without blocking others
+            raise SpecError(self, "count", "Count must be zero or greater")

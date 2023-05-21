@@ -11,3 +11,4 @@
   resources:
     - !Cores [1]
     - !Memory [10, MB]
+    - !License [ToolA, 3]

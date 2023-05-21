@@ -209,6 +209,32 @@ class TestDatabase:
         # Clean-up
         await database.stop()
 
+    async def test_db_update(self, database, mocker):
+        """ Check that the update function modifies the database """
+        await database.start()
+        # Setup a mock to capture SQLite queries
+        sqlite = database._Database__db
+        mocker.patch.object(sqlite, "_execute", new=AsyncMock())
+        # Define a dataclass
+        @dataclass
+        class TestObj(Base):
+            key_a : str = ""
+            key_b : int = 0
+        # Update an object
+        await database.update(TestObj(db_uid=123))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "UPDATE TestObj SET key_a = :key_a, "
+                                        "key_b = :key_b WHERE db_uid = :db_uid",
+                                        {"db_uid": 123, "key_a": "", "key_b": 0})
+        # Update an object with values
+        await database.update(TestObj(db_uid=123, key_a="hello", key_b=234))
+        sqlite._execute.assert_any_call(sqlite._conn.execute,
+                                        "UPDATE TestObj SET key_a = :key_a, "
+                                        "key_b = :key_b WHERE db_uid = :db_uid",
+                                        {"db_uid": 123, "key_a": "hello", "key_b": 234})
+        # Clean-up
+        await database.stop()
+
     async def test_push_and_get(self, database):
         """ Push entries into the database and check a unique ID is assigned each time """
         await database.start()
@@ -307,3 +333,49 @@ class TestDatabase:
                                         ["goodbye", 2])
         # Clean-up
         await database.stop()
+
+    def test_dataclass_serialize(self):
+        """ Use the serialize/deserialize functions of the base dataclass """
+        # Define a dataclass which inherits from the DB's base class
+        @dataclass
+        class Demo(Base):
+            name   : str = ""
+            value  : int = 0
+            switch : bool = False
+        # List fields
+        assert {x.name for x in Demo.list_fields()} == {"name", "value", "switch"}
+        # Create an object
+        obj = Demo(db_uid=123, name="fred", value=2, switch=True)
+        # Serialize an instance
+        srlz = obj.serialize()
+        assert set(srlz.keys()) == {"name", "value", "switch"}
+        assert srlz["name"] == "fred"
+        assert srlz["value"] == 2
+        assert srlz["switch"] == True
+        # Deserialize
+        inst = Demo.deserialize(srlz)
+        assert inst.name == "fred"
+        assert inst.value == 2
+        assert inst.switch == True
+        # Serialize to a list
+        l_srlz = obj.serialize(as_list=True)
+        assert l_srlz == ["fred", 2, True]
+        # Deserialize
+        inst = Demo.deserialize(l_srlz)
+        assert inst.name == "fred"
+        assert inst.value == 2
+        assert inst.switch == True
+        # Omit a value
+        o_srlz = obj.serialize(omit=["value"])
+        assert o_srlz == {"name": "fred", "switch": True}
+        ol_srlz = obj.serialize(as_list=True, omit=["value"])
+        assert ol_srlz == ["fred", True]
+        # Deserialize from omitted versions
+        inst = Demo.deserialize(o_srlz, omit=["value"])
+        assert inst.name == "fred"
+        assert inst.value == 0
+        assert inst.switch == True
+        inst = Demo.deserialize(ol_srlz, omit=["value"])
+        assert inst.name == "fred"
+        assert inst.value == 0
+        assert inst.switch == True

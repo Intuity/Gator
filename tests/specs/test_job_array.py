@@ -238,3 +238,8 @@ def test_spec_job_array_bad_fields():
             JobArray(**{field: [123.2, False]}).check()
         assert str(exc.value) == f"The {field} entries must be strings"
         assert exc.value.field == field
+    # Check recursion of check into child
+    with pytest.raises(SpecError) as exc:
+        JobArray(jobs=[Job(id="hi"), Job(id=123)]).check()
+    assert str(exc.value) == "ID must be a string"
+    assert exc.value.field == "id"
