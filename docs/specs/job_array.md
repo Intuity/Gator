@@ -3,7 +3,7 @@ multiple [!Job](job.md) and [!JobGroup](job_group.md) instances, but unlike a
 [!JobGroup](job_group.md) the child jobs are repeated a specified number of
 times.
 
-```yaml
+```yaml linenums="1"
 !JobArray
   id     : top
   repeats: 4
@@ -26,20 +26,24 @@ times.
     - job_that_will_fail
 ```
 
-> **NOTE** The `GATOR_ARRAY_INDEX` environment variable indexes which pass is
-> currently being executed.
+!!! note
 
-| Field       | Required | Description                                                                       |
-|-------------|:--------:|-----------------------------------------------------------------------------------|
-| `id`        | ✅       | Identifier for the job array, used to navigate job hierarchy                      |
-| `repeats`   |          | Number of times to repeat jobs in the list, defaults to 1                         |
-| `cwd`       |          | Working directory, if not specified then the launch shell's `$CWD` is used        |
-| `env`       |          | Dictionary of environment variables to overlay                                    |
-| `jobs`      | ✅       | [!Job](job.md), [!JobGroup](job_group.md), or `!JobArray` to repeatedly run       |
-| `on_done`   |          | List of other tasks that must complete (pass or fail) before launching this array |
-| `on_pass`   |          | List of other tasks that must succeed before launching this array                 |
-| `on_fail`   |          | List of other tasks that must fail before launching this array                    |
+    The `GATOR_ARRAY_INDEX` environment variable indexes which pass is currently
+    being executed.
 
-> **NOTE** Dependencies specified in `on_done`, `on_pass`, and `on_fail` are
-> ANDed together, such that all tasks listed must complete with the relevent pass
-> or failure state before the dependent task is started.
+| Field       | Required         | Description                                                                       |
+|-------------|:----------------:|-----------------------------------------------------------------------------------|
+| `id`        | :material-check: | Identifier for the job array, used to navigate job hierarchy                      |
+| `repeats`   |                  | Number of times to repeat jobs in the list, defaults to 1                         |
+| `cwd`       |                  | Working directory, if not specified then the launch shell's `$CWD` is used        |
+| `env`       |                  | Dictionary of environment variables to overlay                                    |
+| `jobs`      | :material-check: | [!Job](job.md), [!JobGroup](job_group.md), or `!JobArray` to repeatedly run       |
+| `on_done`   |                  | List of other tasks that must complete (pass or fail) before launching this array |
+| `on_pass`   |                  | List of other tasks that must succeed before launching this array                 |
+| `on_fail`   |                  | List of other tasks that must fail before launching this array                    |
+
+!!! note
+
+    Dependencies specified in `on_done`, `on_pass`, and `on_fail` are
+    ANDed together, such that all tasks listed must complete with the relevent
+    pass or failure state before the dependent task is started.

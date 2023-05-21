@@ -12,6 +12,37 @@
     </tbody>
 </table>
 
+## Getting Started
+
+Gator is compatible with Python version 3.8 through 3.11 and is developed using
+[the Poetry packaging tool](https://python-poetry.org). To install Gator, check
+out the repository from GitHub and install it with Poetry:
+
+```bash
+$> git clone git@github.com:/Intuity/Gator.git
+$> cd Gator
+$> poetry install
+```
+
+## Running Jobs
+
+Before running Gator, you will need to create a [job specification](#job-specifications)
+as described below. Then invoke the tool as follows:
+
+```bash
+$> gator my_job_spec.yaml --progress
+[17:34:49] [INFO   ] Launching task: echo hello
+           [INFO   ] Monitoring task
+           [INFO   ] hello
+           [INFO   ] Task completed with return code 0
+           [INFO   ] Recorded 0 critical, 0 error, 0 warning, 4 info and 2 debug messages
+```
+
+!!! note
+
+    The `--progress` switch enables a progress bar which tracks jobs as they
+    running and the number of passes and failures.
+
 ## Job Specifications
 
 The complete set of tasks to run are specified with three objects:
@@ -29,7 +60,7 @@ or failure).
 
 A simple example of the syntax can be seen below:
 
-```yaml
+```yaml title="regression.yaml" linenums="1"
 !JobGroup
   id  : regression
   jobs:

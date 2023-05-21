@@ -2,7 +2,7 @@ A `!JobGroup` can specify a collection of jobs to be executed by Gator, each
 grouping can contain instances of [!Job](job.md), [!JobArray](job_array.md),
 and nested `!JobGroup` layers:
 
-```yaml
+```yaml linenums="1"
 !JobGroup
   id     : top
   cwd    : /path/to/working/directory
@@ -36,16 +36,18 @@ and nested `!JobGroup` layers:
     - job_that_will_fail
 ```
 
-| Field       | Required | Description                                                                       |
-|-------------|:--------:|-----------------------------------------------------------------------------------|
-| `id`        | ✅       | Identifier for the job array, used to navigate job hierarchy                      |
-| `cwd`       |          | Working directory, if not specified then the launch shell's `$CWD` is used        |
-| `env`       |          | Dictionary of environment variables to overlay                                    |
-| `jobs`      | ✅       | [!Job](job.md), [!JobGroup](job_group.md), or `!JobArray` to run in this tier     |
-| `on_done`   |          | List of other tasks that must complete (pass or fail) before launching this group |
-| `on_pass`   |          | List of other tasks that must succeed before launching this group                 |
-| `on_fail`   |          | List of other tasks that must fail before launching this group                    |
+| Field       | Required         | Description                                                                       |
+|-------------|:----------------:|-----------------------------------------------------------------------------------|
+| `id`        | :material-check: | Identifier for the job array, used to navigate job hierarchy                      |
+| `cwd`       |                  | Working directory, if not specified then the launch shell's `$CWD` is used        |
+| `env`       |                  | Dictionary of environment variables to overlay                                    |
+| `jobs`      | :material-check: | [!Job](job.md), [!JobGroup](job_group.md), or `!JobArray` to run in this tier     |
+| `on_done`   |                  | List of other tasks that must complete (pass or fail) before launching this group |
+| `on_pass`   |                  | List of other tasks that must succeed before launching this group                 |
+| `on_fail`   |                  | List of other tasks that must fail before launching this group                    |
 
-> **NOTE** Dependencies specified in `on_done`, `on_pass`, and `on_fail` are
-> ANDed together, such that all tasks listed must complete with the relevent pass
-> or failure state before the dependent task is started.
+!!! note
+
+    Dependencies specified in `on_done`, `on_pass`, and `on_fail` are
+    ANDed together, such that all tasks listed must complete with the relevent
+    pass or failure state before the dependent task is started.
