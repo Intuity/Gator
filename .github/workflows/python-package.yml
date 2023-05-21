@@ -6,6 +6,18 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment to GitHub pages, but don't cancel running
+# builds and wait for completion
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   lint:
     runs-on: ubuntu-latest
