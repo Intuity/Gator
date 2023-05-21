@@ -219,12 +219,12 @@ class Wrapper(BaseLayer):
                                              ("License", "Count"),
                                              tablefmt="simple_grid"))
         # Setup initial attributes
-        await self.db.push_attribute(Attribute(name="cmd",          value=full_cmd))
-        await self.db.push_attribute(Attribute(name="cwd",          value=working_dir.as_posix()))
-        await self.db.push_attribute(Attribute(name="host",         value=socket.gethostname()))
-        await self.db.push_attribute(Attribute(name="started",      value=str(datetime.now().timestamp())))
-        await self.db.push_attribute(Attribute(name="req_cores",    value=str(cpu_cores)))
-        await self.db.push_attribute(Attribute(name="req_memory",   value=str(memory_mb)))
+        await self.db.push_attribute(Attribute(name="cmd",        value=full_cmd))
+        await self.db.push_attribute(Attribute(name="cwd",        value=working_dir.as_posix()))
+        await self.db.push_attribute(Attribute(name="host",       value=socket.gethostname()))
+        await self.db.push_attribute(Attribute(name="started",    value=str(datetime.now().timestamp())))
+        await self.db.push_attribute(Attribute(name="req_cores",  value=str(cpu_cores)))
+        await self.db.push_attribute(Attribute(name="req_memory", value=str(memory_mb)))
         await self.db.push_attribute(Attribute(name="req_licenses",
                                                value=",".join(f"{k}={v}" for k, v in licenses.items())))
         # Launch the process

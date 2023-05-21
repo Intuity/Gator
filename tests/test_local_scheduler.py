@@ -19,24 +19,24 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from gator.common.child import Child
-from gator.scheduler import Scheduler
+from gator.scheduler import LocalScheduler
 
 @pytest.mark.asyncio
-class TestScheduler:
+class TestLocalScheduler:
 
-    async def test_scheduling(self, mocker, tmp_path):
+    async def test_local_scheduling(self, mocker, tmp_path):
         """ Launch a number of tasks """
         # Create an scheduler
-        sched = Scheduler(parent="test:1234", interval=7, quiet=False)
+        sched = LocalScheduler(parent="test:1234", interval=7, quiet=False)
         assert sched.parent == "test:1234"
         assert sched.interval == 7
         assert sched.quiet == False
         # Patch asyncio so we don't launch any real operations
-        as_sub = mocker.patch("gator.scheduler.asyncio.create_subprocess_shell", new=AsyncMock())
-        as_tsk = mocker.patch("gator.scheduler.asyncio.create_task", new=MagicMock(wraps=asyncio.create_task))
+        as_sub = mocker.patch("gator.scheduler.local.asyncio.create_subprocess_shell", new=AsyncMock())
+        as_tsk = mocker.patch("gator.scheduler.local.asyncio.create_task", new=MagicMock(wraps=asyncio.create_task))
         as_mon = mocker.patch.object(sched,
-                                     "_Scheduler__monitor",
-                                     new=AsyncMock(wraps=sched._Scheduler__monitor))
+                                     "_LocalScheduler__monitor",
+                                     new=AsyncMock(wraps=sched._LocalScheduler__monitor))
         procs = []
         def _create_proc(*_args, **_kwargs):
             nonlocal procs
@@ -48,7 +48,7 @@ class TestScheduler:
                             for x in range(10)])
         # Check for launch calls
         as_sub.assert_has_calls([
-            call(f"python3 -m gator --parent test:1234 --interval 7 --all-msg "
+            call(f"python3 -m gator --parent test:1234 --interval 7 --scheduler local --all-msg "
                  f"--id T{x} --tracking {(tmp_path / f'T{x}').as_posix()}",
                  stdin =subprocess.DEVNULL,
                  stdout=subprocess.DEVNULL)

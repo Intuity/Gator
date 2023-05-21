@@ -15,7 +15,7 @@
 import asyncio
 import signal
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Type, Union
 
 from rich.console import Console
 
@@ -23,6 +23,7 @@ from .common.logger import Logger
 from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
 from .tier import Tier
+from .scheduler import LocalScheduler
 from .specs import Job, JobArray, JobGroup, Spec
 from .wrapper import Wrapper
 
@@ -36,7 +37,8 @@ async def launch(id           : Optional[str]               = None,
                  all_msg      : bool                        = False,
                  verbose      : bool                        = False,
                  heartbeat_cb : Optional[Callable]          = None,
-                 console      : Optional[Console]           = None) -> None:
+                 console      : Optional[Console]           = None,
+                 scheduler    : Type                        = LocalScheduler) -> None:
     # If a console isn't given, create one
     if not console:
         console = Console(log_path=False)
@@ -70,7 +72,8 @@ async def launch(id           : Optional[str]               = None,
                    tracking    =tracking,
                    quiet       =quiet and not all_msg,
                    all_msg     =all_msg,
-                   heartbeat_cb=heartbeat_cb)
+                   heartbeat_cb=heartbeat_cb,
+                   scheduler   =scheduler)
     # If a Job is provided, launch a wrapper
     elif isinstance(spec, Job):
         top = Wrapper(spec    =spec,

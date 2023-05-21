@@ -13,21 +13,19 @@
 # limitations under the License.
 
 import asyncio
-import subprocess
 from typing import List
 
-from .common.child import Child
+from ..common.child import Child
+from .common import BaseScheduler
 
-class Scheduler:
+class LocalScheduler(BaseScheduler):
     """ Launches a set of tasks on a particular infrastructure """
 
     def __init__(self,
                  parent   : str,
                  interval : int = 5,
                  quiet    : bool = True) -> None:
-        self.parent   = parent
-        self.interval = interval
-        self.quiet    = quiet
+        super().__init__(parent=parent, interval=interval, quiet=quiet)
         self.lock     = asyncio.Lock()
         self.launched = {}
         self.complete = {}
@@ -41,16 +39,12 @@ class Scheduler:
             del self.monitors[id]
 
     async def launch(self, tasks : List[Child]) -> None:
-        common = ["python3", "-m", "gator",
-                  "--parent", self.parent,
-                  "--interval", f"{self.interval}",
-                  ["--all-msg", "--quiet"][self.quiet]]
         async with self.lock:
             for child in tasks:
                 self.launched[child.id] = await asyncio.create_subprocess_shell(
-                    " ".join(common + ["--id", f"{child.id}", "--tracking", child.tracking.as_posix()]),
-                    stdin =subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL
+                    self.create_command(child),
+                    stdin =asyncio.subprocess.DEVNULL,
+                    stdout=asyncio.subprocess.DEVNULL
                 )
                 self.monitors[child.id] = asyncio.create_task(self.__monitor(child.id, self.launched[child.id]))
 

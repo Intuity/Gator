@@ -16,22 +16,23 @@ import asyncio
 from copy import copy, deepcopy
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Type
 
 from .common.child import Child, ChildState
 from .common.layer import BaseLayer
 from .common.logger import Logger
 from .common.types import Metric, Result
 from .common.ws_wrapper import WebsocketWrapper
-from .scheduler import Scheduler
+from .scheduler import LocalScheduler
 from .specs import Job, JobArray, JobGroup, Spec
 
 
 class Tier(BaseLayer):
     """ Tier of the job tree """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, scheduler : Type = LocalScheduler, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.sched_cls = scheduler
         self.scheduler = None
         self.lock      = asyncio.Lock()
         # Tracking for jobs in different phases
@@ -52,8 +53,8 @@ class Tier(BaseLayer):
         # Register client handlers for downwards calls
         self.client.add_route("get_tree", self.get_tree)
         # Create a scheduler
-        self.scheduler = Scheduler(parent=await self.server.get_address(),
-                                   quiet =not self.all_msg)
+        self.scheduler = self.sched_cls(parent=await self.server.get_address(),
+                                        quiet =not self.all_msg)
         # Launch jobs
         await self.logger.info(f"Layer '{self.id}' launching sub-jobs")
         await self.__launch()
