@@ -13,56 +13,71 @@
 # limitations under the License.
 
 import dataclasses
+import os
 import socket
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, render_template, request
-import uwsgi
+from piccolo.engine.postgres import PostgresEngine
+from piccolo.table import Table
+from piccolo.columns import Varchar, Integer, UUID
+from quart import Quart, render_template, request
 
 from ..common.db import Base, Database
 from ..common.types import Attribute
 
-react_dir = uwsgi.opt["react_root"].decode("utf-8")
+react_dir = os.environ["GATOR_HUB_ROOT"]
 print(f"Static content: {react_dir}")
 
-hub = Flask("gator-hub",
+hub = Quart("gator-hub",
             static_url_path="/assets",
             static_folder=f"{react_dir}/assets",
             template_folder=react_dir)
 
-# Local SQLite database
-@dataclasses.dataclass
-class Registration(Base):
-    id         : str      = ""
-    server_url : str      = ""
-    timestamp  : datetime = dataclasses.field(default_factory=datetime.now)
+db = PostgresEngine(config={ "host"    : "127.0.0.1",
+                             "port"    : 5432,
+                             "database": "gator",
+                             "user"    : "postgres",
+                             "password": "dbpasswd123" })
 
-db = Database(path=Path.cwd() / "hub.sqlite", uwsgi=True)
-db.register(Attribute)
-db.register(Registration)
+class Registration(Table, db=db):
+    uuid       = UUID(primary_key=True)
+    id         = Varchar(250)
+    server_url = Varchar(250)
+    timestamp  = Integer()
 
-db.push_attribute(Attribute(name="last_start", value=datetime.now().isoformat()))
-db.push_attribute(Attribute(name="running_on", value=socket.gethostname()))
+@hub.before_serving
+async def start_database():
+    global db
+    await db.start_connection_pool()
+    await Registration.create_table(if_not_exists=True)
+
+@hub.after_serving
+async def stop_database():
+    global db
+    await db.close_connection_pool()
 
 @hub.get("/")
-def html_root():
-    return render_template("index.html")
+async def html_root():
+    return await render_template("index.html")
 
 @hub.get("/api")
-def api_root():
+async def api_root():
     return { "tool"   : "gator-hub",
              "version": "1.0" }
 
 @hub.post("/api/register")
-def register():
-    data = request.json
-    uid = db.push(reg := Registration(id=data["id"], server_url=data["url"]))
-    print(f"Process registered {reg.id}, {reg.server_url}")
-    return { "result": "success", "uid": uid }
+async def register():
+    data = await request.get_json()
+    await Registration.insert(Registration(id=data["id"],
+                                           server_url=data["url"],
+                                           timestamp=int(datetime.now().timestamp())))
+    return { "result": "success" }
 
 @hub.get("/api/jobs")
-def jobs():
-    return [vars(x) for x in db.get(Registration,
-                                    sql_order_by=("timestamp", False),
-                                    sql_limit   =10)]
+async def jobs():
+    regs = await Registration.select().order_by(Registration.timestamp, ascending=False).limit(10)
+    return regs
+
+if __name__ == "__main__":
+    hub.run(port=8080)
