@@ -1,10 +1,11 @@
 [tool.poetry]
-name = "gator"
+name = "gator-eda"
 version = "0.1"
 description = "Hierarchical job execution and logging"
 authors = ["Peter Birch <peter@lightlogic.co.uk>"]
 license = "Apache-2.0"
 readme = "README.md"
+packages = [{ include="gator", from="." }]
 
 [tool.poetry.dependencies]
 python = "^3.8"
