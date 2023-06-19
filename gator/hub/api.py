@@ -20,10 +20,13 @@ class _HubAPI(HTTPAPI):
     ENV_VAR      = "GATOR_HUB"
     ROUTE_PREFIX = "/api"
     REGISTER     = Path("register")
+    COMPLETE     = Path("complete")
 
-    def register(self, id : str, url : str) -> None:
+    def register(self, id : str, url : str) -> str:
         response = self.post(self.REGISTER, id=id, url=url)
-        print(f"Registration UID {response['uid']}")
         return response.get("uid", None)
+
+    def complete(self, uid : str, db_file : str) -> None:
+        self.post(self.COMPLETE, uid=uid, db_file=db_file)
 
 HubAPI = _HubAPI()

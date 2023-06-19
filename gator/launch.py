@@ -29,6 +29,7 @@ from .wrapper import Wrapper
 
 
 async def launch(id           : Optional[str]               = None,
+                 hub          : Optional[str]               = None,
                  parent       : Optional[str]               = None,
                  spec         : Optional[Union[Spec, Path]] = None,
                  tracking     : Path                        = Path.cwd(),

@@ -17,12 +17,13 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from .ws_client import WebsocketClient
+from ..hub.api import HubAPI
+from ..specs import Job, JobArray, JobGroup, Spec
 from .db import Database
 from .logger import Logger
-from .ws_server import WebsocketServer
-from ..specs import Job, JobArray, JobGroup, Spec
 from .types import LogSeverity, Metric, Result
+from .ws_client import WebsocketClient
+from .ws_server import WebsocketServer
 
 
 class BaseLayer:
@@ -52,6 +53,7 @@ class BaseLayer:
         self.code       = 0
         self.db         = None
         self.server     = None
+        self.__hub_uid  = None
         self.__hb_event = None
         self.__hb_task  = None
         # State
@@ -83,11 +85,13 @@ class BaseLayer:
         server_address = await self.server.start()
         # Add handlers for downwards calls
         self.client.add_route("stop", self.stop)
-        # If linked, ping the parent
+        # If linked, ping and then register with the parent
         if self.client.linked:
             await self.client.measure_latency()
-        # Register with the parent
-        await self.client.register(id=self.id, server=server_address)
+            await self.client.register(id=self.id, server=server_address)
+        # Otherwise, register with the parent
+        else:
+            self.__hub_uid = HubAPI.register(self.id, server_address)
         # Schedule the heartbeat
         self.__hb_event = asyncio.Event()
         self.__hb_task  = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
@@ -115,6 +119,9 @@ class BaseLayer:
         await self.server.stop()
         # Shutdown the database
         await self.db.stop()
+        # Notify the hub of completion
+        if self.__hub_uid is not None:
+            HubAPI.complete(self.__hub_uid, "/a/b/c")
 
     async def stop(self, **kwargs) -> None:
         self.terminated = True

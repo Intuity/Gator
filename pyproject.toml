@@ -74,4 +74,12 @@ shell = "poetry run mkdocs serve"
 
 [tool.poe.tasks]
 hub = ["npm_build", "hub_run"]
-hub_dev = ["npm_build_dev", "hub_run"]
+
+[tool.poe.tasks.hub_dev]
+help = "Run a hub instance in development mode"
+shell = """
+cd gator-hub
+npm run build_dev
+cd ..
+GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub.app
+"""

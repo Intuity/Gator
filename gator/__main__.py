@@ -52,8 +52,6 @@ def main(id        : str,
          progress  : bool,
          scheduler : str,
          spec      : str) -> None:
-    if hub:
-        HubAPI.url = hub
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
     # Select the right scheduler

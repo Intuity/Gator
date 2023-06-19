@@ -4,10 +4,15 @@ import moment from 'moment'
 
 import mascot from "./assets/mascot_white.svg?url"
 
-interface ApiJob { db_uid    : number,
-                   id        : string,
-                   server_url: string,
-                   timestamp : string }
+interface ApiCompletion { uid      : number,
+                          db_file  : string,
+                          timestamp: number }
+
+interface ApiJob { uid         : number,
+                   id          : string,
+                   server_url  : string,
+                   timestamp   : number,
+                   completion ?: ApiCompletion }
 
 function Breadcrumb ({ }) {
     return (
@@ -21,12 +26,12 @@ function Breadcrumb ({ }) {
 }
 
 function Job ({ job } : { job : ApiJob }) {
-    let date = moment(job.timestamp);
+    let date = moment(job.timestamp * 1000);
     return (
         <tr>
             <td>
-                <strong>{job.db_uid}: {job.id}</strong><br />
-                <small>peterbirch - {date.format("DD/MM/YY @ HH:MM")}</small>
+                <strong>{job.uid}: {job.id}</strong>{job.completion ? 'X' : 'O'}<br />
+                <small>peterbirch - {date.format("DD/MM/YY @ HH:mm")}</small>
             </td>
         </tr>
     );
