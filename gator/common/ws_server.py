@@ -56,10 +56,24 @@ class WebsocketServer(WebsocketRouter):
 
     async def get_address(self) -> str:
         """ Returns the URI of the server """
-        hostname = socket.gethostname()
-        assert hostname, "Blank hostname returned from socket.gethostname()"
-        hostip = socket.gethostbyname(hostname)
-        assert hostip, "Blank IP return from socket.gethostbyname()"
+        # First try to establish IP address from hostname
+        try:
+            # Attempt to get the hostname (fully qualified)
+            hostname = socket.getfqdn()
+            if not hostname:
+                raise Exception("Blank hostname returned from socket.gethostname()")
+            # Get all known IP addresses for this host (note this can raise an
+            # exception if the host is unresolvable)
+            _, _, ipaddrs = socket.gethostbyname_ex(hostname)
+            if len(ipaddrs) == 0:
+                raise Exception("Blank IP return from socket.gethostbyname()")
+            hostip = ipaddrs[0]
+        # If that fails, use a known external host to resolve default route
+        except Exception:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.connect(("8.8.8.8", 80))
+            hostip = sock.getsockname()[0]
+            sock.close()
         port = await self.get_port()
         return f"{hostip}:{port}"
 
