@@ -162,21 +162,21 @@ class Wrapper(BaseLayer):
                         vms      += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
-                    # Push statistics to the databvase
+                    # Push statistics to the database
                     await self.db.push_procstat(ProcStat(timestamp=datetime.now(),
                                                          nproc=nproc,
                                                          cpu=cpu_perc,
                                                          mem=rss,
                                                          vmem=vms))
                     # Check if exceeding the limits
-                    now_exceeding = ((cpu_cores > 0 and cpu_perc > cpu_cores) or
+                    now_exceeding = ((cpu_cores > 0 and cpu_perc > (100 * cpu_cores)) or
                                      (memory_mb > 0 and (rss / 1E6) > memory_mb))
                     if now_exceeding and not exceeding:
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "
                             f"{cpu_cores} CPU cores and {memory_mb} MB of RAM - "
-                            f"current usage is {cpu_perc:.01f} CPU cores and "
-                            f"{rss / 1E6:0.1} MB of RAM"
+                            f"current usage is {cpu_perc / 100:.01f} CPU cores and "
+                            f"{rss / 1E6:0.1f} MB of RAM"
                         )
                     exceeding = now_exceeding
             except psutil.NoSuchProcess:
@@ -199,6 +199,7 @@ class Wrapper(BaseLayer):
         # Overlay any custom variables on the environment
         env = { str(k): str(v) for k, v in (self.spec.env or os.environ).items() }
         env["GATOR_PARENT"] = await self.server.get_address()
+        env["PYTHONUNBUFFERED"] = "1"
         # Determine the working directory
         working_dir = Path((self.spec.cwd if self.spec else None) or os.getcwd())
         # Expand variables in the command
@@ -229,13 +230,14 @@ class Wrapper(BaseLayer):
                                                value=",".join(f"{k}={v}" for k, v in licenses.items())))
         # Launch the process
         await self.logger.info(f"Launching task: {full_cmd}")
-        self.proc = await asyncio.create_subprocess_shell(full_cmd,
-                                                          cwd=working_dir,
-                                                          env=env,
-                                                          stdin=subprocess.PIPE,
-                                                          stdout=subprocess.PIPE,
-                                                          stderr=subprocess.PIPE,
-                                                          close_fds=True)
+        self.proc = await asyncio.create_subprocess_exec(self.spec.command,
+                                                         *list(map(str, self.spec.args)),
+                                                         cwd=working_dir,
+                                                         env=env,
+                                                         stdin=subprocess.PIPE,
+                                                         stdout=subprocess.PIPE,
+                                                         stderr=subprocess.PIPE,
+                                                         close_fds=True)
         # Monitor process usage
         e_done  = asyncio.Event()
         t_pmon  = asyncio.create_task(self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb))

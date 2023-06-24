@@ -91,7 +91,7 @@ class BaseLayer:
             await self.client.register(id=self.id, server=server_address)
         # Otherwise, register with the parent
         else:
-            self.__hub_uid = HubAPI.register(self.id, server_address)
+            self.__hub_uid = HubAPI.register(id=self.id, url=server_address)
         # Schedule the heartbeat
         self.__hb_event = asyncio.Event()
         self.__hb_task  = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
@@ -121,7 +121,7 @@ class BaseLayer:
         await self.db.stop()
         # Notify the hub of completion
         if self.__hub_uid is not None:
-            HubAPI.complete(self.__hub_uid, "/a/b/c")
+            HubAPI.complete(uid=self.__hub_uid, db_file=self.db.path.as_posix())
 
     async def stop(self, **kwargs) -> None:
         self.terminated = True

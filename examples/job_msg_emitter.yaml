@@ -1,0 +1,9 @@
+!Job
+  id: msg_emitter
+  command: python3
+  args:
+    - emitter.py
+    - 10
+  resources:
+    - !Cores [1]
+    - !Memory [30, MB]

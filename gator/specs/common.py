@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pathlib import Path
+from typing import Optional
+
 import yaml
 try:
     from yaml import CDumper as Dumper
@@ -24,12 +27,17 @@ class SpecBase(yaml.YAMLObject):
     yaml_loader = Loader
     yaml_dumper = Dumper
 
+    def __init__(self, yaml_path : Optional[Path] = None) -> None:
+        super().__init__()
+        self.yaml_path = yaml_path
+
     @classmethod
     def from_yaml(cls, loader : Loader, node : yaml.Node) -> "SpecBase":
+        fpath = Path(node.start_mark.name).absolute()
         if isinstance(node, yaml.nodes.MappingNode):
-            return cls(**loader.construct_mapping(node, deep=True))
+            return cls(**loader.construct_mapping(node, deep=True), yaml_path=fpath)
         else:
-            return cls(*loader.construct_sequence(node))
+            return cls(*loader.construct_sequence(node), yaml_path=fpath)
 
     def check(self) -> None:
         pass

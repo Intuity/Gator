@@ -26,8 +26,8 @@ class WebsocketClient(WebsocketWrapper):
 
     def __init__(self, address : Optional[str] = None) -> None:
         super().__init__()
-        if address is None and "GATOR_SERVER" in os.environ:
-            address = os.environ["GATOR_SERVER"]
+        if address is None and "GATOR_PARENT" in os.environ:
+            address = os.environ["GATOR_PARENT"]
         self.address = address
 
     async def start(self) -> None:

@@ -14,6 +14,7 @@
 
 import functools
 from collections import Counter
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase, SpecError
@@ -32,10 +33,12 @@ class Job(SpecBase):
                  resources : Optional[List[Union[Cores, License, Memory]]] = None,
                  on_done   : Optional[List[str]] = None,
                  on_fail   : Optional[List[str]] = None,
-                 on_pass   : Optional[List[str]] = None) -> None:
+                 on_pass   : Optional[List[str]] = None,
+                 yaml_path : Optional[Path] = None) -> None:
+        super().__init__(yaml_path)
         self.id = id
         self.env = env or {}
-        self.cwd = cwd
+        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
         self.command = command
         self.args = args or []
         self.resources = resources or []
@@ -111,19 +114,21 @@ class JobArray(SpecBase):
     yaml_tag = "!JobArray"
 
     def __init__(self,
-                 id      : Optional[str] = None,
-                 repeats : Optional[int] = None,
-                 jobs    : Optional[List[Union[Job, "JobArray", "JobGroup"]]] = None,
-                 env     : Optional[Dict[str, str]] = None,
-                 cwd     : Optional[str] = None,
-                 on_fail : Optional[List[str]] = None,
-                 on_pass : Optional[List[str]] = None,
-                 on_done : Optional[List[str]] = None) -> None:
+                 id        : Optional[str] = None,
+                 repeats   : Optional[int] = None,
+                 jobs      : Optional[List[Union[Job, "JobArray", "JobGroup"]]] = None,
+                 env       : Optional[Dict[str, str]] = None,
+                 cwd       : Optional[str] = None,
+                 on_fail   : Optional[List[str]] = None,
+                 on_pass   : Optional[List[str]] = None,
+                 on_done   : Optional[List[str]] = None,
+                 yaml_path : Optional[Path] = None) -> None:
+        super().__init__(yaml_path)
         self.id = id
         self.repeats = 1 if (repeats is None) else repeats
         self.jobs = jobs or []
         self.env = env or {}
-        self.cwd = cwd
+        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
         self.on_fail = on_fail or []
         self.on_pass = on_pass or []
         self.on_done = on_done or []
@@ -172,17 +177,19 @@ class JobGroup(SpecBase):
     yaml_tag = "!JobGroup"
 
     def __init__(self,
-                 id      : Optional[str] = None,
-                 jobs    : Optional[List[Union[Job, "JobGroup", JobArray]]] = None,
-                 env     : Optional[Dict[str, str]] = None,
-                 cwd     : Optional[str] = None,
-                 on_fail : Optional[List[str]] = None,
-                 on_pass : Optional[List[str]] = None,
-                 on_done : Optional[List[str]] = None) -> None:
+                 id        : Optional[str] = None,
+                 jobs      : Optional[List[Union[Job, "JobGroup", JobArray]]] = None,
+                 env       : Optional[Dict[str, str]] = None,
+                 cwd       : Optional[str] = None,
+                 on_fail   : Optional[List[str]] = None,
+                 on_pass   : Optional[List[str]] = None,
+                 on_done   : Optional[List[str]] = None,
+                 yaml_path : Optional[Path] = None) -> None:
+        super().__init__(yaml_path)
         self.id = id
         self.jobs = jobs or []
         self.env = env or {}
-        self.cwd = cwd
+        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
         self.on_fail = on_fail or []
         self.on_pass = on_pass or []
         self.on_done = on_done or []
