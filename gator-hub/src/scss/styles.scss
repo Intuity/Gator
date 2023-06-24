@@ -12,3 +12,33 @@
 nav > ol.breadcrumb {
     margin: 0;
 }
+
+tr.active {
+    background-color: green;
+}
+
+td.msg_debug {
+    color: grey !important;
+    font-weight: bold;
+}
+
+td.msg_info {
+    color: blue !important;
+    font-weight: bold;
+}
+
+td.msg_warning {
+    color: orange !important;
+    font-weight: bold;
+}
+
+td.msg_error {
+    color: red !important;
+    font-weight: bold;
+}
+
+td.msg_critical {
+    background-color: red !important;
+    color: white !important;
+    font-weight: bold;
+}

@@ -53,3 +53,10 @@ class WebsocketClient(WebsocketWrapper):
             await self.ws.close()
             await self.stop_monitor()
             self.ws = None
+
+    async def __aenter__(self) -> None:
+        await self.start()
+        return self
+
+    async def __aexit__(self, *_) -> None:
+        await self.stop()

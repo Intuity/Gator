@@ -19,11 +19,12 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from ..hub.api import HubAPI
 from ..specs import Job, JobArray, JobGroup, Spec
-from .db import Database
+from .db import Database, Query
 from .logger import Logger
-from .types import LogSeverity, Metric, Result
+from .types import LogEntry, LogSeverity, Metric, Result
 from .ws_client import WebsocketClient
 from .ws_server import WebsocketServer
+from .ws_wrapper import WebsocketWrapper
 
 
 class BaseLayer:
@@ -83,6 +84,7 @@ class BaseLayer:
         # Setup server
         self.server    = WebsocketServer(db=self.db, logger=self.logger)
         server_address = await self.server.start()
+        self.server.add_route("get_messages", self.get_messages)
         # Add handlers for downwards calls
         self.client.add_route("stop", self.stop)
         # If linked, ping and then register with the parent
@@ -162,6 +164,18 @@ class BaseLayer:
         await self.client.update(id=self.id, **summary)
         # Return the summary
         return summary
+
+    async def get_messages(self,
+                           ws    : WebsocketWrapper,
+                           after : int = 0,
+                           limit : int = 10) -> List[Dict[str, Union[str, int]]]:
+        msgs : List[LogEntry] = await self.db.get_logentry(sql_order_by=("db_uid", True),
+                                          sql_limit   =limit,
+                                          db_uid      =Query(gte=after))
+        return [{ "uid"      : x.db_uid,
+                  "severity" : int(x.severity),
+                  "message"  : x.message,
+                  "timestamp": int(x.timestamp.timestamp()) } for x in msgs]
 
     @property
     def id(self) -> str:

@@ -4,15 +4,28 @@ import moment from 'moment'
 
 import mascot from "./assets/mascot_white.svg?url"
 
-interface ApiCompletion { uid      : number,
-                          db_file  : string,
-                          timestamp: number }
+interface ApiCompletion { uid       ?: number,
+                          db_file   ?: string,
+                          timestamp ?: number }
 
-interface ApiJob { uid         : number,
-                   id          : string,
-                   server_url  : string,
-                   timestamp   : number,
-                   completion ?: ApiCompletion }
+interface ApiJob { uid       : number,
+                   id        : string,
+                   server_url: string,
+                   timestamp : number,
+                   completion: ApiCompletion }
+
+interface ApiMsg { uid       : number,
+                   severity  : number,
+                   message   : string,
+                   timestamp : number }
+
+const Severity : { [key: number]: string } = {
+    10: "DEBUG",
+    20: "INFO",
+    30: "WARNING",
+    40: "ERROR",
+    50: "CRITICAL"
+};
 
 function Breadcrumb ({ }) {
     return (
@@ -25,47 +38,112 @@ function Breadcrumb ({ }) {
     );
 }
 
-function Job ({ job } : { job : ApiJob }) {
+function Job ({ job, focus, setJobFocus } : { job : ApiJob, focus : ApiJob | undefined, setJobFocus : (focus : ApiJob) => void }) {
     let date = moment(job.timestamp * 1000);
     return (
-        <tr>
+        <tr onClick={() => { setJobFocus(job); }} className={(focus && focus.uid == job.uid) ? "active" : ""}>
             <td>
-                <strong>{job.uid}: {job.id}</strong>{job.completion ? 'X' : 'O'}<br />
+                <strong>{job.uid}: {job.id}</strong>{job.completion.uid ? 'X' : 'O'}<br />
                 <small>peterbirch - {date.format("DD/MM/YY @ HH:mm")}</small>
             </td>
         </tr>
     );
 }
 
-function Message ({ }) {
+function Message ({ msg } : { msg : ApiMsg }) {
+    let date = moment(msg.timestamp * 1000);
+    let sevstr = Severity[msg.severity];
     return (
         <tr>
-            <td>TIME</td>
-            <td>SEVERITY</td>
-            <td>TEXT</td>
+            <td>{date.format("HH:mm:ss")}</td>
+            <td className={"msg_" + sevstr.toLowerCase()}>{sevstr}</td>
+            <td>{msg.message}</td>
         </tr>
     );
 }
 
-function fetch_jobs (setJobs : CallableFunction) {
+function fetchJobs (setJobs : CallableFunction) {
     let inner = () => {
-        console.log("FETCH JOBS");
+        let all_jobs : ApiJob[] = [];
         fetch("/api/jobs")
             .then((response) => response.json())
-            .then((data) => setJobs(data))
+            .then((data) => {
+                all_jobs = [...all_jobs, ...data];
+                all_jobs.sort((a, b) => (b.uid - a.uid));
+                setJobs(all_jobs)
+            })
             .catch((err) => console.error(err.message))
             .finally(() => setTimeout(inner, 1000));
     };
     inner();
 }
 
+function MessageViewer ({ job } : { job : ApiJob | undefined }) {
+    // If no job provided, return an empty table
+    if (job === undefined) {
+        return (
+            <table className="table table-striped table-sm">
+                <thead>
+                    <tr>
+                        <th className="col-1">Time</th>
+                        <th className="col-1">Severity</th>
+                        <th className="col-10">Message</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        );
+    }
+
+    // Otherwise, fetch and draw messages
+    const [messages, setMessages] = useState<ApiMsg[]>([]);
+
+    // Periodically fetch new messages
+    useEffect(() => {
+        let   last_uid           = 0;
+        let   all_msg : ApiMsg[] = [];
+        const poll_id  = setInterval(() => {
+            fetch(`/api/job/${job.uid}/messages?after=${last_uid}&limit=20`)
+                .then((response) => response.json())
+                .then((data) => {
+                    all_msg = [...all_msg, ...data];
+                    setMessages(all_msg);
+                    last_uid = Math.max(...data.map((msg : ApiMsg) => msg.uid)) + 1;
+                })
+                .catch((err) => console.error(err.message));
+        }, 1000);
+        return () => {
+            clearInterval(poll_id);
+            setMessages([]);
+        };
+    }, [job]);
+
+    // Render messages
+    let msg_elems : ReactElement[] = messages.map((msg) => <Message msg={msg} />);
+
+    return (
+        <table className="table table-striped table-sm">
+            <thead>
+                <tr>
+                    <th className="col-1">Time</th>
+                    <th className="col-1">Severity</th>
+                    <th className="col-10">Message</th>
+                </tr>
+            </thead>
+            <tbody>{msg_elems}</tbody>
+        </table>
+    );
+}
+
 export default function App() {
-    const [jobs, setJobs] = useState([])
+    const [jobs, setJobs] = useState<ApiJob[]>([]);
+    const [job_focus, setJobFocus] = useState<ApiJob | undefined>(undefined);
 
-    useEffect(() => fetch_jobs(setJobs), []);
+    useEffect(() => fetchJobs(setJobs), []);
 
-    let job_elems : ReactElement[] = [];
-    jobs.forEach((job) => job_elems.push(<Job job={job} />))
+    let job_elems : ReactElement[] = jobs.map((job) =>
+        <Job job={job} focus={job_focus} setJobFocus={setJobFocus} />
+    );
 
     return (
         <>
@@ -90,18 +168,7 @@ export default function App() {
                         </table>
                     </nav>
                     <main className="col-10" style={{ marginLeft: "auto" }}>
-                        <table className="table table-striped table-sm">
-                            <thead>
-                                <tr>
-                                    <th className="col-1">Time</th>
-                                    <th className="col-1">Severity</th>
-                                    <th className="col-10">Message</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <Message />
-                            </tbody>
-                        </table>
+                        <MessageViewer job={job_focus} />
                     </main>
                 </div>
             </div>

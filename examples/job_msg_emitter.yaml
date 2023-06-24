@@ -3,7 +3,7 @@
   command: python3
   args:
     - emitter.py
-    - 10
+    - 10000
   resources:
     - !Cores [1]
     - !Memory [30, MB]

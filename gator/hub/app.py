@@ -20,6 +20,8 @@ from piccolo.table import Table
 from piccolo.columns import Varchar, Integer, Serial, ForeignKey
 from quart import Quart, render_template, request
 
+from ..common.ws_client import WebsocketClient
+
 react_dir = os.environ["GATOR_HUB_ROOT"]
 
 # Create Quart application to host the interface and handle API requests
@@ -101,6 +103,17 @@ async def jobs():
         ascending=False
     ).output(nested=True).limit(10)
     return regs
+
+@hub.get("/api/job/<job_id>/messages")
+async def job_messages(job_id):
+    # Get query parameters
+    after_uid = int(request.args.get("after", 0))
+    limit_num = int(request.args.get("limit", 10))
+    # Locate the matching job
+    reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
+    async with WebsocketClient(reg.server_url) as ws:
+        msgs = await ws.get_messages(after=after_uid, limit=limit_num)
+    return msgs
 
 if __name__ == "__main__":
     hub.run(port=8080)

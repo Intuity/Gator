@@ -14,6 +14,7 @@
 
 import asyncio
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -21,7 +22,6 @@ from rich.console import Console
 
 from . import launch
 from . import launch_progress
-from .hub.api import HubAPI
 from .scheduler import LocalScheduler
 from .specs import Spec
 from .specs.common import SpecError
@@ -53,7 +53,7 @@ def main(id        : str,
          scheduler : str,
          spec      : str) -> None:
     # Determine a tracking directory
-    tracking = Path(tracking) if tracking else (Path.cwd() / "tracking")
+    tracking = Path(tracking) if tracking else (Path.cwd() / "tracking" / datetime.now().isoformat())
     # Select the right scheduler
     sched = { "local": LocalScheduler }.get(scheduler.lower())
     # Launch with optional progress tracking
