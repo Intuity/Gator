@@ -80,7 +80,7 @@ function MessageViewer ({ job } : { job : ApiJob | undefined }) {
             deferRender   : true,
             scrollY       : 600,
             scrollCollapse: true,
-            scroller      : { loadingIndicator: true, serverWait: 10 },
+            scroller      : { serverWait: 10 },
             serverSide    : true,
             ajax          : (request : any, callback : any) => {
                 let start = request.start;
@@ -101,14 +101,21 @@ function MessageViewer ({ job } : { job : ApiJob | undefined }) {
                     .catch((err) => console.error(err.message));
             }
         });
-        let reload = setInterval(() => { dt.ajax.reload(null, false) }, 2000);
+        let reload = setInterval(
+            () => {
+                dt.ajax.reload((data : any) => {
+                    dt.scroller.toPosition(data.recordsTotal + 200);
+                }, false);
+            },
+            2000
+        );
         return () => {
             clearInterval(reload);
             dt.destroy()
         };
     }, [job]);
 
-    return <table className="table table-striped display nowrap" ref={ref}>
+    return <table className="table table-striped table-sm" ref={ref}>
         <thead>
             <tr>
                 <th>Time</th>
