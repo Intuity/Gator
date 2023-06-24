@@ -42,3 +42,8 @@ td.msg_critical {
     color: white !important;
     font-weight: bold;
 }
+
+.dataTables_paginate,
+.dataTables_length {
+    display: none;
+}

@@ -169,13 +169,17 @@ class BaseLayer:
                            ws    : WebsocketWrapper,
                            after : int = 0,
                            limit : int = 10) -> List[Dict[str, Union[str, int]]]:
-        msgs : List[LogEntry] = await self.db.get_logentry(sql_order_by=("db_uid", True),
-                                          sql_limit   =limit,
-                                          db_uid      =Query(gte=after))
-        return [{ "uid"      : x.db_uid,
-                  "severity" : int(x.severity),
-                  "message"  : x.message,
-                  "timestamp": int(x.timestamp.timestamp()) } for x in msgs]
+        msgs : List[LogEntry] = await self.db.get_logentry(
+            sql_order_by=("db_uid", True),
+            sql_limit   =limit,
+            db_uid      =Query(gte=after)
+        )
+        total : int = await self.db.get_logentry(sql_count=True)
+        format = [{ "uid"      : x.db_uid,
+                    "severity" : int(x.severity),
+                    "message"  : x.message,
+                    "timestamp": int(x.timestamp.timestamp()) } for x in msgs]
+        return { "messages": format, "total": total }
 
     @property
     def id(self) -> str:

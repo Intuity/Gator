@@ -1,6 +1,9 @@
-import { ReactElement, useEffect, useState } from 'react'
+import { ReactElement, useEffect, useState, useRef } from 'react'
 import moment from 'moment'
-// import * as bootstrap from "bootstrap"
+
+import 'datatables.net-bs5/css/dataTables.bootstrap5.css'
+import DataTable from 'datatables.net-bs5'
+import 'datatables.net-scroller-bs5'
 
 import mascot from "./assets/mascot_white.svg?url"
 
@@ -13,11 +16,6 @@ interface ApiJob { uid       : number,
                    server_url: string,
                    timestamp : number,
                    completion: ApiCompletion }
-
-interface ApiMsg { uid       : number,
-                   severity  : number,
-                   message   : string,
-                   timestamp : number }
 
 const Severity : { [key: number]: string } = {
     10: "DEBUG",
@@ -50,18 +48,6 @@ function Job ({ job, focus, setJobFocus } : { job : ApiJob, focus : ApiJob | und
     );
 }
 
-function Message ({ msg } : { msg : ApiMsg }) {
-    let date = moment(msg.timestamp * 1000);
-    let sevstr = Severity[msg.severity];
-    return (
-        <tr>
-            <td>{date.format("HH:mm:ss")}</td>
-            <td className={"msg_" + sevstr.toLowerCase()}>{sevstr}</td>
-            <td>{msg.message}</td>
-        </tr>
-    );
-}
-
 function fetchJobs (setJobs : CallableFunction) {
     let inner = () => {
         let all_jobs : ApiJob[] = [];
@@ -79,60 +65,58 @@ function fetchJobs (setJobs : CallableFunction) {
 }
 
 function MessageViewer ({ job } : { job : ApiJob | undefined }) {
-    // If no job provided, return an empty table
-    if (job === undefined) {
-        return (
-            <table className="table table-striped table-sm">
-                <thead>
-                    <tr>
-                        <th className="col-1">Time</th>
-                        <th className="col-1">Severity</th>
-                        <th className="col-10">Message</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        );
-    }
+    // If no job provided, return an empty pane
+    if (job === undefined) return <></>;
 
-    // Otherwise, fetch and draw messages
-    const [messages, setMessages] = useState<ApiMsg[]>([]);
+    const ref = useRef<HTMLTableElement>(null);
 
-    // Periodically fetch new messages
     useEffect(() => {
-        let   last_uid           = 0;
-        let   all_msg : ApiMsg[] = [];
-        const poll_id  = setInterval(() => {
-            fetch(`/api/job/${job.uid}/messages?after=${last_uid}&limit=20`)
-                .then((response) => response.json())
-                .then((data) => {
-                    all_msg = [...all_msg, ...data];
-                    setMessages(all_msg);
-                    last_uid = Math.max(...data.map((msg : ApiMsg) => msg.uid)) + 1;
-                })
-                .catch((err) => console.error(err.message));
-        }, 1000);
+        const dt = new (DataTable as any)(ref.current!, {
+            columns       : [{ data: "timestamp" },
+                             { data: "severity"  },
+                             { data: "message"   }],
+            searching     : false,
+            ordering      : false,
+            deferRender   : true,
+            scrollY       : 600,
+            scrollCollapse: true,
+            scroller      : { loadingIndicator: true, serverWait: 10 },
+            serverSide    : true,
+            ajax          : (request : any, callback : any) => {
+                let start = request.start;
+                let limit = request.length;
+                if (limit < 0) limit = 100;
+                fetch(`/api/job/${job.uid}/messages?after=${start}&limit=${limit}`)
+                    .then((response) => response.json())
+                    .then((data) => {
+                        callback({ draw: request.draw,
+                                   data: data.messages.map((msg : any) => {
+                                       msg.timestamp = moment(msg.timestamp * 1000).format("HH:mm:ss");
+                                       msg.severity  = Severity[msg.severity];
+                                       return msg;
+                                   }),
+                                   recordsTotal: data.total,
+                                   recordsFiltered: data.total });
+                    })
+                    .catch((err) => console.error(err.message));
+            }
+        });
+        let reload = setInterval(() => { dt.ajax.reload(null, false) }, 2000);
         return () => {
-            clearInterval(poll_id);
-            setMessages([]);
+            clearInterval(reload);
+            dt.destroy()
         };
     }, [job]);
 
-    // Render messages
-    let msg_elems : ReactElement[] = messages.map((msg) => <Message msg={msg} />);
-
-    return (
-        <table className="table table-striped table-sm">
-            <thead>
-                <tr>
-                    <th className="col-1">Time</th>
-                    <th className="col-1">Severity</th>
-                    <th className="col-10">Message</th>
-                </tr>
-            </thead>
-            <tbody>{msg_elems}</tbody>
-        </table>
-    );
+    return <table className="table table-striped display nowrap" ref={ref}>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Severity</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+    </table>;
 }
 
 export default function App() {

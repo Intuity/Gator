@@ -112,8 +112,8 @@ async def job_messages(job_id):
     # Locate the matching job
     reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
     async with WebsocketClient(reg.server_url) as ws:
-        msgs = await ws.get_messages(after=after_uid, limit=limit_num)
-    return msgs
+        data = await ws.get_messages(after=after_uid, limit=limit_num)
+    return data
 
 if __name__ == "__main__":
     hub.run(port=8080)
