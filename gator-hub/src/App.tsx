@@ -5,6 +5,13 @@ import 'datatables.net-bs5/css/dataTables.bootstrap5.css'
 import DataTable from 'datatables.net-bs5'
 import 'datatables.net-scroller-bs5'
 
+import 'react-complex-tree/lib/style-modern.css'
+import { UncontrolledTreeEnvironment,
+         Tree,
+         TreeDataProvider,
+         TreeItemIndex,
+         TreeItem } from 'react-complex-tree'
+
 import mascot from "./assets/mascot_white.svg?url"
 
 interface ApiCompletion { uid       ?: number,
@@ -42,7 +49,7 @@ function Job ({ job, focus, setJobFocus } : { job : ApiJob, focus : ApiJob | und
         <tr onClick={() => { setJobFocus(job); }} className={(focus && focus.uid == job.uid) ? "active" : ""}>
             <td>
                 <strong>{job.uid}: {job.id}</strong>{job.completion.uid ? 'X' : 'O'}<br />
-                <small>peterbirch - {date.format("DD/MM/YY @ HH:mm")}</small>
+                <small>&lt;OWNER&gt; - {date.format("DD/MM/YY @ HH:mm")}</small>
             </td>
         </tr>
     );
@@ -78,8 +85,9 @@ function MessageViewer ({ job } : { job : ApiJob | undefined }) {
             searching     : false,
             ordering      : false,
             deferRender   : true,
-            scrollY       : 600,
+            scrollY       : ref.current!.parentElement!.offsetHeight - 39,
             scrollCollapse: true,
+            info          : false,
             scroller      : { serverWait: 10 },
             serverSide    : true,
             ajax          : (request : any, callback : any) => {
@@ -126,6 +134,70 @@ function MessageViewer ({ job } : { job : ApiJob | undefined }) {
     </table>;
 }
 
+class JobTreeItem implements TreeItem {
+
+    public isFolder?: boolean | undefined
+
+    public constructor (public index    : TreeItemIndex,
+                        public data     : ApiJob,
+                        public children : TreeItemIndex[]) {
+        console.log("Created JobTreeItem", index, data, children);
+        this.isFolder = children.length > 0;
+    }
+
+}
+
+class JobTreeProvider implements TreeDataProvider {
+
+    public constructor (public job : ApiJob) { }
+
+    public getTreeItem (itemId : TreeItemIndex) {
+        return new Promise<JobTreeItem>((resolve) => {
+            console.log("Resolving itemId:", itemId);
+            if (itemId == "root") {
+                resolve(new JobTreeItem(itemId, this.job, [this.job.uid.toString()]));
+                return;
+            }
+            let parts = (itemId as string).split(".");
+            fetch(`/api/job/${this.job.uid}/layer/${parts.slice(1).join('/')}`)
+                .then((response) => response.json())
+                .then((data) => {
+                    console.log("GOT DATA", data);
+                    resolve(new JobTreeItem(itemId,
+                                            data,
+                                            data.children.map((child : any) => [...parts, child].join("."))));
+                })
+                .catch((err) => console.error(err));
+        });
+    }
+
+}
+
+function TreeViewer ({ job } : { job : ApiJob | undefined }) {
+    if (job === undefined) return <></>;
+
+    return (
+        <UncontrolledTreeEnvironment dataProvider={new JobTreeProvider(job)}
+                                     getItemTitle={item => item.data.id}
+                                     viewState={{}}>
+            <Tree treeId="jobtree" rootItem="root" treeLabel={job.id} />
+        </UncontrolledTreeEnvironment>
+    );
+}
+
+function JobViewer ({ job } : { job : ApiJob | undefined }) {
+    return (
+        <>
+            <nav className="job_hierarchy">
+                <TreeViewer job={job} />
+            </nav>
+            <div className="log">
+                <MessageViewer job={job} />
+            </div>
+        </>
+    );
+}
+
 export default function App() {
     const [jobs, setJobs] = useState<ApiJob[]>([]);
     const [job_focus, setJobFocus] = useState<ApiJob | undefined>(undefined);
@@ -138,7 +210,7 @@ export default function App() {
 
     return (
         <>
-            <header className="navbar navbar-dark bg-dark sticky-top shadow">
+            <header className="navbar navbar-dark bg-dark shadow">
                 <div className="container-fluid">
                     <a className="navbar-brand" href="#">
                         <img src={mascot}
@@ -151,18 +223,14 @@ export default function App() {
                     <div className="navbar-text"><Breadcrumb /></div>
                 </div>
             </header>
-            <div className="container-fluid">
-                <div className="row">
-                    <nav className="col-2 bg-light sidebar">
-                        <table className="table table-sm">
-                            <tbody>{job_elems}</tbody>
-                        </table>
-                    </nav>
-                    <main className="col-10" style={{ marginLeft: "auto" }}>
-                        <MessageViewer job={job_focus} />
-                    </main>
-                </div>
-            </div>
+            <main>
+                <nav className="job_tops">
+                    <table className="table table-sm">
+                        <tbody>{job_elems}</tbody>
+                    </table>
+                </nav>
+                <JobViewer job={job_focus} />
+            </main>
         </>
-    )
+    );
 }

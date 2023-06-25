@@ -93,7 +93,9 @@ class BaseLayer:
             await self.client.register(id=self.id, server=server_address)
         # Otherwise, register with the parent
         else:
-            self.__hub_uid = HubAPI.register(id=self.id, url=server_address)
+            self.__hub_uid = HubAPI.register(id=self.id,
+                                             url=server_address,
+                                             layer=type(self).__name__.lower())
         # Schedule the heartbeat
         self.__hb_event = asyncio.Event()
         self.__hb_task  = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))

@@ -46,6 +46,7 @@ class Completion(Table, db=db):
 # Define a registration table format
 class Registration(Table, db=db):
     uid        = Serial(primary_key=True, unique=True, index=True)
+    layer      = Varchar(16)
     id         = Varchar(250)
     server_url = Varchar(250)
     timestamp  = Integer()
@@ -78,6 +79,7 @@ async def register():
     data = await request.get_json()
     new_reg = Registration(
         id=data["id"],
+        layer=data["layer"],
         server_url=data["url"],
         timestamp=int(datetime.now().timestamp())
     )
@@ -104,8 +106,8 @@ async def jobs():
     ).output(nested=True).limit(10)
     return regs
 
-@hub.get("/api/job/<job_id>/messages")
-async def job_messages(job_id):
+@hub.get("/api/job/<int:job_id>/messages")
+async def job_messages(job_id : int):
     # Get query parameters
     after_uid = int(request.args.get("after", 0))
     limit_num = int(request.args.get("limit", 10))
@@ -114,6 +116,25 @@ async def job_messages(job_id):
     async with WebsocketClient(reg.server_url) as ws:
         data = await ws.get_messages(after=after_uid, limit=limit_num)
     return data
+
+@hub.get("/api/job/<int:job_id>/layer")
+@hub.get("/api/job/<int:job_id>/layer/")
+@hub.get("/api/job/<int:job_id>/layer/<path:hierarchy>")
+async def job_layer(job_id : int, hierarchy : str=""):
+    # Get the registered object
+    reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
+    # If this is a tier, resolve the hierarchy
+    if reg.layer == "tier":
+        print(f"Resolving tier: {reg.id} -> {hierarchy}")
+        hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
+        async with WebsocketClient(reg.server_url) as ws:
+            return await ws.resolve(path=hierarchy)
+    # Otherwise, it's a wrapper so just return the top job
+    else:
+        print(f"Returning wrapper: {reg.id}")
+        return { "id"      : reg.id,
+                 "path"    : [],
+                 "children": [], }
 
 if __name__ == "__main__":
     hub.run(port=8080)

@@ -22,8 +22,8 @@ class _HubAPI(HTTPAPI):
     REGISTER     = Path("register")
     COMPLETE     = Path("complete")
 
-    def register(self, id : str, url : str) -> str:
-        response = self.post(self.REGISTER, id=id, url=url)
+    def register(self, id : str, url : str, layer : str) -> str:
+        response = self.post(self.REGISTER, id=id, url=url, layer=layer)
         return response.get("uid", None)
 
     def complete(self, uid : str, db_file : str) -> None:
