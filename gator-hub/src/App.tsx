@@ -24,6 +24,9 @@ interface ApiJob { uid       : number,
                    timestamp : number,
                    completion: ApiCompletion }
 
+interface Dimensions { height : number,
+                       width  : number };
+
 const Severity : { [key: number]: string } = {
     10: "DEBUG",
     20: "INFO",
@@ -71,21 +74,24 @@ function fetchJobs (setJobs : CallableFunction) {
     inner();
 }
 
-function MessageViewer ({ job } : { job : ApiJob | undefined }) {
+function MessageViewer (
+    { job, path, dimensions } :
+    { job : ApiJob | undefined, path : string[], dimensions : Dimensions }
+) {
     // If no job provided, return an empty pane
-    if (job === undefined) return <></>;
+    if (job === undefined) return <div className="log"></div>;
 
-    const ref = useRef<HTMLTableElement>(null);
+    const ref = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const dt = new (DataTable as any)(ref.current!, {
+        const dt = new (DataTable as any)(ref.current!.children[0], {
             columns       : [{ data: "timestamp" },
                              { data: "severity"  },
                              { data: "message"   }],
             searching     : false,
             ordering      : false,
             deferRender   : true,
-            scrollY       : ref.current!.parentElement!.offsetHeight - 39,
+            scrollY       : ref.current!.offsetHeight - 39,
             scrollCollapse: true,
             info          : false,
             scroller      : { serverWait: 10 },
@@ -94,7 +100,7 @@ function MessageViewer ({ job } : { job : ApiJob | undefined }) {
                 let start = request.start;
                 let limit = request.length;
                 if (limit < 0) limit = 100;
-                fetch(`/api/job/${job.uid}/messages?after=${start}&limit=${limit}`)
+                fetch(`/api/job/${job.uid}/messages/${path.join('/')}?after=${start}&limit=${limit}`)
                     .then((response) => response.json())
                     .then((data) => {
                         callback({ draw: request.draw,
@@ -119,19 +125,25 @@ function MessageViewer ({ job } : { job : ApiJob | undefined }) {
         );
         return () => {
             clearInterval(reload);
-            dt.destroy()
+            dt.destroy();
         };
-    }, [job]);
+    }, [job, path, dimensions]);
 
-    return <table className="table table-striped table-sm" ref={ref}>
-        <thead>
-            <tr>
-                <th>Time</th>
-                <th>Severity</th>
-                <th>Message</th>
-            </tr>
-        </thead>
-    </table>;
+    return (
+        <div className="log">
+            <div className="log_inner" ref={ref}>
+                <table className="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Severity</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+        </div>
+    );
 }
 
 class JobTreeItem implements TreeItem {
@@ -141,7 +153,6 @@ class JobTreeItem implements TreeItem {
     public constructor (public index    : TreeItemIndex,
                         public data     : ApiJob,
                         public children : TreeItemIndex[]) {
-        console.log("Created JobTreeItem", index, data, children);
         this.isFolder = children.length > 0;
     }
 
@@ -153,7 +164,6 @@ class JobTreeProvider implements TreeDataProvider {
 
     public getTreeItem (itemId : TreeItemIndex) {
         return new Promise<JobTreeItem>((resolve) => {
-            console.log("Resolving itemId:", itemId);
             if (itemId == "root") {
                 resolve(new JobTreeItem(itemId, this.job, [this.job.uid.toString()]));
                 return;
@@ -162,10 +172,11 @@ class JobTreeProvider implements TreeDataProvider {
             fetch(`/api/job/${this.job.uid}/layer/${parts.slice(1).join('/')}`)
                 .then((response) => response.json())
                 .then((data) => {
-                    console.log("GOT DATA", data);
-                    resolve(new JobTreeItem(itemId,
-                                            data,
-                                            data.children.map((child : any) => [...parts, child].join("."))));
+                    let children = [];
+                    if (data.children) {
+                        children = data.children.map((child : any) => [...parts, child].join("."));
+                    }
+                    resolve(new JobTreeItem(itemId, data, children));
                 })
                 .catch((err) => console.error(err));
         });
@@ -173,27 +184,35 @@ class JobTreeProvider implements TreeDataProvider {
 
 }
 
-function TreeViewer ({ job } : { job : ApiJob | undefined }) {
+function TreeViewer ({ job, setJobPath } : { job : ApiJob | undefined, setJobPath : CallableFunction }) {
     if (job === undefined) return <></>;
 
     return (
         <UncontrolledTreeEnvironment dataProvider={new JobTreeProvider(job)}
                                      getItemTitle={item => item.data.id}
-                                     viewState={{}}>
+                                     viewState={{}}
+                                     onSelectItems={(items : TreeItemIndex[]) => {
+                                        if (items.length == 0) return;
+                                        setJobPath((items[0] as string).split(".").slice(1));
+                                     }}>
             <Tree treeId="jobtree" rootItem="root" treeLabel={job.id} />
         </UncontrolledTreeEnvironment>
     );
 }
 
-function JobViewer ({ job } : { job : ApiJob | undefined }) {
+function JobViewer (
+    { job, dimensions } :
+    { job : ApiJob | undefined, dimensions : Dimensions }
+) {
+    const [job_path, setJobPath] = useState<string[]>(
+        (job !== undefined) ? [job!.uid.toString()] : []
+    );
     return (
         <>
             <nav className="job_hierarchy">
-                <TreeViewer job={job} />
+                <TreeViewer job={job} setJobPath={setJobPath} />
             </nav>
-            <div className="log">
-                <MessageViewer job={job} />
-            </div>
+            <MessageViewer job={job} path={job_path} dimensions={dimensions} />
         </>
     );
 }
@@ -201,8 +220,16 @@ function JobViewer ({ job } : { job : ApiJob | undefined }) {
 export default function App() {
     const [jobs, setJobs] = useState<ApiJob[]>([]);
     const [job_focus, setJobFocus] = useState<ApiJob | undefined>(undefined);
+    const [dimensions, setDimensions] = useState({ height: window.innerHeight,
+                                                   width : window.innerWidth });
 
     useEffect(() => fetchJobs(setJobs), []);
+    useEffect(() => {
+        window.addEventListener("resize", () => {
+            setDimensions({ height: window.innerHeight,
+                            width : window.innerWidth });
+        });
+    }, []);
 
     let job_elems : ReactElement[] = jobs.map((job) =>
         <Job job={job} focus={job_focus} setJobFocus={setJobFocus} />
@@ -229,7 +256,7 @@ export default function App() {
                         <tbody>{job_elems}</tbody>
                     </table>
                 </nav>
-                <JobViewer job={job_focus} />
+                <JobViewer job={job_focus} dimensions={dimensions} />
             </main>
         </>
     );

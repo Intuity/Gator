@@ -54,7 +54,6 @@ class Tier(BaseLayer):
         self.server.add_route("register", self.__child_started)
         self.server.add_route("update", self.__child_updated)
         self.server.add_route("complete", self.__child_completed)
-        self.server.add_route("resolve", self.__resolve)
         # Register client handlers for downwards calls
         self.client.add_route("get_tree", self.get_tree)
         # Create a scheduler
@@ -108,18 +107,17 @@ class Tier(BaseLayer):
                                              "completed": int(child.completed.timestamp()) }
         return state
 
-    async def __resolve(self, path : List[str], **_) -> None:
-        print(f"RESOLVING: {path}")
+    async def resolve(self, path : List[str], **_) -> None:
         if path:
             child = self.all_children[path[0]]
-            if not isinstance(child.spec, Job) and child.ws:
-                return await child.resolve(path[1:])
+            if child.ws:
+                return await child.ws.resolve(path=path[1:])
             else:
                 return {}
         else:
-            return { "id"        : self.id,
-                     "server_url": await self.server.get_address(),
-                     "children"  : [x.id for x in self.all_children.values()] }
+            data = await super().resolve(path)
+            data["children"] = [x.id for x in self.all_children.values()]
+            return data
 
     async def __child_query(self, id : str, **_):
         """ Return the specification for a launched process """

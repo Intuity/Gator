@@ -85,8 +85,10 @@ class BaseLayer:
         self.server    = WebsocketServer(db=self.db, logger=self.logger)
         server_address = await self.server.start()
         self.server.add_route("get_messages", self.get_messages)
+        self.server.add_route("resolve", self.resolve)
         # Add handlers for downwards calls
         self.client.add_route("stop", self.stop)
+        self.client.add_route("resolve", self.resolve)
         # If linked, ping and then register with the parent
         if self.client.linked:
             await self.client.measure_latency()
@@ -96,6 +98,8 @@ class BaseLayer:
             self.__hub_uid = HubAPI.register(id=self.id,
                                              url=server_address,
                                              layer=type(self).__name__.lower())
+            if self.__hub_uid is not None:
+                await self.logger.info(f"Registered with hub with ID {self.__hub_uid}")
         # Schedule the heartbeat
         self.__hb_event = asyncio.Event()
         self.__hb_task  = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
@@ -182,6 +186,11 @@ class BaseLayer:
                     "message"  : x.message,
                     "timestamp": int(x.timestamp.timestamp()) } for x in msgs]
         return { "messages": format, "total": total }
+
+    async def resolve(self, path : List[str], **_) -> None:
+        del path
+        return { "id"        : self.id,
+                 "server_url": await self.server.get_address() }
 
     @property
     def id(self) -> str:

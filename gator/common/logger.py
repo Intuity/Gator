@@ -39,19 +39,21 @@ class Logger:
     }
 
     def __init__(self,
-                 ws_cli    : Optional[WebsocketClient] = None,
-                 verbosity : LogSeverity               = LogSeverity.INFO,
-                 forward   : bool                      = True) -> None:
+                 ws_cli      : Optional[WebsocketClient] = None,
+                 verbosity   : LogSeverity               = LogSeverity.INFO,
+                 forward     : bool                      = True,
+                 capture_all : bool                      = False) -> None:
         # Create a client if necessary (uses an environment variable to find the parent)
         if ws_cli is None:
             self.ws_cli = WebsocketClient()
         else:
             self.ws_cli = ws_cli
-        self.verbosity  : LogSeverity                = verbosity
-        self.forward    : bool                       = forward
-        self.__console  : Optional[Console]          = None
-        self.__database : Optional[Database]         = None
-        self.__log_fh   : Optional[io.TextIOWrapper] = None
+        self.verbosity   : LogSeverity                = verbosity
+        self.forward     : bool                       = forward
+        self.capture_all : bool                       = capture_all
+        self.__console   : Optional[Console]          = None
+        self.__database  : Optional[Database]         = None
+        self.__log_fh    : Optional[io.TextIOWrapper] = None
         # Retain counts of different verbosity levels
         self.__counts : Dict[LogSeverity, int] = defaultdict(lambda: 0)
 
@@ -119,15 +121,17 @@ class Logger:
         if self.__console and severity >= self.verbosity:
             prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
             self.__console.log(f"{prefix}[{severity.name:<7s}]{suffix} {message}")
-        # Record to database
-        if not forwarded and self.__database is not None:
-            await self.__database.push_logentry(LogEntry(severity =severity,
-                                                         message  =message,
-                                                         timestamp=timestamp))
-        # Tee to file if configured
-        if not forwarded and self.__log_fh is not None:
-            date = datetime.now().strftime(r"%H:%M:%S")
-            self.__log_fh.write(f"[{date}] [{severity.name:<7s}] {message}\n")
+        # Normally don't capture forwarded messages
+        if not forwarded or self.capture_all:
+            # Record to the database
+            if self.__database is not None:
+                await self.__database.push_logentry(LogEntry(severity =severity,
+                                                             message  =message,
+                                                             timestamp=timestamp))
+            # Tee to file if configured
+            if not forwarded and self.__log_fh is not None:
+                date = datetime.now().strftime(r"%H:%M:%S")
+                self.__log_fh.write(f"[{date}] [{severity.name:<7s}] {message}\n")
 
     async def debug(self,
                     message   : str,

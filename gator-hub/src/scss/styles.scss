@@ -26,9 +26,16 @@
 
 .root main .log {
     flex: 10 10 auto;
+    display: flex;
+    flex-direction: column;
     box-sizing: border-box;
     min-width: 0;
+}
+
+.root main .log_inner {
+    flex: 1 1 10px;
     overflow-x: hidden;
+    overflow-y: hidden;
 }
 
 nav > ol.breadcrumb {

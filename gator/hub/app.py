@@ -107,14 +107,27 @@ async def jobs():
     return regs
 
 @hub.get("/api/job/<int:job_id>/messages")
-async def job_messages(job_id : int):
+@hub.get("/api/job/<int:job_id>/messages/")
+@hub.get("/api/job/<int:job_id>/messages/<path:hierarchy>")
+async def job_messages(job_id : int, hierarchy : str=""):
     # Get query parameters
     after_uid = int(request.args.get("after", 0))
     limit_num = int(request.args.get("limit", 10))
+    hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
     # Locate the matching job
     reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
-    async with WebsocketClient(reg.server_url) as ws:
+    # If necessary, dig down through the hierarchy to find the job
+    if hierarchy:
+        async with WebsocketClient(reg.server_url) as ws:
+            data = await ws.resolve(path=hierarchy)
+            server_url = data["server_url"]
+    # If no hierarchy, we're using the top-level job
+    else:
+        server_url = reg.server_url
+    # Query messages via the job's websocket
+    async with WebsocketClient(server_url) as ws:
         data = await ws.get_messages(after=after_uid, limit=limit_num)
+    # Return data
     return data
 
 @hub.get("/api/job/<int:job_id>/layer")

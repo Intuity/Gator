@@ -48,6 +48,9 @@ class Wrapper(BaseLayer):
         self.plotting = plotting
         self.summary  = summary
         self.proc     = None
+        # Capture forwarded messages from the wrapped job
+        if self.logger:
+            self.logger.capture_all = True
 
     async def launch(self, *args, **kwargs) -> None:
         await self.setup(*args, **kwargs)

@@ -1,9 +1,29 @@
-!Job
-  id: msg_emitter
-  command: python3
-  args:
-    - emitter.py
-    - 10000
-  resources:
-    - !Cores [1]
-    - !Memory [30, MB]
+!JobGroup
+id  : top
+jobs:
+- !JobGroup
+  id  : path_a
+  jobs:
+  - !Job
+      id: msg_emitter
+      command: python3
+      args:
+        - emitter.py
+        - 10000
+        - A
+      resources:
+        - !Cores [1]
+        - !Memory [30, MB]
+- !JobGroup
+  id  : path_b
+  jobs:
+  - !Job
+      id: msg_emitter
+      command: python3
+      args:
+        - emitter.py
+        - 10000
+        - B
+      resources:
+        - !Cores [1]
+        - !Memory [30, MB]
