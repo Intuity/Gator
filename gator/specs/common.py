@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import yaml
 try:
@@ -38,6 +38,11 @@ class SpecBase(yaml.YAMLObject):
             return cls(**loader.construct_mapping(node, deep=True), yaml_path=fpath)
         else:
             return cls(*loader.construct_sequence(node), yaml_path=fpath)
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state = self.__dict__.copy()
+        del state["yaml_path"]
+        return state
 
     def check(self) -> None:
         pass
