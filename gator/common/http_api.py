@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import os
 import sys
-from pathlib import Path
 from typing import Dict, Union
 
-import requests
-from requests.adapters import HTTPAdapter, Retry
+import aiohttp
 
 
 class HTTPAPI:
@@ -27,18 +26,24 @@ class HTTPAPI:
     ENV_VAR = "GATOR_API"
     ROUTE_PREFIX = ""
 
-    def __init__(self) -> None:
+    def __init__(self, retries : int = 10, delay : float = 0.1) -> None:
+        self.retries = retries
+        self.delay = delay
         self.url = os.environ.get(type(self).ENV_VAR, None)
-        self.session = requests.Session()
-        self.session.mount("http://", HTTPAdapter(max_retries=Retry(total=5,
-                                                                    backoff_factor=0.1)))
+        self.session = None
 
     @property
     def linked(self) -> bool:
         """ Checks if a API URL has been configured """
         return self.url is not None
 
-    def get(self, route : Union[str, Path]) -> Dict[str, str]:
+    async def start(self) -> None:
+        self.session = aiohttp.ClientSession()
+
+    async def stop(self) -> None:
+        await self.session.close()
+
+    async def get(self, route : str) -> Dict[str, str]:
         """
         Perform a GET request on a route supported by the parent server.
 
@@ -46,17 +51,24 @@ class HTTPAPI:
         :returns:       Dictionary of the response data from the server
         """
         if self.linked:
-            if isinstance(route, Path):
-                route = route.as_posix()
-            resp = requests.get(f"http://{self.url}{self.ROUTE_PREFIX}/{route}")
-            data = resp.json()
-            if data.get("result", None) != "success":
-                print(f"Failed to GET from route '{route}' via '{self.url}'", file=sys.stderr)
-            return data
+            if self.session is None:
+                await self.start()
+            full_url = f"http://{self.url}{self.ROUTE_PREFIX}/{route}"
+            for _ in range(self.retries):
+                try:
+                    async with self.session.get(full_url) as resp:
+                        data = await resp.json()
+                        if data.get("result", None) != "success":
+                            print(f"Failed to GET from route '{route}' via '{self.url}'", file=sys.stderr)
+                        return data
+                except aiohttp.ClientConnectionError:
+                    await asyncio.sleep(self.delay)
+            else:
+                print(f"Failed to GET from {full_url} after {self.retries} retries", file=sys.stderr)
         else:
             return {}
 
-    def post(self, route : Union[str, Path], **kwargs : Dict[str, Union[str, int]]) -> Dict[str, str]:
+    async def post(self, route : str, **kwargs : Dict[str, Union[str, int]]) -> Dict[str, str]:
         """
         Perform a POST request on a route supported by the parent server,
         attaching a JSON encoded dictionary of the keyword arguments to the query.
@@ -66,12 +78,19 @@ class HTTPAPI:
         :returns:           Dictionary of the response data from the server
         """
         if self.linked:
-            if isinstance(route, Path):
-                route = route.as_posix()
-            resp = requests.post(f"http://{self.url}{self.ROUTE_PREFIX}/{route}", json=kwargs)
-            data = resp.json()
-            if data.get("result", None) != "success":
-                print(f"Failed to POST to route '{route}' via '{self.url}'", file=sys.stderr)
-            return data
+            if self.session is None:
+                await self.start()
+            full_url = f"http://{self.url}{self.ROUTE_PREFIX}/{route}"
+            for _ in range(10):
+                try:
+                    async with self.session.post(full_url, json=kwargs) as resp:
+                        data = await resp.json()
+                        if data.get("result", None) != "success":
+                            print(f"Failed to POST to route '{route}' via '{self.url}'", file=sys.stderr)
+                        return data
+                except aiohttp.ClientConnectionError:
+                    await asyncio.sleep(0.1)
+            else:
+                print(f"Failed to POST to {full_url} after {self.retries} retries", file=sys.stderr)
         else:
             return {}

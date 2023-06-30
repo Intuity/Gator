@@ -22,6 +22,7 @@ from ..specs import Job, JobArray, JobGroup, Spec
 from .db import Database, Query
 from .logger import Logger
 from .types import LogEntry, LogSeverity, Metric, Result
+from .utility import get_username
 from .ws_client import WebsocketClient
 from .ws_server import WebsocketServer
 from .ws_wrapper import WebsocketWrapper
@@ -95,9 +96,10 @@ class BaseLayer:
             await self.client.register(id=self.id, server=server_address)
         # Otherwise, register with the parent
         else:
-            self.__hub_uid = HubAPI.register(id=self.id,
-                                             url=server_address,
-                                             layer=type(self).__name__.lower())
+            self.__hub_uid = await HubAPI.register(id=self.id,
+                                                   url=server_address,
+                                                   layer=type(self).__name__.lower(),
+                                                   owner=get_username())
             if self.__hub_uid is not None:
                 await self.logger.info(f"Registered with hub with ID {self.__hub_uid}")
         # Schedule the heartbeat
@@ -129,7 +131,8 @@ class BaseLayer:
         await self.db.stop()
         # Notify the hub of completion
         if self.__hub_uid is not None:
-            HubAPI.complete(uid=self.__hub_uid, db_file=self.db.path.as_posix())
+            await HubAPI.complete(uid=self.__hub_uid, db_file=self.db.path.as_posix())
+            await HubAPI.stop()
 
     async def stop(self, **kwargs) -> None:
         self.terminated = True
@@ -147,6 +150,9 @@ class BaseLayer:
                     call = self.heartbeat_cb(self, **result)
                     if cb_async:
                         await call
+                # If linked, update hub with heartbeat data
+                if self.__hub_uid is not None:
+                    await HubAPI.heartbeat(self.__hub_uid, result)
                 # If done event set, break out
                 if done_evt.is_set():
                     break
@@ -158,7 +164,7 @@ class BaseLayer:
         except asyncio.exceptions.CancelledError:
             pass
 
-    async def heartbeat(self) -> None:
+    async def heartbeat(self) -> Dict[str, int]:
         # Update logging metrics
         for sev in LogSeverity:
             metric = self.metrics[f"msg_{sev.name.lower()}"]
@@ -190,7 +196,8 @@ class BaseLayer:
     async def resolve(self, path : List[str], **_) -> None:
         del path
         return { "id"        : self.id,
-                 "server_url": await self.server.get_address() }
+                 "server_url": await self.server.get_address(),
+                 "metrics"   : (await self.summarise()).get("metrics", {}) }
 
     @property
     def id(self) -> str:

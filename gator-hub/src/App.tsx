@@ -18,11 +18,16 @@ interface ApiCompletion { uid       ?: number,
                           db_file   ?: string,
                           timestamp ?: number }
 
+interface ApiMetric { name : string,
+                      value: number }
+
 interface ApiJob { uid       : number,
                    id        : string,
                    server_url: string,
+                   owner     : string,
                    timestamp : number,
-                   completion: ApiCompletion }
+                   completion: ApiCompletion,
+                   metrics   : ApiMetric[] }
 
 interface Dimensions { height : number,
                        width  : number };
@@ -48,11 +53,19 @@ function Breadcrumb ({ }) {
 
 function Job ({ job, focus, setJobFocus } : { job : ApiJob, focus : ApiJob | undefined, setJobFocus : (focus : ApiJob) => void }) {
     let date = moment(job.timestamp * 1000);
+    let mtc_wrn = 0;
+    let mtc_err = 0;
+    let mtc_crt = 0;
+    job.metrics.forEach((metric) => {
+        if      (metric.name == "msg_warning" ) mtc_wrn = metric.value;
+        else if (metric.name == "msg_error"   ) mtc_err = metric.value;
+        else if (metric.name == "msg_critical") mtc_crt = metric.value;
+    })
     return (
         <tr onClick={() => { setJobFocus(job); }} className={(focus && focus.uid == job.uid) ? "active" : ""}>
             <td>
                 <strong>{job.uid}: {job.id}</strong>{job.completion.uid ? 'X' : 'O'}<br />
-                <small>&lt;OWNER&gt; - {date.format("DD/MM/YY @ HH:mm")}</small>
+                <small>{job.owner} - {date.format("DD/MM/YY @ HH:mm")} - {mtc_wrn} | {mtc_err} | {mtc_crt}</small>
             </td>
         </tr>
     );
@@ -189,7 +202,10 @@ function TreeViewer ({ job, setJobPath } : { job : ApiJob | undefined, setJobPat
 
     return (
         <UncontrolledTreeEnvironment dataProvider={new JobTreeProvider(job)}
-                                     getItemTitle={item => item.data.id}
+                                     getItemTitle={item => {
+                                        let mtc : any = item.data.metrics;
+                                        return `${item.data.id} - ${mtc.msg_warning} | ${mtc.msg_error} | ${mtc.msg_critical}`;
+                                     }}
                                      viewState={{}}
                                      onSelectItems={(items : TreeItemIndex[]) => {
                                         if (items.length == 0) return;

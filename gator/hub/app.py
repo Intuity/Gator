@@ -14,6 +14,7 @@
 
 import os
 from datetime import datetime
+from typing import Callable, Dict, Union
 
 from piccolo.engine.postgres import PostgresEngine
 from piccolo.table import Table
@@ -49,8 +50,16 @@ class Registration(Table, db=db):
     layer      = Varchar(16)
     id         = Varchar(250)
     server_url = Varchar(250)
+    owner      = Varchar(250)
     timestamp  = Integer()
     completion = ForeignKey(references=Completion)
+
+# Define a metric table format
+class Metric(Table, db=db):
+    uid          = Serial(primary_key=True, unique=True, index=True)
+    registration = ForeignKey(references=Registration)
+    name         = Varchar(250)
+    value        = Integer()
 
 
 @hub.before_serving
@@ -59,6 +68,7 @@ async def start_database():
     await db.start_connection_pool()
     await Completion.create_table(if_not_exists=True)
     await Registration.create_table(if_not_exists=True)
+    await Metric.create_table(if_not_exists=True)
 
 @hub.after_serving
 async def stop_database():
@@ -81,49 +91,83 @@ async def register():
         id=data["id"],
         layer=data["layer"],
         server_url=data["url"],
+        owner=data["owner"],
         timestamp=int(datetime.now().timestamp())
     )
     data = await Registration.insert(new_reg).returning(Registration.uid)
     return { "result": "success", "uid": data[0]["uid"] }
 
-@hub.post("/api/complete")
-async def complete():
+@hub.post("/api/job/<int:job_id>/complete")
+async def complete(job_id : int):
     data = await request.get_json()
     new_cmp = Completion(db_file=data["db_file"],
                          timestamp=int(datetime.now().timestamp()))
     await Completion.insert(new_cmp)
-    await Registration.update({ Registration.completion: new_cmp }).where(Registration.uid == data["uid"])
+    await Registration.update({ Registration.completion: new_cmp }).where(Registration.uid == job_id)
+    return { "result": "success" }
+
+def lookup_job(func : Callable) -> Callable:
+    async def _inner(job_id : int, **kwargs) -> Dict[str, Union[str, int]]:
+        reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
+        return await func(reg, **kwargs)
+    setattr(_inner, "__name__", getattr(func, "__name__"))
+    return _inner
+
+@hub.post("/api/job/<int:job_id>/heartbeat")
+@lookup_job
+async def heartbeat(job : Registration):
+    data = await request.get_json()
+    for key, value in data.get("metrics", {}).items():
+        if await Metric.exists().where((Metric.registration == job) &
+                                       (Metric.name         == key)):
+            await Metric.update({ Metric.value: value }).where((Metric.registration == job) &
+                                                               (Metric.name         == key))
+        else:
+            new_mtc = Metric(registration=job, name=key, value=value)
+            await Metric.insert(new_mtc)
     return { "result": "success" }
 
 @hub.get("/api/jobs")
 async def jobs():
-    regs = await Registration.select(
-        *Registration.all_columns(),
-        *Registration.completion.all_columns()
-    ).order_by(
-        Registration.timestamp,
-        ascending=False
-    ).output(nested=True).limit(10)
-    return regs
+    jobs = await Registration.objects(Registration.completion).order_by(
+        Registration.timestamp, ascending=False
+    ).output().limit(10)
+    data = []
+    for job in jobs:
+        metrics = await Metric.select(Metric.name, Metric.value).where(Metric.registration == job)
+        data.append({ **job.to_dict(), "metrics": metrics })
+    return data
+
+@hub.get("/api/job/<int:job_id>")
+@hub.get("/api/job/<int:job_id>/")
+@lookup_job
+async def job_info(job : Registration):
+    # Get all metrics
+    metrics = await Metric.select().where(Metric.registration == job)
+    # Return data
+    return {
+        "result" : "success",
+        "job"    : job.to_dict(),
+        "metrics": metrics
+    }
 
 @hub.get("/api/job/<int:job_id>/messages")
 @hub.get("/api/job/<int:job_id>/messages/")
 @hub.get("/api/job/<int:job_id>/messages/<path:hierarchy>")
-async def job_messages(job_id : int, hierarchy : str=""):
+@lookup_job
+async def job_messages(job : Registration, hierarchy : str=""):
     # Get query parameters
     after_uid = int(request.args.get("after", 0))
     limit_num = int(request.args.get("limit", 10))
     hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
-    # Locate the matching job
-    reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
     # If necessary, dig down through the hierarchy to find the job
     if hierarchy:
-        async with WebsocketClient(reg.server_url) as ws:
+        async with WebsocketClient(job.server_url) as ws:
             data = await ws.resolve(path=hierarchy)
             server_url = data["server_url"]
     # If no hierarchy, we're using the top-level job
     else:
-        server_url = reg.server_url
+        server_url = job.server_url
     # Query messages via the job's websocket
     async with WebsocketClient(server_url) as ws:
         data = await ws.get_messages(after=after_uid, limit=limit_num)
@@ -133,19 +177,18 @@ async def job_messages(job_id : int, hierarchy : str=""):
 @hub.get("/api/job/<int:job_id>/layer")
 @hub.get("/api/job/<int:job_id>/layer/")
 @hub.get("/api/job/<int:job_id>/layer/<path:hierarchy>")
-async def job_layer(job_id : int, hierarchy : str=""):
-    # Get the registered object
-    reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
+@lookup_job
+async def job_layer(job : Registration, hierarchy : str=""):
     # If this is a tier, resolve the hierarchy
-    if reg.layer == "tier":
-        print(f"Resolving tier: {reg.id} -> {hierarchy}")
+    if job.layer == "tier":
+        print(f"Resolving tier: {job.id} -> {hierarchy}")
         hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
-        async with WebsocketClient(reg.server_url) as ws:
+        async with WebsocketClient(job.server_url) as ws:
             return await ws.resolve(path=hierarchy)
     # Otherwise, it's a wrapper so just return the top job
     else:
-        print(f"Returning wrapper: {reg.id}")
-        return { "id"      : reg.id,
+        print(f"Returning wrapper: {job.id}")
+        return { "id"      : job.id,
                  "path"    : [],
                  "children": [], }
 

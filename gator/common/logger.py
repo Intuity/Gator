@@ -104,7 +104,7 @@ class Logger:
                             the log file or the database.
         """
         # Record the number of messages from this level
-        if not forwarded:
+        if not forwarded or self.capture_all:
             self.__counts[severity] += 1
         # If forward is 'None', use the default value
         forward = self.forward if forward is None else forward
