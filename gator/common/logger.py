@@ -161,6 +161,13 @@ class Logger:
                     forwarded : bool = False) -> None:
         await self.log(LogSeverity.ERROR, message, forward, timestamp, forwarded)
 
+    async def critical(self,
+                       message   : str,
+                       forward   : Optional[bool] = None,
+                       timestamp : Optional[datetime] = None,
+                       forwarded : bool = False) -> None:
+        await self.log(LogSeverity.CRITICAL, message, forward, timestamp, forwarded)
+
 @click.command()
 @click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
 @click.argument("message")

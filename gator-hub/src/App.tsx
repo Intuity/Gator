@@ -10,7 +10,8 @@ import { UncontrolledTreeEnvironment,
          Tree,
          TreeDataProvider,
          TreeItemIndex,
-         TreeItem } from 'react-complex-tree'
+         TreeItem,
+         InteractionMode} from 'react-complex-tree'
 
 import mascot from "./assets/mascot_white.svg?url"
 
@@ -38,6 +39,13 @@ const Severity : { [key: number]: string } = {
     30: "WARNING",
     40: "ERROR",
     50: "CRITICAL"
+};
+
+const Intervals : { [key: string]: number } = {
+    REFRESH_JOBS  : 5000,
+    REFRESH_TREE  : 5000,
+    REFRESH_LOG   : 2000,
+    DT_FETCH_DELAY:  100
 };
 
 function Breadcrumb ({ }) {
@@ -82,7 +90,7 @@ function fetchJobs (setJobs : CallableFunction) {
                 setJobs(all_jobs)
             })
             .catch((err) => console.error(err.message))
-            .finally(() => setTimeout(inner, 1000));
+            .finally(() => setTimeout(inner, Intervals.REFRESH_JOBS));
     };
     inner();
 }
@@ -107,7 +115,7 @@ function MessageViewer (
             scrollY       : ref.current!.offsetHeight - 39,
             scrollCollapse: true,
             info          : false,
-            scroller      : { serverWait: 10 },
+            scroller      : { serverWait: Intervals.DT_FETCH_DELAY },
             serverSide    : true,
             ajax          : (request : any, callback : any) => {
                 let start = request.start;
@@ -134,7 +142,7 @@ function MessageViewer (
                     dt.scroller.toPosition(data.recordsTotal + 200);
                 }, false);
             },
-            2000
+            Intervals.REFRESH_LOG
         );
         return () => {
             clearInterval(reload);
@@ -164,34 +172,66 @@ class JobTreeItem implements TreeItem {
     public isFolder?: boolean | undefined
 
     public constructor (public index    : TreeItemIndex,
-                        public data     : ApiJob,
-                        public children : TreeItemIndex[]) {
+                        public data     : ApiJob | undefined,
+                        public children : TreeItemIndex[],
+                        public data_url : string | undefined) {
         this.isFolder = children.length > 0;
+    }
+
+    public refresh () {
+        if (this.data_url === undefined) return Promise.resolve(this);
+        let job = this;
+        return new Promise<JobTreeItem>((resolve) => {
+            fetch(job.data_url!)
+                .then((response) => response.json())
+                .then((data) => {
+                    job.data = data;
+                    if (data.children) {
+                        job.isFolder = true;
+                        job.children = data.children.map((child : any) => [job.index, child].join("."));
+                    }
+                    resolve(job);
+                });
+        });
     }
 
 }
 
 class JobTreeProvider implements TreeDataProvider {
 
-    public constructor (public job : ApiJob) { }
+    public constructor (public job          : ApiJob,
+                        public addTreeItems : CallableFunction) {}
 
-    public getTreeItem (itemId : TreeItemIndex) {
+    public getTreeItem (itemId: TreeItemIndex) {
+        let tree = this;
         return new Promise<JobTreeItem>((resolve) => {
-            if (itemId == "root") {
-                resolve(new JobTreeItem(itemId, this.job, [this.job.uid.toString()]));
-                return;
-            }
-            let parts = (itemId as string).split(".");
-            fetch(`/api/job/${this.job.uid}/layer/${parts.slice(1).join('/')}`)
-                .then((response) => response.json())
-                .then((data) => {
-                    let children = [];
-                    if (data.children) {
-                        children = data.children.map((child : any) => [...parts, child].join("."));
-                    }
-                    resolve(new JobTreeItem(itemId, data, children));
-                })
-                .catch((err) => console.error(err));
+            tree.getTreeItems([itemId])
+                .then((items) => resolve(items[0]));
+        });
+    }
+
+    public getTreeItems (itemIds : TreeItemIndex[]) {
+        let tree = this;
+        return new Promise<JobTreeItem[]>((resolve) => {
+            let items = itemIds.map((itemId) => {
+                if (itemId == "root") {
+                    return new JobTreeItem(itemId, this.job, [this.job.uid.toString()], undefined);
+                } else {
+                    let parts = (itemId as string).split(".");
+                    return new JobTreeItem(
+                        itemId,
+                        undefined,
+                        [],
+                        `/api/job/${this.job.uid}/layer/${parts.slice(1).join('/')}`
+                    );
+                }
+            });
+            // Perform initial refresh, then register all tree items
+            Promise.all(items.map((item) => item.refresh()))
+                   .then((items) => {
+                        tree.addTreeItems(items);
+                        resolve(items);
+                   });
         });
     }
 
@@ -200,13 +240,33 @@ class JobTreeProvider implements TreeDataProvider {
 function TreeViewer ({ job, setJobPath } : { job : ApiJob | undefined, setJobPath : CallableFunction }) {
     if (job === undefined) return <></>;
 
+    const [tree_items, setTreeItems] = useState<JobTreeItem[]>([]);
+
+    let addTreeItems = (items : JobTreeItem[]) => setTreeItems([...tree_items, ...items]);
+
+    useEffect(() => {
+        let interval = setInterval(() => {
+            console.log("REFRESHING", tree_items);
+            tree_items.forEach((job) => job.refresh());
+        }, Intervals.REFRESH_TREE);
+
+        return () => {
+            clearInterval(interval);
+        };
+    }, [job, tree_items]);
+
     return (
-        <UncontrolledTreeEnvironment dataProvider={new JobTreeProvider(job)}
+        <UncontrolledTreeEnvironment dataProvider={new JobTreeProvider(job, addTreeItems)}
                                      getItemTitle={item => {
-                                        let mtc : any = item.data.metrics;
-                                        return `${item.data.id} - ${mtc.msg_warning} | ${mtc.msg_error} | ${mtc.msg_critical}`;
+                                        if (item.data !== undefined) {
+                                            let mtc : any = item.data.metrics;
+                                            return `${item.data.id} - ${mtc.msg_warning} | ${mtc.msg_error} | ${mtc.msg_critical}`;
+                                        } else {
+                                            return "LOADING";
+                                        }
                                      }}
                                      viewState={{}}
+                                     defaultInteractionMode={InteractionMode.ClickArrowToExpand}
                                      onSelectItems={(items : TreeItemIndex[]) => {
                                         if (items.length == 0) return;
                                         setJobPath((items[0] as string).split(".").slice(1));

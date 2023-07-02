@@ -41,7 +41,8 @@ class SpecBase(yaml.YAMLObject):
 
     def __getstate__(self) -> Dict[str, Any]:
         state = self.__dict__.copy()
-        del state["yaml_path"]
+        if "yaml_path" in state:
+            del state["yaml_path"]
         return state
 
     def check(self) -> None:

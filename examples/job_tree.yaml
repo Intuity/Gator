@@ -30,7 +30,10 @@
       env    :
         TEST_C: direct
       command: exit
-      args   : [1]
+      command: bash
+      args   :
+        - "-c"
+        - "exit 1"
   # Job array
   - !JobArray
       id     : array

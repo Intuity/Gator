@@ -233,14 +233,22 @@ class Wrapper(BaseLayer):
                                                value=",".join(f"{k}={v}" for k, v in licenses.items())))
         # Launch the process
         await self.logger.info(f"Launching task: {full_cmd}")
-        self.proc = await asyncio.create_subprocess_exec(self.spec.command,
-                                                         *list(map(str, self.spec.args)),
-                                                         cwd=working_dir,
-                                                         env=env,
-                                                         stdin=subprocess.PIPE,
-                                                         stdout=subprocess.PIPE,
-                                                         stderr=subprocess.PIPE,
-                                                         close_fds=True)
+        try:
+            self.proc = await asyncio.create_subprocess_exec(self.spec.command,
+                                                             *list(map(str, self.spec.args)),
+                                                             cwd=working_dir,
+                                                             env=env,
+                                                             stdin=subprocess.PIPE,
+                                                             stdout=subprocess.PIPE,
+                                                             stderr=subprocess.PIPE,
+                                                             close_fds=True)
+        except Exception as e:
+            await self.logger.critical(f"Caught exception launching {self.id}: {e}")
+            self.complete = True
+            await self.db.push_attribute(Attribute(name="pid",     value="0"))
+            await self.db.push_attribute(Attribute(name="stopped", value=str(datetime.now().timestamp())))
+            await self.db.push_attribute(Attribute(name="exit",    value=255))
+            return
         # Monitor process usage
         e_done  = asyncio.Event()
         t_pmon  = asyncio.create_task(self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb))
