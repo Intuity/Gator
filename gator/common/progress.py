@@ -12,18 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-from functools import lru_cache
-from time import monotonic
-from typing import Iterable, List, Optional
+from typing import Optional
 
-from rich.color import Color, blend_rgb
-from rich.color_triplet import ColorTriplet
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.jupyter import JupyterMixin
+from rich.live import Live
 from rich.measure import Measurement
-from rich.segment import Segment
-from rich.style import Style, StyleType
+from rich.table import Table
 
 
 class PassFailBar(JupyterMixin):
@@ -31,38 +26,41 @@ class PassFailBar(JupyterMixin):
     Renders a custom progress bar displaying total items to execute, number of
     jobs currently running, number of passes, and the number of failures.
 
-    :param total:   Total number of jobs to run
-    :param active:  Number of jobs currently executing
-    :param passed:  Number of jobs that passed
-    :param failed:  Number of jobs that failed
-    :param width:   Width of the bar, or ``None`` for maximum width. Defaults to None.
-    :param style:   Style for the bar background. Defaults to "bar.back".
-    :param complete_style:  Style for the completed bar. Defaults to "bar.complete".
-    :param finished_style:  Style for a finished bar. Defaults to "bar.finished".
-    :param animation_time: Time in seconds to use for animation, or None to use system time.
+    :param title:         Title to display
+    :param total:         Total number of jobs to run
+    :param active:        Number of jobs currently executing
+    :param passed:        Number of jobs that passed
+    :param failed:        Number of jobs that failed
+    :param width:         Fix the width of the bar
+    :param fail_style:    Style used to indicate failures
+    :param pass_style:    Style used to indicate passes
+    :param active_style:  Style used for active jobs
+    :param passive_style: Style used for not yet started jobs
     """
 
     def __init__(
         self,
+        title: str,
         total: int = 100,
         active: int = 0,
         passed: int = 0,
         failed: int = 0,
         width: Optional[int] = None,
-        style: StyleType = "bar.back",
-        complete_style: StyleType = "bar.complete",
-        finished_style: StyleType = "bar.finished",
-        animation_time: Optional[float] = None,
+        fail_style: str = "red",
+        pass_style: str = "green",
+        active_style: str = "white",
+        passive_style: str = "grey23",
     ):
+        self.title = title
         self.total = total
         self.active = active
         self.passed = passed
         self.failed = failed
         self.width = width
-        self.style = style
-        self.complete_style = complete_style
-        self.finished_style = finished_style
-        self.animation_time = animation_time
+        self.fail_style = fail_style
+        self.pass_style = pass_style
+        self.active_style = active_style
+        self.passive_style = passive_style
 
     def __repr__(self) -> str:
         return f"<Bar {self.completed!r} of {self.total!r}>"
@@ -91,36 +89,59 @@ class PassFailBar(JupyterMixin):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
+        # Ensure space for the title text
+        title_width = len(self.title) + 1
+        # Ensure space for the progress detail i.e. '1/2/3/4'
+        detail_width = ((len(str(self.total)) + 2) * 4)
 
-        # Sample the segments
-
+        # Determine the width available for the progress bar
         width = min(self.width or options.max_width, options.max_width)
+        width -= title_width + detail_width + 1
+
+        # Determine if unicode fully supported
         ascii = options.legacy_windows or options.ascii_only
-
-        pass_style = console.get_style("green")
-        fail_style = console.get_style("red")
-        actv_style = console.get_style("default")
-        pasv_style = console.get_style("grey23")
-
         char_full_bar = "-" if ascii else "━"
-        char_half_right = " " if ascii else "╸"
-        char_half_left = " " if ascii else "╺"
 
+        # Work out the sizes of each part of the progress bar
         max_halves = int(width * 2)
-
         pass_halves = int(max_halves * (self.passed / self.total))
         fail_halves = int(max_halves * (self.failed / self.total))
         actv_halves = int(max_halves * (self.active / self.total))
         pasv_halves = max_halves - sum((pass_halves, fail_halves, actv_halves))
 
+        # Draw each bar segment
         offset = 0
-        for halves, style in ((fail_halves, fail_style),
-                              (pass_halves, pass_style),
-                              (actv_halves, actv_style),
-                              (pasv_halves, pasv_style)):
+        segments = ""
+        for halves, style in ((fail_halves, self.fail_style),
+                              (pass_halves, self.pass_style),
+                              (actv_halves, self.active_style),
+                              (pasv_halves, self.passive_style)):
+            # Round-up/down to compensate for partial bars
             halves -= offset
             offset = halves % 2
-            yield Segment(((halves + offset) // 2) * char_full_bar, style)
+            num_chars = min(((halves + offset) // 2), width - offset)
+            segments += f"[{style}]"
+            segments += (num_chars * char_full_bar)
+            segments += f"[/{style}]"
+
+        # Draw the progress bar
+        table = Table(expand=True,
+                      collapse_padding=True,
+                      show_header=False,
+                      show_footer=False,
+                      box=None,
+                      padding=0)
+        table.add_column(width=title_width)
+        table.add_column()
+        table.add_column(width=detail_width, justify="right")
+        max_chars = len(str(self.total))
+        table.add_row(f"[default]{self.title}[/default]",
+                      segments,
+                      f"[on green] {self.passed:{max_chars}d} [/on green]"
+                      f"[on red] {self.failed:{max_chars}d} [/on red]"
+                      f"[on default] {self.active:{max_chars}d} [/on default]"
+                      f"[on grey23] {self.total:{max_chars}d} [/on grey23]")
+        yield table
 
     def __rich_measure__(
         self, console: Console, options: ConsoleOptions
@@ -134,7 +155,7 @@ class PassFailBar(JupyterMixin):
 
 if __name__ == "__main__":  # pragma: no cover
     console = Console()
-    bar = PassFailBar(100, 10, 2, 3)
+    bar = PassFailBar("Regression", 100, 0, 0, 0)
 
     import random, time
 
@@ -144,17 +165,17 @@ if __name__ == "__main__":  # pragma: no cover
     last_actv = 0
     passed = 0
     failed = 0
-    for _ in range(100):
-        max_actv = min(max_actv, total - (passed + failed))
-        if max_actv == 0:
-            break
-        active = random.randint(0, max_actv)
-        passed += (num_pass := random.randint(0, last_actv))
-        failed += last_actv - num_pass
-        last_actv = active
-        bar.update(total, active, passed, failed)
-        console.print(bar)
-        console.file.write("\r")
-        time.sleep(0.5)
+    with Live(bar, refresh_per_second=4) as live:
+        for _ in range(100):
+            max_actv = min(max_actv, total - (passed + failed))
+            if max_actv <= 0:
+                break
+            active = random.randint(0, max_actv)
+            passed += (num_pass := random.randint(0, last_actv))
+            failed += last_actv - num_pass
+            last_actv = active
+            bar.update(total, active, passed, failed)
+            live.update(bar)
+            time.sleep(0.25)
     console.show_cursor(True)
     console.print()
