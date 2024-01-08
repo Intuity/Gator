@@ -26,6 +26,7 @@ from rich.progress import (BarColumn,
 from rich.table import Table
 from rich.tree import Tree
 
+from .common.progress import PassFailBar
 from .launch import launch as launch_base
 
 
@@ -41,18 +42,16 @@ async def launch(**kwargs) -> None:
                         MofNCompleteColumn(),
                         TaskProgressColumn(),
                         expand=True)
-    table.add_row(Panel(progbar, title="Gator :crocodile:"))
     # Create a progress bar
-    bar_total  = progbar.add_task("Completed",     total=1)
-    bar_active = progbar.add_task("[cyan]Running", total=1)
-    bar_passed = progbar.add_task("[green]Passed", total=1)
-    bar_failed = progbar.add_task("[red]Failed",   total=1)
+    bar = PassFailBar("🐊 Gator", 1, 0, 0, 0)
+    table.add_row(bar)
+    # Start console
+    live = Live(table, refresh_per_second=4, console=console)
+    live.start(refresh=True)
+    # Create an update function
     def _update(_, sub_total, sub_active, sub_passed, sub_failed, tree=None, **__):
         # Update the progress bars
-        progbar.update(bar_total,  total=sub_total, completed=(sub_passed + sub_failed))
-        progbar.update(bar_active, total=sub_total, completed=sub_active)
-        progbar.update(bar_passed, total=sub_total, completed=sub_passed)
-        progbar.update(bar_failed, total=sub_total, completed=sub_failed)
+        bar.update(sub_total, sub_active, sub_passed, sub_failed)
         # Display the tree
         if tree:
             def _chase(parent, segment):
@@ -63,12 +62,8 @@ async def launch(**kwargs) -> None:
             r_tree = Tree("Root")
             _chase(r_tree, tree)
             console.log(r_tree)
-    prog_cb = _update
-    # Start console
-    live = Live(table, refresh_per_second=4, console=console)
-    live.start(refresh=True)
     # Launch
-    await launch_base(**kwargs, heartbeat_cb=prog_cb, console=live.console)
+    await launch_base(**kwargs, heartbeat_cb=_update, console=live.console)
     # Wait a little so the final progress update happens
     await asyncio.sleep(1)
     # Stop the console
