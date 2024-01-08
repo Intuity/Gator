@@ -254,7 +254,6 @@ class Wrapper(BaseLayer):
         t_pmon  = asyncio.create_task(self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb))
         t_stdio = asyncio.create_task(self.__monitor_stdio(self.proc, self.proc.stdout, self.proc.stderr))
         # Run until process complete & STDOUT/STDERR digested
-        await self.logger.info("Monitoring task")
         await asyncio.gather(self.proc.wait(), t_stdio)
         e_done.set()
         # Wait for process monitor to drain

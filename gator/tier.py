@@ -23,18 +23,23 @@ from .common.layer import BaseLayer
 from .common.logger import Logger
 from .common.types import Metric, Result
 from .common.ws_wrapper import WebsocketWrapper
-from .scheduler import LocalScheduler
+from .scheduler import LocalScheduler, SchedulerError
 from .specs import Job, JobArray, JobGroup, Spec
 
 
 class Tier(BaseLayer):
     """ Tier of the job tree """
 
-    def __init__(self, *args, scheduler : Type = LocalScheduler, **kwargs) -> None:
+    def __init__(self,
+                 *args,
+                 scheduler  : Type = LocalScheduler,
+                 sched_opts : dict[str, str],
+                 **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.sched_cls = scheduler
-        self.scheduler = None
-        self.lock      = asyncio.Lock()
+        self.sched_cls  = scheduler
+        self.sched_opts = sched_opts
+        self.scheduler  = None
+        self.lock       = asyncio.Lock()
         # Tracking for jobs in different phases
         self.jobs_pending   = {}
         self.jobs_launched  = {}
@@ -57,8 +62,15 @@ class Tier(BaseLayer):
         # Register client handlers for downwards calls
         self.client.add_route("get_tree", self.get_tree)
         # Create a scheduler
-        self.scheduler = self.sched_cls(parent=await self.server.get_address(),
-                                        quiet =not self.all_msg)
+        try:
+            self.scheduler = self.sched_cls(parent =await self.server.get_address(),
+                                            quiet  =not self.all_msg,
+                                            logger =self.logger,
+                                            options=self.sched_opts)
+        except SchedulerError as e:
+            await self.logger.critical(str(e))
+            await self.teardown()
+            return
         # Launch jobs
         await self.logger.info(f"Layer '{self.id}' launching sub-jobs")
         await self.__launch()

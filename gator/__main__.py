@@ -40,6 +40,7 @@ from .specs.common import SpecError
                              type=click.Choice(("local", ), case_sensitive=False),
                              help="Select the scheduler to use for launching jobs",
                              show_default=True)
+@click.option("--sched-arg", multiple=True, type=str, help="Arguments to the scheduler")
 @click.argument("spec", type=click.Path(exists=True), required=False)
 def main(id        : str,
          hub       : str,
@@ -51,23 +52,36 @@ def main(id        : str,
          verbose   : bool,
          progress  : bool,
          scheduler : str,
+         sched_arg : list[str],
          spec      : str) -> None:
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking" / datetime.now().isoformat())
+    tracking.mkdir(parents=True, exist_ok=True)
     # Select the right scheduler
     sched = { "local": LocalScheduler }.get(scheduler.lower())
+    # Break apart scheduler options as '<KEY>=<VALUE>'
+    sched_opts = {}
+    for arg in sched_arg:
+        if arg.count("=") != 1:
+            con = Console()
+            con.log(f"[bold red][ERROR][/bold red] Malformed scheduler argument "
+                    f"cannot be parsed as <KEY>=<VALUE>: {arg}")
+            sys.exit(1)
+        key, val = arg.split("=")
+        sched_opts[key.strip()] = val.strip()
     # Launch with optional progress tracking
     try:
         asyncio.run((launch_progress if progress else launch).launch(
-            id       =id,
-            parent   =parent,
-            spec     =Path(spec) if spec is not None else None,
-            tracking =tracking,
-            interval =interval,
-            quiet    =quiet,
-            all_msg  =all_msg,
-            verbose  =verbose,
-            scheduler=sched,
+            id        =id,
+            parent    =parent,
+            spec      =Path(spec) if spec is not None else None,
+            tracking  =tracking,
+            interval  =interval,
+            quiet     =quiet,
+            all_msg   =all_msg,
+            verbose   =verbose,
+            scheduler =sched,
+            sched_opts=sched_opts,
         ))
     except SpecError as e:
         con = Console()

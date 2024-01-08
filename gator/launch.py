@@ -39,7 +39,8 @@ async def launch(id           : Optional[str]               = None,
                  verbose      : bool                        = False,
                  heartbeat_cb : Optional[Callable]          = None,
                  console      : Optional[Console]           = None,
-                 scheduler    : Type                        = LocalScheduler) -> None:
+                 scheduler    : Type                        = LocalScheduler,
+                 sched_opts   : Optional[dict[str, str]]    = None) -> None:
     # If a console isn't given, create one
     if not console:
         console = Console(log_path=False)
@@ -74,7 +75,8 @@ async def launch(id           : Optional[str]               = None,
                    quiet       =quiet and not all_msg,
                    all_msg     =all_msg,
                    heartbeat_cb=heartbeat_cb,
-                   scheduler   =scheduler)
+                   scheduler   =scheduler,
+                   sched_opts  =sched_opts)
     # If a Job is provided, launch a wrapper
     elif isinstance(spec, Job):
         top = Wrapper(spec    =spec,

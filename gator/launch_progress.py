@@ -16,13 +16,6 @@ import asyncio
 
 from rich.console import Console
 from rich.live import Live
-from rich.panel import Panel
-from rich.progress import (BarColumn,
-                           MofNCompleteColumn,
-                           Progress,
-                           SpinnerColumn,
-                           TaskProgressColumn,
-                           TextColumn)
 from rich.table import Table
 from rich.tree import Tree
 
@@ -36,22 +29,19 @@ async def launch(**kwargs) -> None:
     # Create table
     table = Table(expand=True, show_edge=False, show_header=False)
     # Create a progress bar
-    progbar = Progress(TextColumn("{task.description}"),
-                        SpinnerColumn(),
-                        BarColumn(bar_width=None),
-                        MofNCompleteColumn(),
-                        TaskProgressColumn(),
-                        expand=True)
-    # Create a progress bar
     bar = PassFailBar("🐊 Gator", 1, 0, 0, 0)
     table.add_row(bar)
     # Start console
     live = Live(table, refresh_per_second=4, console=console)
     live.start(refresh=True)
     # Create an update function
-    def _update(_, sub_total, sub_active, sub_passed, sub_failed, tree=None, **__):
+    def _update(_, tree=None, **kwds):
+
         # Update the progress bars
-        bar.update(sub_total, sub_active, sub_passed, sub_failed)
+        bar.update(kwds.get("sub_total", 0),
+                   kwds.get("sub_active", 0),
+                   kwds.get("sub_passed", 0),
+                   kwds.get("sub_failed", 0))
         # Display the tree
         if tree:
             def _chase(parent, segment):

@@ -14,9 +14,15 @@
 
 import abc
 import functools
-from typing import List
+from typing import Any, List, Optional, Type
 
 from ..common.child import Child
+from ..common.logger import Logger
+
+
+class SchedulerError(Exception):
+    pass
+
 
 class BaseScheduler:
     """ Launches a set of tasks on a particular infrastructure """
@@ -24,10 +30,21 @@ class BaseScheduler:
     def __init__(self,
                  parent   : str,
                  interval : int = 5,
-                 quiet    : bool = True) -> None:
+                 quiet    : bool = True,
+                 logger   : Optional[Logger] = None,
+                 options  : Optional[dict[str, str]] = None) -> None:
         self.parent   = parent
         self.interval = interval
         self.quiet    = quiet
+        self.logger   = logger
+        self.options  = {k.strip().lower(): v for k, v in (options or {}).items()}
+
+    def get_option(self,
+                   name: str,
+                   default: Any = None,
+                   as_type: Type | None = None) -> Any:
+        value = self.options.get(name, default)
+        return value if as_type is None else as_type(value)
 
     @property
     @functools.lru_cache()
@@ -42,17 +59,25 @@ class BaseScheduler:
                 "--interval", f"{self.interval}",
                 "--scheduler", self.scheduler_id,
                 ["--all-msg", "--quiet"][self.quiet]]
+        cmd += sum((("--sched-arg", f"{k}={v}") for k, v in self.options.items()))
 
-    def create_command(self, child : Child) -> str:
+    def create_command(self,
+                       child : Child,
+                       options : Optional[dict[str, str]] = None) -> str:
         """
         Build a command for launching a job on the compute infrastructure using
         details from the child object.
 
         :param child:   Describes the task to launch
+        :param options: Override options
         :returns:       String of the full command
         """
-        return " ".join(self.base_command + ["--id", child.id,
-                                             "--tracking", child.tracking.as_posix()])
+        full_opts = self.options.copy()
+        full_opts.update(options or {})
+        return " ".join(self.base_command +
+                        ["--id", child.id,
+                         "--tracking", child.tracking.as_posix()] +
+                        sum([["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()], []))
 
     @abc.abstractmethod
     async def launch(self, tasks : List[Child]) -> None:

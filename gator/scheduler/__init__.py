@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .common import SchedulerError
 from .local import LocalScheduler
 
-assert all((LocalScheduler, ))
+assert all((LocalScheduler, SchedulerError))
