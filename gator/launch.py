@@ -22,6 +22,7 @@ from rich.console import Console
 from .common.logger import Logger
 from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
+from .hub.api import HubAPI
 from .tier import Tier
 from .scheduler import LocalScheduler
 from .specs import Job, JobArray, JobGroup, Spec
@@ -41,6 +42,8 @@ async def launch(id           : Optional[str]               = None,
                  console      : Optional[Console]           = None,
                  scheduler    : Type                        = LocalScheduler,
                  sched_opts   : Optional[dict[str, str]]    = None) -> None:
+    # Set the hub URL
+    HubAPI.url = hub
     # If a console isn't given, create one
     if not console:
         console = Console(log_path=False)

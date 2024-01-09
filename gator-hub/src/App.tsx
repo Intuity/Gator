@@ -246,7 +246,6 @@ function TreeViewer ({ job, setJobPath } : { job : ApiJob | undefined, setJobPat
 
     useEffect(() => {
         let interval = setInterval(() => {
-            console.log("REFRESHING", tree_items);
             tree_items.forEach((job) => job.refresh());
         }, Intervals.REFRESH_TREE);
 
@@ -260,7 +259,17 @@ function TreeViewer ({ job, setJobPath } : { job : ApiJob | undefined, setJobPat
                                      getItemTitle={item => {
                                         if (item.data !== undefined) {
                                             let mtc : any = item.data.metrics;
-                                            return `${item.data.id} - ${mtc.msg_warning} | ${mtc.msg_error} | ${mtc.msg_critical}`;
+                                            if (mtc !== undefined) {
+                                                let id = item.data.id;
+                                                let warn = mtc.msg_warning;
+                                                let err = mtc.msg_error;
+                                                let crit = mtc.msg_critical;
+                                                return `${id} - ${warn} | ${err} | ${crit}`;
+                                            } else if (item.data.id !== undefined) {
+                                                return `${item.data.id} - ⏳`;
+                                            } else {
+                                                return "PENDING";
+                                            }
                                         } else {
                                             return "LOADING";
                                         }

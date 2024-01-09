@@ -59,7 +59,7 @@ shell = "cd gator-hub && npm run build"
 shell = "cd gator-hub && npm run build_dev"
 
 [tool.poe.tasks.hub_run]
-shell = "python3 -m gator.hub.app"
+shell = "GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub.app"
 
 [tool.poe.tasks.lint]
 shell = "poetry run ruff check gator"

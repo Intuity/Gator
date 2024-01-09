@@ -73,6 +73,7 @@ def main(id        : str,
     try:
         asyncio.run((launch_progress if progress else launch).launch(
             id        =id,
+            hub       =hub,
             parent    =parent,
             spec      =Path(spec) if spec is not None else None,
             tracking  =tracking,
