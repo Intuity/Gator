@@ -57,11 +57,17 @@ async def launch(id           : Optional[str]               = None,
                     forward  =all_msg)
     logger.set_console(console)
     # Work out where the spec is coming from
+    # - From server (nested call)
     if spec is None and client.linked and id:
         raw_spec = await client.spec(id=id)
         spec     = Spec.parse_str(raw_spec.get("spec", ""))
-    elif spec is not None and not isinstance(spec, Spec):
+    # - Passed in directly (when used as a library
+    elif spec is not None and isinstance(spec, (Job, JobArray, JobGroup)):
+        pass
+    # - Passed as a file path
+    elif spec is not None and isinstance(spec, (Path, str)):
         spec = Spec.parse(Path(spec))
+    # - Unknown
     else:
         raise Exception("No specification file provided and no parent server to query")
     # If an ID has been provided, override whatever the spec gives
