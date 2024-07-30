@@ -23,7 +23,7 @@ from .common.progress import PassFailBar
 from .launch import launch as launch_base
 
 
-async def launch(**kwargs) -> None:
+async def launch(**kwargs) -> dict:
     # Create console
     console = Console(log_path=False)
     # Create table
@@ -53,8 +53,10 @@ async def launch(**kwargs) -> None:
             _chase(r_tree, tree)
             console.log(r_tree)
     # Launch
-    await launch_base(**kwargs, heartbeat_cb=_update, console=live.console)
+    summary = await launch_base(**kwargs, heartbeat_cb=_update, console=live.console)
     # Wait a little so the final progress update happens
     await asyncio.sleep(1)
     # Stop the console
     live.stop()
+    # Return the summary
+    return summary

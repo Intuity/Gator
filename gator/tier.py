@@ -172,6 +172,7 @@ class Tier(BaseLayer):
                               sub_active : int = 0,
                               sub_passed : int = 0,
                               sub_failed : int = 0,
+                              failed_ids : list[list[str]] | None = None,
                               **_):
         """
         Child can report the number of jobs it knows about, how many are running,
@@ -183,7 +184,12 @@ class Tier(BaseLayer):
                    "sub_active": 4,
                    "sub_passed": 1,
                    "sub_failed": 2,
-                   "metrics"  : {
+                   "failed_ids": [
+                       ["child_a", "grandchild_a"],
+                       ["child_a", "grandchild_c"],
+                       ["child_b", "grandchild_f"]
+                   ],
+                   "metrics"   : {
                      "msg_debug"   : 3,
                      "msg_info"    : 5,
                      "msg_warning" : 2,
@@ -206,6 +212,7 @@ class Tier(BaseLayer):
                 child.sub_active = sub_active
                 child.sub_passed = sub_passed
                 child.sub_failed = sub_failed
+                child.failed_ids = [[self.spec.id, *x] for x in failed_ids]
             elif id in self.jobs_completed:
                 await self.logger.error(f"Child {id} of {self.id} sent update after completion")
                 raise Exception("Child sent update after completion")
@@ -221,6 +228,7 @@ class Tier(BaseLayer):
                                 sub_total  : int = 0,
                                 sub_passed : int = 0,
                                 sub_failed : int = 0,
+                                failed_ids : list[list[str]] | None = None,
                                 **_):
         """
         Mark that a child process has completed.
@@ -231,7 +239,12 @@ class Tier(BaseLayer):
                    "sub_total" : 10,
                    "sub_passed": 1,
                    "sub_failed": 2,
-                   "metrics"  : {
+                   "failed_ids": [
+                       ["child_a", "grandchild_a"],
+                       ["child_a", "grandchild_c"],
+                       ["child_b", "grandchild_f"]
+                   ],
+                   "metrics"   : {
                      "msg_debug"   : 3,
                      "msg_info"    : 5,
                      "msg_warning" : 2,
@@ -239,6 +252,7 @@ class Tier(BaseLayer):
                      "msg_critical": 0
                    } }
         """
+        failed_ids = failed_ids or []
         async with self.lock:
             if id in self.jobs_launched:
                 await self.logger.debug(f"Child {id} of {self.id} has completed")
@@ -257,6 +271,7 @@ class Tier(BaseLayer):
                 child.sub_active = 0
                 child.sub_passed = sub_passed
                 child.sub_failed = sub_failed
+                child.failed_ids = [[self.spec.id, *x] for x in failed_ids]
                 # Move to the completed store
                 self.jobs_completed[child.id] = child
                 del self.jobs_launched[child.id]
@@ -315,6 +330,7 @@ class Tier(BaseLayer):
     async def summarise(self) -> Dict[str, int]:
         data = defaultdict(lambda: 0)
         data.update(await super().summarise())
+        data["failed_ids"] = []
         async with self.lock:
             for child in (list(self.jobs_launched.values()) + list(self.jobs_completed.values())):
                 for metric in child.metrics.values():
@@ -323,6 +339,7 @@ class Tier(BaseLayer):
                 data["sub_active"] += child.sub_active
                 data["sub_passed"] += child.sub_passed
                 data["sub_failed"] += child.sub_failed
+                data["failed_ids"] += child.failed_ids or []
         # While jobs are still starting up, estimate the total number expected
         data["sub_total"] = max(data["sub_total"], self.spec.expected_jobs)
         return data

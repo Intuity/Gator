@@ -80,11 +80,21 @@ class Wrapper(BaseLayer):
 
     async def summarise(self) -> Dict[str, int]:
         summary = await super().summarise()
-        passed  = self.complete and (self.code == 0) and (summary.get("errors", 0) == 0)
+        passed  = (
+            self.complete and
+            (self.code == 0) and
+            (summary.get("metrics", {}).get("msg_error", 0) == 0) and
+            (summary.get("metrics", {}).get("msg_critical", 0) == 0)
+        )
         summary["sub_total" ] = 1
         summary["sub_active"] = [1, 0][self.complete]
         summary["sub_passed"] = [0, 1][passed]
-        summary["sub_failed"] = [0, 1][self.complete and not passed]
+        if self.complete and not passed:
+            summary["sub_failed"] = 1
+            summary["failed_ids"] = [[self.spec.id]]
+        else:
+            summary["sub_failed"] = 0
+            summary["failed_ids"] = []
         return summary
 
     async def __handle_metric(self, name : str, value : int, **_) -> Dict[str, str]:
@@ -244,6 +254,7 @@ class Wrapper(BaseLayer):
                                                              close_fds=True)
         except Exception as e:
             await self.logger.critical(f"Caught exception launching {self.id}: {e}")
+            self.metrics["msg_critical"].value += 1
             self.complete = True
             await self.db.push_attribute(Attribute(name="pid",     value="0"))
             await self.db.push_attribute(Attribute(name="stopped", value=str(datetime.now().timestamp())))

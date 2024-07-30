@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import math
 import signal
 from pathlib import Path
 from typing import Callable, Optional, Type, Union
@@ -41,7 +42,7 @@ async def launch(id           : Optional[str]               = None,
                  heartbeat_cb : Optional[Callable]          = None,
                  console      : Optional[Console]           = None,
                  scheduler    : Type                        = LocalScheduler,
-                 sched_opts   : Optional[dict[str, str]]    = None) -> None:
+                 sched_opts   : Optional[dict[str, str]]    = None) -> dict:
     # Set the hub URL
     HubAPI.url = hub
     # If a console isn't given, create one
@@ -106,5 +107,18 @@ async def launch(id           : Optional[str]               = None,
         evt_loop.add_signal_handler(sig, lambda: _handler(sig, evt_loop, top))
     # Wait for the executor to complete
     await top.launch()
+    # Calculate final summary
+    summary = await top.summarise()
+    # Log out failures
+    if (failed_ids := summary.get("failed_ids", [])):
+        msg = f"In this hierarchy {len(failed_ids)} jobs failed: "
+        for idx, f_id in enumerate(failed_ids):
+            entry = f"[{idx:0{math.ceil(math.log(len(failed_ids)))}d}] {'.'.join(f_id)}"
+            if idx == 0:
+                console.log(msg + entry)
+            else:
+                console.log(f"{' '*len(msg)}{entry}")
     # Shutdown client
     await client.stop()
+    # Return summary
+    return summary
