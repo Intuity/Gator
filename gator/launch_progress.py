@@ -23,13 +23,13 @@ from .common.progress import PassFailBar
 from .launch import launch as launch_base
 
 
-async def launch(**kwargs) -> dict:
+async def launch(glyph: str = "🐊 Gator", **kwargs) -> dict:
     # Create console
     console = Console(log_path=False)
     # Create table
     table = Table(expand=True, show_edge=False, show_header=False)
     # Create a progress bar
-    bar = PassFailBar("🐊 Gator", 1, 0, 0, 0)
+    bar = PassFailBar(glyph, 1, 0, 0, 0)
     table.add_row(bar)
     # Start console
     live = Live(table, refresh_per_second=4, console=console)

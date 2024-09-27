@@ -42,7 +42,10 @@ async def launch(id           : Optional[str]               = None,
                  heartbeat_cb : Optional[Callable]          = None,
                  console      : Optional[Console]           = None,
                  scheduler    : Type                        = LocalScheduler,
-                 sched_opts   : Optional[dict[str, str]]    = None) -> dict:
+                 sched_opts   : Optional[dict[str, str]]    = None,
+                 glyph        : str | None                  = None) -> dict:
+    # Glyph only used when progress bar visible
+    del glyph
     # Set the hub URL
     HubAPI.url = hub
     # If a console isn't given, create one
