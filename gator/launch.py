@@ -20,7 +20,7 @@ from typing import Callable, Optional, Type, Union
 
 from rich.console import Console
 
-from .common.logger import Logger
+from .common.logger import Logger, MessageLimits
 from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
 from .hub.api import HubAPI
@@ -30,20 +30,23 @@ from .specs import Job, JobArray, JobGroup, Spec
 from .wrapper import Wrapper
 
 
-async def launch(id           : Optional[str]               = None,
-                 hub          : Optional[str]               = None,
-                 parent       : Optional[str]               = None,
-                 spec         : Optional[Union[Spec, Path]] = None,
-                 tracking     : Path                        = Path.cwd(),
-                 interval     : int                         = 5,
-                 quiet        : bool                        = False,
-                 all_msg      : bool                        = False,
-                 verbose      : bool                        = False,
-                 heartbeat_cb : Optional[Callable]          = None,
-                 console      : Optional[Console]           = None,
-                 scheduler    : Type                        = LocalScheduler,
-                 sched_opts   : Optional[dict[str, str]]    = None,
-                 glyph        : str | None                  = None) -> dict:
+async def launch(
+    id           : Optional[str]               = None,
+    hub          : Optional[str]               = None,
+    parent       : Optional[str]               = None,
+    spec         : Optional[Union[Spec, Path]] = None,
+    tracking     : Path                        = Path.cwd(),
+    interval     : int                         = 5,
+    quiet        : bool                        = False,
+    all_msg      : bool                        = False,
+    verbose      : bool                        = False,
+    heartbeat_cb : Optional[Callable]          = None,
+    console      : Optional[Console]           = None,
+    scheduler    : Type                        = LocalScheduler,
+    sched_opts   : Optional[dict[str, str]]    = None,
+    glyph        : str | None                  = None,
+    limits       : MessageLimits | None        = None,
+) -> dict:
     # Glyph only used when progress bar visible
     del glyph
     # Set the hub URL
@@ -89,7 +92,8 @@ async def launch(id           : Optional[str]               = None,
                    all_msg     =all_msg,
                    heartbeat_cb=heartbeat_cb,
                    scheduler   =scheduler,
-                   sched_opts  =sched_opts)
+                   sched_opts  =sched_opts,
+                   limits      =limits)
     # If a Job is provided, launch a wrapper
     elif isinstance(spec, Job):
         top = Wrapper(spec    =spec,
@@ -97,7 +101,8 @@ async def launch(id           : Optional[str]               = None,
                       logger  =logger,
                       tracking=tracking,
                       interval=interval,
-                      quiet   =quiet and not all_msg)
+                      quiet   =quiet and not all_msg,
+                      limits  =limits)
     # Unsupported forms
     else:
         raise Exception(f"Unsupported specification object of type {type(spec).__name__}")

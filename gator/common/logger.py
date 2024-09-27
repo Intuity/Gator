@@ -14,6 +14,7 @@
 
 import asyncio
 import atexit
+import dataclasses
 import io
 from collections import defaultdict
 from datetime import datetime
@@ -27,6 +28,13 @@ from rich.markup import escape
 from .db import Database
 from .types import LogEntry, LogSeverity
 from .ws_client import WebsocketClient
+
+@dataclasses.dataclass()
+class MessageLimits:
+    """Define maximum tolerance for different verbosities (None means infinite)"""
+    warning: int | None = None
+    error: int | None = 0
+    critical: int | None = 0
 
 
 class Logger:
@@ -68,6 +76,28 @@ class Logger:
 
     def get_count(self, *severity : List[LogSeverity]) -> int:
         return sum(self.__counts[x] for x in severity)
+
+    async def check_limits(self, limits: MessageLimits) -> bool:
+        """
+        Check whether the number of recorded messages at different verbosity
+        levels exceed the defined limits.
+
+        :param limits: Limit values for different verbosity levels
+        :returns:      True if counts are within limits, False if any is exceeded
+        """
+        okay = True
+        for limit, severity in (
+            (limits.warning, LogSeverity.WARNING),
+            (limits.error, LogSeverity.ERROR),
+            (limits.critical, LogSeverity.CRITICAL)
+        ):
+            if limit is not None and (count := self.__counts[severity]) > limit:
+                await self.info(
+                    f"{severity.name.capitalize()} message count of {count} "
+                    f"exceeds provided limit of {limit}"
+                )
+                okay = False
+        return okay
 
     def __close_log_file(self) -> None:
         if self.__log_fh is not None:

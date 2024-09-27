@@ -17,7 +17,7 @@ import functools
 from typing import Any, List, Optional, Type
 
 from ..common.child import Child
-from ..common.logger import Logger
+from ..common.logger import Logger, MessageLimits
 
 
 class SchedulerError(Exception):
@@ -32,11 +32,13 @@ class BaseScheduler:
                  interval : int = 5,
                  quiet    : bool = True,
                  logger   : Optional[Logger] = None,
-                 options  : Optional[dict[str, str]] = None) -> None:
+                 options  : Optional[dict[str, str]] = None,
+                 limits   : MessageLimits | None = None) -> None:
         self.parent   = parent
         self.interval = interval
         self.quiet    = quiet
         self.logger   = logger
+        self.limits   = limits or MessageLimits()
         self.options  = {k.strip().lower(): v for k, v in (options or {}).items()}
         self.babysit  = self.options.get("babysit", False)
 
@@ -58,8 +60,14 @@ class BaseScheduler:
         cmd = []
         if self.babysit:
             cmd += ["python3", "-m", "gator.babysitter"]
+        cmd += ["python3", "-m", "gator"]
+        if self.limits.warning is not None:
+            cmd.append(f"--limit-warning={self.limits.warning}")
+        if self.limits.error is not None:
+            cmd.append(f"--limit-error={self.limits.error}")
+        if self.limits.critical is not None:
+            cmd.append(f"--limit-critical={self.limits.critical}")
         cmd += [
-            "python3", "-m", "gator",
             "--parent", self.parent,
             "--interval", f"{self.interval}",
             "--scheduler", self.scheduler_id,

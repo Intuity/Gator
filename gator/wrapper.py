@@ -80,12 +80,8 @@ class Wrapper(BaseLayer):
 
     async def summarise(self) -> Dict[str, int]:
         summary = await super().summarise()
-        passed  = (
-            self.complete and
-            (self.code == 0) and
-            (summary.get("metrics", {}).get("msg_error", 0) == 0) and
-            (summary.get("metrics", {}).get("msg_critical", 0) == 0)
-        )
+        msg_ok = await self.logger.check_limits(self.limits)
+        passed = all((self.complete, (self.code == 0), msg_ok))
         summary["sub_total" ] = 1
         summary["sub_active"] = [1, 0][self.complete]
         summary["sub_passed"] = [0, 1][passed]

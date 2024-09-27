@@ -66,7 +66,8 @@ class Tier(BaseLayer):
             self.scheduler = self.sched_cls(parent =await self.server.get_address(),
                                             quiet  =not self.all_msg,
                                             logger =self.logger,
-                                            options=self.sched_opts)
+                                            options=self.sched_opts,
+                                            limits =self.limits)
         except SchedulerError as e:
             await self.logger.critical(str(e))
             await self.teardown()
@@ -256,7 +257,7 @@ class Tier(BaseLayer):
         failed_ids = failed_ids or []
         async with self.lock:
             if id in self.jobs_launched:
-                await self.logger.debug(f"Child {id} of {self.id} has completed")
+                await self.logger.debug(f"Child {id} of {self.id} has completed with {result}")
                 child = self.jobs_launched[id]
                 # Apply updates
                 child.updated   = datetime.now()

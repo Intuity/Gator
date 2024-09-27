@@ -23,6 +23,7 @@ from rich.markup import escape
 
 from . import launch
 from . import launch_progress
+from .common.logger import MessageLimits
 from .scheduler import LocalScheduler
 from .specs import Spec
 from .specs.common import SpecError
@@ -42,19 +43,25 @@ from .specs.common import SpecError
                              help="Select the scheduler to use for launching jobs",
                              show_default=True)
 @click.option("--sched-arg", multiple=True, type=str, help="Arguments to the scheduler")
+@click.option("--limit-warning", type=int, default=None, help="Maximum number of warning messages before failure")
+@click.option("--limit-error", type=int, default=0, help="Maximum number of error messages before failure")
+@click.option("--limit-critical", type=int, default=0, help="Maximum number of critical messages before failure")
 @click.argument("spec", type=click.Path(exists=True), required=False)
-def main(id        : str,
-         hub       : str,
-         parent    : str,
-         interval  : int,
-         tracking  : str,
-         quiet     : bool,
-         all_msg   : bool,
-         verbose   : bool,
-         progress  : bool,
-         scheduler : str,
-         sched_arg : list[str],
-         spec      : str) -> None:
+def main(id             : str,
+         hub            : str,
+         parent         : str,
+         interval       : int,
+         tracking       : str,
+         quiet          : bool,
+         all_msg        : bool,
+         verbose        : bool,
+         progress       : bool,
+         scheduler      : str,
+         sched_arg      : list[str],
+         limit_warning  : int | None,
+         limit_error    : int,
+         limit_critical : int,
+         spec           : str) -> None:
     # Determine a tracking directory
     tracking = Path(tracking) if tracking else (Path.cwd() / "tracking" / datetime.now().isoformat())
     tracking.mkdir(parents=True, exist_ok=True)
@@ -84,6 +91,9 @@ def main(id        : str,
             verbose   =verbose,
             scheduler =sched,
             sched_opts=sched_opts,
+            limits    =MessageLimits(warning=limit_warning,
+                                     error=limit_error,
+                                     critical=limit_critical),
         ))
     except SpecError as e:
         con = Console()

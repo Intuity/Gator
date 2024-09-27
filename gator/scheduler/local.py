@@ -17,7 +17,7 @@ from typing import List, Optional
 
 from .common import BaseScheduler, SchedulerError
 from ..common.child import Child
-from ..common.logger import Logger
+from ..common.logger import Logger, MessageLimits
 from ..specs import Job
 
 class LocalScheduler(BaseScheduler):
@@ -28,8 +28,9 @@ class LocalScheduler(BaseScheduler):
                  interval : int = 5,
                  quiet    : bool = True,
                  logger   : Optional[Logger] = None,
-                 options  : Optional[dict[str, str]] = None) -> None:
-        super().__init__(parent, interval, quiet, logger, options)
+                 options  : Optional[dict[str, str]] = None,
+                 limits   : MessageLimits | None = None) -> None:
+        super().__init__(parent, interval, quiet, logger, options, limits)
         self.launch_task = None
         self.update_lock = asyncio.Lock()
         self.launched    = {}

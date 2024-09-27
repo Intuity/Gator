@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from ..hub.api import HubAPI
 from ..specs import Job, JobArray, JobGroup, Spec
 from .db import Database, Query
-from .logger import Logger
+from .logger import Logger, MessageLimits
 from .types import LogEntry, LogSeverity, Metric, Result
 from .utility import get_username
 from .ws_client import WebsocketClient
@@ -39,7 +39,8 @@ class BaseLayer:
                  interval     : int = 5,
                  quiet        : bool = False,
                  all_msg      : bool = False,
-                 heartbeat_cb : Optional[Callable] = None) -> None:
+                 heartbeat_cb : Optional[Callable] = None,
+                 limits       : MessageLimits = None) -> None:
         # Capture initialisation variables
         self.spec         = spec
         self.client       = client
@@ -49,6 +50,7 @@ class BaseLayer:
         self.quiet        = quiet
         self.all_msg      = all_msg
         self.heartbeat_cb = heartbeat_cb
+        self.limits       = limits or MessageLimits()
         # Check spec object
         self.spec.check()
         # Create empty pointers in advance
@@ -113,8 +115,10 @@ class BaseLayer:
         self.__hb_event.set()
         await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
         # Determine the result
-        num_err = self.logger.get_count(LogSeverity.ERROR, LogSeverity.CRITICAL)
-        result = [Result.FAILURE, Result.SUCCESS][self.code == 0 and num_err == 0]
+        result = Result.SUCCESS
+        if not (await self.logger.check_limits(self.limits)):
+            await self.logger.error("Job failed as it violated the message limit")
+            result = Result.FAILURE
         # Tell the parent the job is complete
         summary = await self.summarise()
         await self.client.complete(id=self.id, code=self.code, result=result.name, **summary)
