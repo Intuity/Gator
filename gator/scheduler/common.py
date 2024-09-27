@@ -38,6 +38,7 @@ class BaseScheduler:
         self.quiet    = quiet
         self.logger   = logger
         self.options  = {k.strip().lower(): v for k, v in (options or {}).items()}
+        self.babysit  = self.options.get("babysit", False)
 
     def get_option(self,
                    name: str,
@@ -54,12 +55,17 @@ class BaseScheduler:
     @property
     @functools.lru_cache()
     def base_command(self) -> List[str]:
-        return ["python3", "-m", "gator",
-                "--parent", self.parent,
-                "--interval", f"{self.interval}",
-                "--scheduler", self.scheduler_id,
-                ["--all-msg", "--quiet"][self.quiet]]
-        cmd += sum((("--sched-arg", f"{k}={v}") for k, v in self.options.items()))
+        cmd = []
+        if self.babysit:
+            cmd += ["python3", "-m", "gator.babysitter"]
+        cmd += [
+            "python3", "-m", "gator",
+            "--parent", self.parent,
+            "--interval", f"{self.interval}",
+            "--scheduler", self.scheduler_id,
+            ["--all-msg", "--quiet"][self.quiet]
+        ]
+        return cmd
 
     def create_command(self,
                        child : Child,

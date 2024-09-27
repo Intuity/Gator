@@ -87,7 +87,8 @@ class Tier(BaseLayer):
         await self.logger.warning("Stopping all jobs")
         async with self.lock:
             for child in self.jobs_launched.values():
-                await child.ws.stop(posted=True)
+                if child.ws:
+                    await child.ws.stop(posted=True)
 
     async def get_tree(self, **_) -> Dict[str, Any]:
         tree = {}
@@ -96,7 +97,7 @@ class Tier(BaseLayer):
         for child in all_launched:
             if isinstance(child.spec, Job) or child.ws is None:
                 tree[child.id] = child.state.name
-            else:
+            elif child.ws:
                 tree[child.id] = await child.ws.get_tree()
         return tree
 

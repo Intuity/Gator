@@ -19,6 +19,7 @@ from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
 from . import launch
 from . import launch_progress
@@ -65,7 +66,7 @@ def main(id        : str,
         if arg.count("=") != 1:
             con = Console()
             con.log(f"[bold red][ERROR][/bold red] Malformed scheduler argument "
-                    f"cannot be parsed as <KEY>=<VALUE>: {arg}")
+                    f"cannot be parsed as <KEY>=<VALUE>: {escape(arg)}")
             sys.exit(1)
         key, val = arg.split("=")
         sched_opts[key.strip()] = val.strip()
@@ -87,14 +88,14 @@ def main(id        : str,
     except SpecError as e:
         con = Console()
         con.log(f"[bold red][ERROR][/bold red] Issue in {type(e.obj).__name__} "
-                f"specification field '{e.field}': {str(e)}")
+                f"specification field '{e.field}': {escape(str(e))}")
         if hasattr(e.obj, "jobs"):
             e.obj.jobs = ["..."]
         con.log(Spec.dump([e.obj]))
         sys.exit(1)
     except Exception as e:
         con = Console()
-        con.log(f"[bold red][ERROR][/bold red] {str(e)}")
+        con.log(f"[bold red][ERROR][/bold red] {escape(str(e))}")
         if verbose:
             con.print_exception(show_locals=True)
         sys.exit(1)

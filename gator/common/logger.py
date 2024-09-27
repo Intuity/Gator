@@ -22,6 +22,7 @@ from typing import List, Dict, Optional
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
 from .db import Database
 from .types import LogEntry, LogSeverity
@@ -120,7 +121,7 @@ class Logger:
         # If a console is attached, log locally
         if self.__console and severity >= self.verbosity:
             prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
-            self.__console.log(f"{prefix}[{severity.name:<7s}]{suffix} {message}")
+            self.__console.log(f"{prefix}[{severity.name:<7s}]{suffix} {escape(message)}")
         # Normally don't capture forwarded messages
         if not forwarded or self.capture_all:
             # Record to the database

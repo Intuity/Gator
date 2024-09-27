@@ -90,7 +90,8 @@ class LocalScheduler(BaseScheduler):
                     self.launched[task.id] = await asyncio.create_subprocess_shell(
                         self.create_command(task, {"concurrency": granted}),
                         stdin =asyncio.subprocess.DEVNULL,
-                        stdout=asyncio.subprocess.DEVNULL
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.STDOUT,
                     )
                     self.monitors[task.id] = asyncio.create_task(
                         self.__monitor(task.id, self.launched[task.id])
