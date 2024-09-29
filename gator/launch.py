@@ -31,21 +31,21 @@ from .wrapper import Wrapper
 
 
 async def launch(
-    id           : Optional[str]               = None,
-    hub          : Optional[str]               = None,
-    parent       : Optional[str]               = None,
-    spec         : Optional[Union[Spec, Path]] = None,
-    tracking     : Path                        = Path.cwd(),
-    interval     : int                         = 5,
-    quiet        : bool                        = False,
-    all_msg      : bool                        = False,
-    verbose      : bool                        = False,
-    heartbeat_cb : Optional[Callable]          = None,
-    console      : Optional[Console]           = None,
-    scheduler    : Type                        = LocalScheduler,
-    sched_opts   : Optional[dict[str, str]]    = None,
-    glyph        : str | None                  = None,
-    limits       : MessageLimits | None        = None,
+    id: Optional[str] = None,
+    hub: Optional[str] = None,
+    parent: Optional[str] = None,
+    spec: Optional[Union[Spec, Path]] = None,
+    tracking: Path = Path.cwd(),
+    interval: int = 5,
+    quiet: bool = False,
+    all_msg: bool = False,
+    verbose: bool = False,
+    heartbeat_cb: Optional[Callable] = None,
+    console: Optional[Console] = None,
+    scheduler: Type = LocalScheduler,
+    sched_opts: Optional[dict[str, str]] = None,
+    glyph: str | None = None,
+    limits: MessageLimits | None = None,
 ) -> dict:
     # Glyph only used when progress bar visible
     del glyph
@@ -59,15 +59,17 @@ async def launch(
     client = WebsocketClient(address=parent)
     await client.start()
     # Create a logger with a pointer to the console
-    logger = Logger(ws_cli   =client,
-                    verbosity=[LogSeverity.INFO, LogSeverity.DEBUG][verbose],
-                    forward  =all_msg)
+    logger = Logger(
+        ws_cli=client,
+        verbosity=[LogSeverity.INFO, LogSeverity.DEBUG][verbose],
+        forward=all_msg,
+    )
     logger.set_console(console)
     # Work out where the spec is coming from
     # - From server (nested call)
     if spec is None and client.linked and id:
         raw_spec = await client.spec(id=id)
-        spec     = Spec.parse_str(raw_spec.get("spec", ""))
+        spec = Spec.parse_str(raw_spec.get("spec", ""))
     # - Passed in directly (when used as a library
     elif spec is not None and isinstance(spec, (Job, JobArray, JobGroup)):
         pass
@@ -76,7 +78,9 @@ async def launch(
         spec = Spec.parse(Path(spec))
     # - Unknown
     else:
-        raise Exception("No specification file provided and no parent server to query")
+        raise Exception(
+            "No specification file provided and no parent server to query"
+        )
     # If an ID has been provided, override whatever the spec gives
     if id is not None:
         spec.id = id
@@ -84,32 +88,42 @@ async def launch(
     spec.check()
     # If a JobArray or JobGroup is provided, launch a tier
     if isinstance(spec, (JobArray, JobGroup)):
-        top = Tier(spec        =spec,
-                   client      =client,
-                   logger      =logger,
-                   tracking    =tracking,
-                   quiet       =quiet and not all_msg,
-                   all_msg     =all_msg,
-                   heartbeat_cb=heartbeat_cb,
-                   scheduler   =scheduler,
-                   sched_opts  =sched_opts,
-                   limits      =limits)
+        top = Tier(
+            spec=spec,
+            client=client,
+            logger=logger,
+            tracking=tracking,
+            quiet=quiet and not all_msg,
+            all_msg=all_msg,
+            heartbeat_cb=heartbeat_cb,
+            scheduler=scheduler,
+            sched_opts=sched_opts,
+            limits=limits,
+        )
     # If a Job is provided, launch a wrapper
     elif isinstance(spec, Job):
-        top = Wrapper(spec    =spec,
-                      client  =client,
-                      logger  =logger,
-                      tracking=tracking,
-                      interval=interval,
-                      quiet   =quiet and not all_msg,
-                      limits  =limits)
+        top = Wrapper(
+            spec=spec,
+            client=client,
+            logger=logger,
+            tracking=tracking,
+            interval=interval,
+            quiet=quiet and not all_msg,
+            limits=limits,
+        )
     # Unsupported forms
     else:
-        raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
+        raise Exception(
+            f"Unsupported specification object of type {type(spec).__name__}"
+        )
+
     # Setup signal handler to capture CTRL+C events
-    def _handler(sig : signal, evt_loop : asyncio.BaseEventLoop, top : Union[Tier, Wrapper]):
+    def _handler(
+        sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]
+    ):
         if top.is_root:
             evt_loop.create_task(top.stop())
+
     evt_loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         evt_loop.add_signal_handler(sig, lambda: _handler(sig, evt_loop, top))
@@ -118,7 +132,7 @@ async def launch(
     # Calculate final summary
     summary = await top.summarise()
     # Log out failures
-    if (failed_ids := summary.get("failed_ids", [])):
+    if failed_ids := summary.get("failed_ids", []):
         msg = f"In this hierarchy {len(failed_ids)} jobs failed: "
         for idx, f_id in enumerate(failed_ids):
             entry = f"[{idx:0{math.ceil(math.log(len(failed_ids)))}d}] {'.'.join(f_id)}"

@@ -19,19 +19,22 @@ from gator.specs.common import SpecError
 from gator.specs.jobs import Job
 from gator.specs.resource import Cores, License, Memory
 
+
 def test_spec_job_positional():
-    """ A job should preserve all positional arguments provided to it """
-    job = Job("id_123",
-              { "key_a": 2345, "key_b": False },
-              "/path/to/working/dir",
-              "echo",
-              ["String to print"],
-              [Cores(3), License("A", 2), Memory(1, "GB")],
-              ["job_0"],
-              ["job_1"],
-              ["job_2"])
+    """A job should preserve all positional arguments provided to it"""
+    job = Job(
+        "id_123",
+        {"key_a": 2345, "key_b": False},
+        "/path/to/working/dir",
+        "echo",
+        ["String to print"],
+        [Cores(3), License("A", 2), Memory(1, "GB")],
+        ["job_0"],
+        ["job_1"],
+        ["job_2"],
+    )
     assert job.id == "id_123"
-    assert job.env == { "key_a": 2345, "key_b": False }
+    assert job.env == {"key_a": 2345, "key_b": False}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
     assert job.args == ["String to print"]
@@ -49,20 +52,23 @@ def test_spec_job_positional():
     assert job.on_done == ["job_0"]
     assert job.on_fail == ["job_1"]
     assert job.on_pass == ["job_2"]
+
 
 def test_spec_job_named():
-    """ A job should preserve all named arguments provided to it """
-    job = Job(id       ="id_123",
-              env      ={ "key_a": 2345, "key_b": False },
-              cwd      ="/path/to/working/dir",
-              command  ="echo",
-              args     =["String to print"],
-              resources=[Cores(3), License("A", 2), Memory(1, "GB")],
-              on_done  =["job_0"],
-              on_fail  =["job_1"],
-              on_pass  =["job_2"])
+    """A job should preserve all named arguments provided to it"""
+    job = Job(
+        id="id_123",
+        env={"key_a": 2345, "key_b": False},
+        cwd="/path/to/working/dir",
+        command="echo",
+        args=["String to print"],
+        resources=[Cores(3), License("A", 2), Memory(1, "GB")],
+        on_done=["job_0"],
+        on_fail=["job_1"],
+        on_pass=["job_2"],
+    )
     assert job.id == "id_123"
-    assert job.env == { "key_a": 2345, "key_b": False }
+    assert job.env == {"key_a": 2345, "key_b": False}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
     assert job.args == ["String to print"]
@@ -81,8 +87,9 @@ def test_spec_job_named():
     assert job.on_fail == ["job_1"]
     assert job.on_pass == ["job_2"]
 
+
 def test_spec_job_parse(tmp_path):
-    """ Parse a specification from a YAML file """
+    """Parse a specification from a YAML file"""
     spec_file = tmp_path / "job.yaml"
     spec_file.write_text(
         "!Job\n"
@@ -108,7 +115,7 @@ def test_spec_job_parse(tmp_path):
     job = Spec.parse(spec_file)
     assert isinstance(job, Job)
     assert job.id == "id_123"
-    assert job.env == { "key_a": 2345, "key_b": False }
+    assert job.env == {"key_a": 2345, "key_b": False}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
     assert job.args == ["String to print"]
@@ -127,8 +134,9 @@ def test_spec_job_parse(tmp_path):
     assert job.on_fail == ["job_1"]
     assert job.on_pass == ["job_2"]
 
+
 def test_spec_job_parse_str():
-    """ Parse a specification from a YAML string """
+    """Parse a specification from a YAML string"""
     spec_str = (
         "!Job\n"
         "  id: id_123\n"
@@ -153,7 +161,7 @@ def test_spec_job_parse_str():
     job = Spec.parse_str(spec_str)
     assert isinstance(job, Job)
     assert job.id == "id_123"
-    assert job.env == { "key_a": 2345, "key_b": False }
+    assert job.env == {"key_a": 2345, "key_b": False}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
     assert job.args == ["String to print"]
@@ -172,17 +180,20 @@ def test_spec_job_parse_str():
     assert job.on_fail == ["job_1"]
     assert job.on_pass == ["job_2"]
 
+
 def test_spec_job_dump():
-    """ Dump a specification to a YAML string """
-    job = Job(id     ="id_123",
-              env    ={ "key_a": 2345, "key_b": False },
-              cwd    ="/path/to/working/dir",
-              command="echo",
-              args   =["String to print"],
-              resources=[Cores(3), License("A", 2), Memory(1, "GB")],
-              on_done  =["job_0"],
-              on_fail  =["job_1"],
-              on_pass  =["job_2"])
+    """Dump a specification to a YAML string"""
+    job = Job(
+        id="id_123",
+        env={"key_a": 2345, "key_b": False},
+        cwd="/path/to/working/dir",
+        command="echo",
+        args=["String to print"],
+        resources=[Cores(3), License("A", 2), Memory(1, "GB")],
+        on_done=["job_0"],
+        on_fail=["job_1"],
+        on_pass=["job_2"],
+    )
     spec_str = Spec.dump(job)
     assert spec_str == (
         "!Job\n"
@@ -211,6 +222,7 @@ def test_spec_job_dump():
         "  unit: GB\n"
     )
 
+
 def test_spec_job_default_resources():
     """
     Zero should be returned for cores and memory and an empty dictionary for
@@ -221,8 +233,9 @@ def test_spec_job_default_resources():
     assert job.requested_memory == 0
     assert job.requested_licenses == {}
 
+
 def test_spec_job_bad_fields():
-    """ Bad field values should be flagged """
+    """Bad field values should be flagged"""
     # Check ID
     with pytest.raises(SpecError) as exc:
         Job(id=123).check()
@@ -255,7 +268,7 @@ def test_spec_job_bad_fields():
     assert exc.value.field == "command"
     # Check arguments (non-list)
     with pytest.raises(SpecError) as exc:
-        Job(args={ "a": 123 }).check()
+        Job(args={"a": 123}).check()
     assert str(exc.value) == "Arguments must be a list"
     assert exc.value.field == "args"
     # Check arguments (non-string/integer values)
@@ -285,7 +298,9 @@ def test_spec_job_bad_fields():
     assert exc.value.field == "resources"
     # Check duplicate entries of a particular license
     with pytest.raises(SpecError) as exc:
-        Job(resources=[Cores(2), License("A"), License("B"), License("B")]).check()
+        Job(
+            resources=[Cores(2), License("A"), License("B"), License("B")]
+        ).check()
     assert str(exc.value) == "More than one entry for license 'B'"
     assert exc.value.field == "resources"
     # Check on done/fail/pass

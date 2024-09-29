@@ -92,7 +92,7 @@ class PassFailBar(JupyterMixin):
         # Ensure space for the title text
         title_width = len(self.title) + 1
         # Ensure space for the progress detail i.e. '1/2/3/4'
-        detail_width = ((len(str(self.total)) + 2) * 4)
+        detail_width = (len(str(self.total)) + 2) * 4
 
         # Determine the width available for the progress bar
         width = min(self.width or options.max_width, options.max_width)
@@ -112,35 +112,41 @@ class PassFailBar(JupyterMixin):
         # Draw each bar segment
         offset = 0
         segments = ""
-        for halves, style in ((fail_halves, self.fail_style),
-                              (pass_halves, self.pass_style),
-                              (actv_halves, self.active_style),
-                              (pasv_halves, self.passive_style)):
+        for halves, style in (
+            (fail_halves, self.fail_style),
+            (pass_halves, self.pass_style),
+            (actv_halves, self.active_style),
+            (pasv_halves, self.passive_style),
+        ):
             # Round-up/down to compensate for partial bars
             halves -= offset
             offset = halves % 2
             num_chars = min(((halves + offset) // 2), width - offset)
             segments += f"[{style}]"
-            segments += (num_chars * char_full_bar)
+            segments += num_chars * char_full_bar
             segments += f"[/{style}]"
 
         # Draw the progress bar
-        table = Table(expand=True,
-                      collapse_padding=True,
-                      show_header=False,
-                      show_footer=False,
-                      box=None,
-                      padding=0)
+        table = Table(
+            expand=True,
+            collapse_padding=True,
+            show_header=False,
+            show_footer=False,
+            box=None,
+            padding=0,
+        )
         table.add_column(width=title_width)
         table.add_column()
         table.add_column(width=detail_width, justify="right")
         max_chars = len(str(self.total))
-        table.add_row(f"[default]{self.title}[/default]",
-                      segments,
-                      f"[on green] {self.passed:{max_chars}d} [/on green]"
-                      f"[on red] {self.failed:{max_chars}d} [/on red]"
-                      f"[on default] {self.active:{max_chars}d} [/on default]"
-                      f"[on grey23] {self.total:{max_chars}d} [/on grey23]")
+        table.add_row(
+            f"[default]{self.title}[/default]",
+            segments,
+            f"[on green] {self.passed:{max_chars}d} [/on green]"
+            f"[on red] {self.failed:{max_chars}d} [/on red]"
+            f"[on default] {self.active:{max_chars}d} [/on default]"
+            f"[on grey23] {self.total:{max_chars}d} [/on grey23]",
+        )
         yield table
 
     def __rich_measure__(

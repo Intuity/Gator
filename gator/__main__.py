@@ -28,77 +28,131 @@ from .scheduler import LocalScheduler
 from .specs import Spec
 from .specs.common import SpecError
 
+
 @click.command()
-@click.option("--id",        default=None,  type=str,          help="Instance identifier")
-@click.option("--hub",       default=None,  type=str,          help="URL of a Gator Hub instance")
-@click.option("--parent",    default=None,  type=str,          help="Pointer to parent node")
-@click.option("--interval",  default=5,     type=int,          help="Polling interval", show_default=True)
-@click.option("--tracking",  default=None,  type=click.Path(), help="Tracking directory")
-@click.option("--quiet",     default=False, count=True,        help="Silence STDOUT logging")
-@click.option("--all-msg",   default=False, count=True,        help="Propagate all messages to the top level")
-@click.option("--verbose",   default=False, count=True,        help="Show debug messages")
-@click.option("--progress",  default=False, count=True,        help="Show progress bar")
-@click.option("--scheduler", default="local",
-                             type=click.Choice(("local", ), case_sensitive=False),
-                             help="Select the scheduler to use for launching jobs",
-                             show_default=True)
-@click.option("--sched-arg", multiple=True, type=str, help="Arguments to the scheduler")
-@click.option("--limit-warning", type=int, default=None, help="Maximum number of warning messages before failure")
-@click.option("--limit-error", type=int, default=0, help="Maximum number of error messages before failure")
-@click.option("--limit-critical", type=int, default=0, help="Maximum number of critical messages before failure")
+@click.option("--id", default=None, type=str, help="Instance identifier")
+@click.option(
+    "--hub", default=None, type=str, help="URL of a Gator Hub instance"
+)
+@click.option("--parent", default=None, type=str, help="Pointer to parent node")
+@click.option(
+    "--interval",
+    default=5,
+    type=int,
+    help="Polling interval",
+    show_default=True,
+)
+@click.option(
+    "--tracking", default=None, type=click.Path(), help="Tracking directory"
+)
+@click.option(
+    "--quiet", default=False, count=True, help="Silence STDOUT logging"
+)
+@click.option(
+    "--all-msg",
+    default=False,
+    count=True,
+    help="Propagate all messages to the top level",
+)
+@click.option(
+    "--verbose", default=False, count=True, help="Show debug messages"
+)
+@click.option("--progress", default=False, count=True, help="Show progress bar")
+@click.option(
+    "--scheduler",
+    default="local",
+    type=click.Choice(("local",), case_sensitive=False),
+    help="Select the scheduler to use for launching jobs",
+    show_default=True,
+)
+@click.option(
+    "--sched-arg", multiple=True, type=str, help="Arguments to the scheduler"
+)
+@click.option(
+    "--limit-warning",
+    type=int,
+    default=None,
+    help="Maximum number of warning messages before failure",
+)
+@click.option(
+    "--limit-error",
+    type=int,
+    default=0,
+    help="Maximum number of error messages before failure",
+)
+@click.option(
+    "--limit-critical",
+    type=int,
+    default=0,
+    help="Maximum number of critical messages before failure",
+)
 @click.argument("spec", type=click.Path(exists=True), required=False)
-def main(id             : str,
-         hub            : str,
-         parent         : str,
-         interval       : int,
-         tracking       : str,
-         quiet          : bool,
-         all_msg        : bool,
-         verbose        : bool,
-         progress       : bool,
-         scheduler      : str,
-         sched_arg      : list[str],
-         limit_warning  : int | None,
-         limit_error    : int,
-         limit_critical : int,
-         spec           : str) -> None:
+def main(
+    id: str,
+    hub: str,
+    parent: str,
+    interval: int,
+    tracking: str,
+    quiet: bool,
+    all_msg: bool,
+    verbose: bool,
+    progress: bool,
+    scheduler: str,
+    sched_arg: list[str],
+    limit_warning: int | None,
+    limit_error: int,
+    limit_critical: int,
+    spec: str,
+) -> None:
     # Determine a tracking directory
-    tracking = Path(tracking) if tracking else (Path.cwd() / "tracking" / datetime.now().isoformat())
+    tracking = (
+        Path(tracking)
+        if tracking
+        else (Path.cwd() / "tracking" / datetime.now().isoformat())
+    )
     tracking.mkdir(parents=True, exist_ok=True)
     # Select the right scheduler
-    sched = { "local": LocalScheduler }.get(scheduler.lower())
+    sched = {"local": LocalScheduler}.get(scheduler.lower())
     # Break apart scheduler options as '<KEY>=<VALUE>'
     sched_opts = {}
     for arg in sched_arg:
         if arg.count("=") != 1:
             con = Console()
-            con.log(f"[bold red][ERROR][/bold red] Malformed scheduler argument "
-                    f"cannot be parsed as <KEY>=<VALUE>: {escape(arg)}")
+            con.log(
+                f"[bold red][ERROR][/bold red] Malformed scheduler argument "
+                f"cannot be parsed as <KEY>=<VALUE>: {escape(arg)}"
+            )
             sys.exit(1)
         key, val = arg.split("=")
         sched_opts[key.strip()] = val.strip()
     # Launch with optional progress tracking
     try:
-        asyncio.run((launch_progress if progress else launch).launch(
-            id        =id,
-            hub       =hub,
-            parent    =parent,
-            spec      =Path(spec) if spec is not None else None,
-            tracking  =tracking,
-            interval  =interval,
-            quiet     =quiet,
-            all_msg   =all_msg,
-            verbose   =verbose,
-            scheduler =sched,
-            sched_opts=sched_opts,
-            limits    =MessageLimits(warning=limit_warning,
-                                     error=limit_error,
-                                     critical=limit_critical),
-        ))
+        asyncio.run(
+            (launch_progress if progress else launch).launch(
+                id=id,
+                hub=hub,
+                parent=parent,
+                spec=Path(spec) if spec is not None else None,
+                tracking=tracking,
+                interval=interval,
+                quiet=quiet,
+                all_msg=all_msg,
+                verbose=verbose,
+                scheduler=sched,
+                sched_opts=sched_opts,
+                limits=MessageLimits(
+                    warning=limit_warning,
+                    error=limit_error,
+                    critical=limit_critical,
+                ),
+            )
+        )
     except SpecError as e:
         con = Console()
-        con.log(f"[bold red][ERROR][/bold red] Issue in {type(e.obj).__name__} "
-                f"specification field '{e.field}': {escape(str(e))}")
+        con.log(
+            f"[bold red][ERROR][/bold red] Issue in {type(e.obj).__name__} "
+            f"specification field '{e.field}': {escape(str(e))}"
+        )
         if hasattr(e.obj, "jobs"):
             e.obj.jobs = ["..."]
         con.log(Spec.dump([e.obj]))

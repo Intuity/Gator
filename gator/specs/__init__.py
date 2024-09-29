@@ -22,11 +22,12 @@ from .resource import Cores, License, Memory
 
 assert all((Job, JobArray, JobGroup, Cores, License, Memory))
 
+
 class Spec:
-    """ Methods to parse and dump YAML specification objects """
+    """Methods to parse and dump YAML specification objects"""
 
     @staticmethod
-    def parse(path : Path) -> SpecBase:
+    def parse(path: Path) -> SpecBase:
         """
         Parse a YAML file from disk and return any spec object it contains.
 
@@ -37,7 +38,7 @@ class Spec:
             return yaml.load(fh, Loader=Loader)
 
     @staticmethod
-    def parse_str(data : str) -> SpecBase:
+    def parse_str(data: str) -> SpecBase:
         """
         Parse a YAML string and return any spec object it contains.
 
@@ -47,7 +48,7 @@ class Spec:
         return yaml.load(data, Loader=Loader)
 
     @staticmethod
-    def dump(object : SpecBase) -> str:
+    def dump(object: SpecBase) -> str:
         """
         Dump a spec object into a YAML string
 

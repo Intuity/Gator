@@ -18,22 +18,25 @@ from gator.specs import Spec
 from gator.specs.common import SpecError
 from gator.specs.jobs import Job, JobGroup
 
+
 def test_spec_job_group_positional():
-    """ A job group should preserve all positional arguments provided to it """
+    """A job group should preserve all positional arguments provided to it"""
     jobs = [JobGroup() for _ in range(5)]
     group = JobGroup("grp_123", jobs)
     assert group.id == "grp_123"
     assert group.jobs == jobs
 
+
 def test_spec_job_group_named():
-    """ A job group should preserve all named arguments provided to it """
+    """A job group should preserve all named arguments provided to it"""
     jobs = [JobGroup() for _ in range(5)]
     group = JobGroup(id="grp_123", jobs=jobs)
     assert group.id == "grp_123"
     assert group.jobs == jobs
 
+
 def test_spec_job_group_parse(tmp_path):
-    """ Parse a specification from a YAML string """
+    """Parse a specification from a YAML string"""
     spec_file = tmp_path / "job_group.yaml"
     spec_file.write_text(
         "!JobGroup\n"
@@ -68,7 +71,7 @@ def test_spec_job_group_parse(tmp_path):
     # JOBS[0]
     assert isinstance(group.jobs[0], Job)
     assert group.jobs[0].id == "id_123"
-    assert group.jobs[0].env == { "key_a": 2345, "key_b": False }
+    assert group.jobs[0].env == {"key_a": 2345, "key_b": False}
     assert group.jobs[0].cwd == "/path/to/working/dir_a"
     assert group.jobs[0].command == "echo"
     assert group.jobs[0].args == ["String to print A"]
@@ -78,15 +81,16 @@ def test_spec_job_group_parse(tmp_path):
     assert len(group.jobs[1].jobs) == 1
     # JOBS[1].JOBS[0]
     assert group.jobs[1].jobs[0].id == "id_234"
-    assert group.jobs[1].jobs[0].env == { "key_a": 3456, "key_b": True }
+    assert group.jobs[1].jobs[0].env == {"key_a": 3456, "key_b": True}
     assert group.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
     assert group.jobs[1].jobs[0].command == "echo"
     assert group.jobs[1].jobs[0].args == ["String to print B"]
     # Check estimation of number of jobs to run
     assert group.expected_jobs == 2
 
+
 def test_spec_job_group_parse_str():
-    """ Parse a specification from a YAML string """
+    """Parse a specification from a YAML string"""
     spec_str = (
         "!JobGroup\n"
         "  id: grp_123\n"
@@ -120,7 +124,7 @@ def test_spec_job_group_parse_str():
     # JOBS[0]
     assert isinstance(group.jobs[0], Job)
     assert group.jobs[0].id == "id_123"
-    assert group.jobs[0].env == { "key_a": 2345, "key_b": False }
+    assert group.jobs[0].env == {"key_a": 2345, "key_b": False}
     assert group.jobs[0].cwd == "/path/to/working/dir_a"
     assert group.jobs[0].command == "echo"
     assert group.jobs[0].args == ["String to print A"]
@@ -130,20 +134,23 @@ def test_spec_job_group_parse_str():
     assert len(group.jobs[1].jobs) == 1
     # JOBS[1].JOBS[0]
     assert group.jobs[1].jobs[0].id == "id_234"
-    assert group.jobs[1].jobs[0].env == { "key_a": 3456, "key_b": True }
+    assert group.jobs[1].jobs[0].env == {"key_a": 3456, "key_b": True}
     assert group.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
     assert group.jobs[1].jobs[0].command == "echo"
     assert group.jobs[1].jobs[0].args == ["String to print B"]
     # Check estimation of number of jobs to run
     assert group.expected_jobs == 2
 
+
 def test_spec_job_group_dump():
-    """ Dump a specification to a YAML string """
-    job = Job(id     ="id_123",
-              env    ={ "key_a": 2345, "key_b": False },
-              cwd    ="/path/to/working/dir",
-              command="echo",
-              args   =["String to print"])
+    """Dump a specification to a YAML string"""
+    job = Job(
+        id="id_123",
+        env={"key_a": 2345, "key_b": False},
+        cwd="/path/to/working/dir",
+        command="echo",
+        args=["String to print"],
+    )
     grp = JobGroup(id="grp_123", jobs=[job])
     spec_str = Spec.dump(grp)
     assert spec_str == (
@@ -170,8 +177,9 @@ def test_spec_job_group_dump():
         "on_pass: []\n"
     )
 
+
 def test_spec_job_group_bad_fields():
-    """ Bad field values should be flagged """
+    """Bad field values should be flagged"""
     # Check ID
     with pytest.raises(SpecError) as exc:
         JobGroup(id=123).check()
@@ -185,7 +193,9 @@ def test_spec_job_group_bad_fields():
     # Check jobs (bad types)
     with pytest.raises(SpecError) as exc:
         JobGroup(jobs=[123, "hey"]).check()
-    assert str(exc.value) == "Expecting a list of only Job, JobArray, and JobGroup"
+    assert (
+        str(exc.value) == "Expecting a list of only Job, JobArray, and JobGroup"
+    )
     assert exc.value.field == "jobs"
     # Check jobs (duplicate IDs)
     with pytest.raises(SpecError) as exc:

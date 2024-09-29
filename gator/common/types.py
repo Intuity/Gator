@@ -21,16 +21,18 @@ from .db import Base
 
 
 class LogSeverity(IntEnum):
-    """ Log severity levels matched to Python's defaults """
+    """Log severity levels matched to Python's defaults"""
+
     CRITICAL = logging.CRITICAL
-    ERROR    = logging.ERROR
-    WARNING  = logging.WARNING
-    INFO     = logging.INFO
-    DEBUG    = logging.DEBUG
+    ERROR = logging.ERROR
+    WARNING = logging.WARNING
+    INFO = logging.INFO
+    DEBUG = logging.DEBUG
 
 
 class Result(IntEnum):
-    """ Status of a job """
+    """Status of a job"""
+
     UNKNOWN = 0
     SUCCESS = 1
     FAILURE = 2
@@ -38,31 +40,35 @@ class Result(IntEnum):
 
 @dataclasses.dataclass
 class Attribute(Base):
-    """ General purpose attribute """
-    name  : str = ""
-    value : str = ""
+    """General purpose attribute"""
+
+    name: str = ""
+    value: str = ""
 
 
 @dataclasses.dataclass
 class LogEntry(Base):
-    """ Single log message """
-    severity  : LogSeverity = LogSeverity.INFO
-    message   : str         = ""
-    timestamp : datetime    = dataclasses.field(default_factory=datetime.now)
+    """Single log message"""
+
+    severity: LogSeverity = LogSeverity.INFO
+    message: str = ""
+    timestamp: datetime = dataclasses.field(default_factory=datetime.now)
 
 
 @dataclasses.dataclass
 class ProcStat(Base):
-    """ Process resource usage object """
-    nproc     : int      = 0
-    cpu       : int      = 0
-    mem       : int      = 0
-    vmem      : int      = 0
-    timestamp : datetime = dataclasses.field(default_factory=datetime.now)
+    """Process resource usage object"""
+
+    nproc: int = 0
+    cpu: int = 0
+    mem: int = 0
+    vmem: int = 0
+    timestamp: datetime = dataclasses.field(default_factory=datetime.now)
 
 
 @dataclasses.dataclass
 class Metric(Base):
-    """ General purpose numeric (integer) metric """
-    name  : str = ""
-    value : int = 0
+    """General purpose numeric (integer) metric"""
+
+    name: str = ""
+    value: int = 0

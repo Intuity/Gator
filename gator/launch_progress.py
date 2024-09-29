@@ -34,26 +34,33 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> dict:
     # Start console
     live = Live(table, refresh_per_second=4, console=console)
     live.start(refresh=True)
+
     # Create an update function
     def _update(_, tree=None, **kwds):
-
         # Update the progress bars
-        bar.update(kwds.get("sub_total", 0),
-                   kwds.get("sub_active", 0),
-                   kwds.get("sub_passed", 0),
-                   kwds.get("sub_failed", 0))
+        bar.update(
+            kwds.get("sub_total", 0),
+            kwds.get("sub_active", 0),
+            kwds.get("sub_passed", 0),
+            kwds.get("sub_failed", 0),
+        )
         # Display the tree
         if tree:
+
             def _chase(parent, segment):
                 for key, value in segment.items():
                     branch = parent.add(key)
                     if isinstance(value, dict):
                         _chase(branch, value)
+
             r_tree = Tree("Root")
             _chase(r_tree, tree)
             console.log(r_tree)
+
     # Launch
-    summary = await launch_base(**kwargs, heartbeat_cb=_update, console=live.console)
+    summary = await launch_base(
+        **kwargs, heartbeat_cb=_update, console=live.console
+    )
     # Wait a little so the final progress update happens
     await asyncio.sleep(1)
     # Stop the console

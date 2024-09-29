@@ -22,33 +22,36 @@ import gator.common.logger
 from gator.common.logger import Logger
 from gator.common.types import LogSeverity
 
+
 @pytest.fixture
 def logger(mocker) -> Logger:
     mock_time = mocker.patch("gator.common.logger.datetime")
     mock_time.now.return_value = datetime.fromtimestamp(1234)
     # Create a fake websocket interface
-    ws_cli        = MagicMock()
+    ws_cli = MagicMock()
     ws_cli.linked = False
-    ws_cli.log    = AsyncMock()
+    ws_cli.log = AsyncMock()
     # Create a logger
     logger = Logger(ws_cli, verbosity=LogSeverity.DEBUG)
     return logger
+
 
 @pytest.fixture
 def logger_local(logger) -> Logger:
     logger.set_console(MagicMock())
     return logger
 
+
 @pytest.fixture
 def logger_linked(logger_local) -> Logger:
     logger_local.ws_cli.linked = True
     return logger_local
 
-class TestLogger:
 
+class TestLogger:
     @pytest.mark.asyncio
     async def test_unlinked(self, logger):
-        """ Local logging goes to the console """
+        """Local logging goes to the console"""
         # Raw
         await logger.log(LogSeverity.INFO, "Testing info")
         assert not logger.ws_cli.log.called
@@ -67,87 +70,111 @@ class TestLogger:
 
     @pytest.mark.asyncio
     async def test_local(self, logger_local):
-        """ Local logging goes to the console """
+        """Local logging goes to the console"""
         logger = logger_local
         # Raw
         await logger.log(LogSeverity.INFO, "Testing info")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger._Logger__console.log.assert_called_with(
+            "[bold][INFO   ][/bold] Testing info"
+        )
         logger._Logger__console.log.reset_mock()
         # Debug
         await logger.debug("Testing debug")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with("[bold cyan][DEBUG  ][/bold cyan] Testing debug")
+        logger._Logger__console.log.assert_called_with(
+            "[bold cyan][DEBUG  ][/bold cyan] Testing debug"
+        )
         logger._Logger__console.log.reset_mock()
         # Info
         await logger.info("Testing info")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger._Logger__console.log.assert_called_with(
+            "[bold][INFO   ][/bold] Testing info"
+        )
         logger._Logger__console.log.reset_mock()
         # Warning
         await logger.warning("Testing warning")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with("[bold yellow][WARNING][/bold yellow] Testing warning")
+        logger._Logger__console.log.assert_called_with(
+            "[bold yellow][WARNING][/bold yellow] Testing warning"
+        )
         logger._Logger__console.log.reset_mock()
         # Error
         await logger.error("Testing error")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with("[bold red][ERROR  ][/bold red] Testing error")
+        logger._Logger__console.log.assert_called_with(
+            "[bold red][ERROR  ][/bold red] Testing error"
+        )
         logger._Logger__console.log.reset_mock()
 
     @pytest.mark.asyncio
     async def test_linked(self, logger_linked):
-        """ Local logging goes to the console """
+        """Local logging goes to the console"""
         logger = logger_linked
         logger.verbosity = LogSeverity.DEBUG
         # Raw
         await logger.log(LogSeverity.INFO, "Testing info")
-        logger.ws_cli.log.assert_called_with(timestamp=1234,
-                                             severity="INFO",
-                                             message="Testing info",
-                                             posted=True)
-        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger.ws_cli.log.assert_called_with(
+            timestamp=1234, severity="INFO", message="Testing info", posted=True
+        )
+        logger._Logger__console.log.assert_called_with(
+            "[bold][INFO   ][/bold] Testing info"
+        )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Debug
         await logger.debug("Testing debug")
-        logger.ws_cli.log.assert_called_with(timestamp=1234,
-                                             severity="DEBUG",
-                                             message="Testing debug",
-                                             posted=True)
-        logger._Logger__console.log.assert_called_with("[bold cyan][DEBUG  ][/bold cyan] Testing debug")
+        logger.ws_cli.log.assert_called_with(
+            timestamp=1234,
+            severity="DEBUG",
+            message="Testing debug",
+            posted=True,
+        )
+        logger._Logger__console.log.assert_called_with(
+            "[bold cyan][DEBUG  ][/bold cyan] Testing debug"
+        )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Info
         await logger.info("Testing info")
-        logger.ws_cli.log.assert_called_with(timestamp=1234,
-                                             severity="INFO",
-                                             message="Testing info",
-                                             posted=True)
-        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger.ws_cli.log.assert_called_with(
+            timestamp=1234, severity="INFO", message="Testing info", posted=True
+        )
+        logger._Logger__console.log.assert_called_with(
+            "[bold][INFO   ][/bold] Testing info"
+        )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Warning
         await logger.warning("Testing warning")
-        logger.ws_cli.log.assert_called_with(timestamp=1234,
-                                             severity="WARNING",
-                                             message="Testing warning",
-                                             posted=True)
-        logger._Logger__console.log.assert_called_with("[bold yellow][WARNING][/bold yellow] Testing warning")
+        logger.ws_cli.log.assert_called_with(
+            timestamp=1234,
+            severity="WARNING",
+            message="Testing warning",
+            posted=True,
+        )
+        logger._Logger__console.log.assert_called_with(
+            "[bold yellow][WARNING][/bold yellow] Testing warning"
+        )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Error
         await logger.error("Testing error")
-        logger.ws_cli.log.assert_called_with(timestamp=1234,
-                                             severity="ERROR",
-                                             message="Testing error",
-                                             posted=True)
-        logger._Logger__console.log.assert_called_with("[bold red][ERROR  ][/bold red] Testing error")
+        logger.ws_cli.log.assert_called_with(
+            timestamp=1234,
+            severity="ERROR",
+            message="Testing error",
+            posted=True,
+        )
+        logger._Logger__console.log.assert_called_with(
+            "[bold red][ERROR  ][/bold red] Testing error"
+        )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
 
     def test_cli(self, mocker):
-        """ Log via the command line interface """
+        """Log via the command line interface"""
         mk_time = mocker.patch("gator.common.logger.datetime")
         mk_time.now.return_value = datetime.fromtimestamp(1234)
         wc_cls = mocker.patch("gator.common.logger.WebsocketClient")
@@ -156,36 +183,58 @@ class TestLogger:
         runner = CliRunner()
         # Default (info severity)
         runner.invoke(gator.common.logger.logger, ["This is a test"])
-        ws_cli.log.assert_called_with(timestamp=1234,
-                                      severity="INFO",
-                                      message="This is a test",
-                                      posted=True)
+        ws_cli.log.assert_called_with(
+            timestamp=1234,
+            severity="INFO",
+            message="This is a test",
+            posted=True,
+        )
         ws_cli.log.reset_mock()
         # Debug
-        runner.invoke(gator.common.logger.logger, ["--severity", "debug", "This is a debug test"])
-        ws_cli.log.assert_called_with(timestamp=1234,
-                                      severity="DEBUG",
-                                      message="This is a debug test",
-                                      posted=True)
+        runner.invoke(
+            gator.common.logger.logger,
+            ["--severity", "debug", "This is a debug test"],
+        )
+        ws_cli.log.assert_called_with(
+            timestamp=1234,
+            severity="DEBUG",
+            message="This is a debug test",
+            posted=True,
+        )
         ws_cli.log.reset_mock()
         # Info
-        runner.invoke(gator.common.logger.logger, ["--severity", "info", "This is an info test"])
-        ws_cli.log.assert_called_with(timestamp=1234,
-                                      severity="INFO",
-                                      message="This is an info test",
-                                      posted=True)
+        runner.invoke(
+            gator.common.logger.logger,
+            ["--severity", "info", "This is an info test"],
+        )
+        ws_cli.log.assert_called_with(
+            timestamp=1234,
+            severity="INFO",
+            message="This is an info test",
+            posted=True,
+        )
         ws_cli.log.reset_mock()
         # Warning
-        runner.invoke(gator.common.logger.logger, ["--severity", "warning", "This is a warning test"])
-        ws_cli.log.assert_called_with(timestamp=1234,
-                                      severity="WARNING",
-                                      message="This is a warning test",
-                                      posted=True)
+        runner.invoke(
+            gator.common.logger.logger,
+            ["--severity", "warning", "This is a warning test"],
+        )
+        ws_cli.log.assert_called_with(
+            timestamp=1234,
+            severity="WARNING",
+            message="This is a warning test",
+            posted=True,
+        )
         ws_cli.log.reset_mock()
         # Error
-        runner.invoke(gator.common.logger.logger, ["--severity", "error", "This is an error test"])
-        ws_cli.log.assert_called_with(timestamp=1234,
-                                      severity="ERROR",
-                                      message="This is an error test",
-                                      posted=True)
+        runner.invoke(
+            gator.common.logger.logger,
+            ["--severity", "error", "This is an error test"],
+        )
+        ws_cli.log.assert_called_with(
+            timestamp=1234,
+            severity="ERROR",
+            message="This is an error test",
+            posted=True,
+        )
         ws_cli.log.reset_mock()
