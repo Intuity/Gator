@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from pathlib import Path
+import os
 
 import click
 
@@ -26,12 +27,16 @@ from .app import setup_hub
 @click.option(
     "--static",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=Path(__file__).parent.parent.parent / "gator-hub",
+    default=Path(
+        os.environ.get(
+            "GATOR_HUB_ROOT", Path(__file__).parent.parent.parent / "gator-hub"
+        )
+    ),
 )
 # Postgres DB
 @click.option("--db-host", default="127.0.0.1", type=str)
 @click.option("--db-port", default=5432, type=int)
-@click.option("--db-name", default="gator", type=str)
+@click.option("--db-name", default="postgres", type=str)
 @click.option("--db-user", default="postgres", type=str)
 @click.option("--db-pwd", default="dbpasswd123", type=str)
 def hub(

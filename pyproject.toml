@@ -5,7 +5,7 @@ description = "Hierarchical job execution and logging"
 authors = ["Peter Birch <peter@lightlogic.co.uk>"]
 license = "Apache-2.0"
 readme = "README.md"
-packages = [{ include="gator", from="." }]
+packages = [{ include = "gator", from = "." }]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -23,7 +23,9 @@ expandvars = "^0.9.0"
 websockets = "^11.0.2"
 aiosqlite = "^0.19.0"
 quart = "^0.18.4"
-piccolo = {extras = ["orjson", "postgres", "uvloop"], version = "^0.111.1"}
+# This is a secondary dependency but needs to be specified. https://stackoverflow.com/a/77214086
+Werkzeug = "2.3.7"
+piccolo = { extras = ["orjson", "postgres", "uvloop"], version = "^0.111.1" }
 aiohttp = "^3.8.4"
 
 [tool.poetry.group.dev.dependencies]
@@ -35,7 +37,7 @@ mkdocs-material = "^9.1.6"
 poethepoet = "^0.19.0"
 pytest-asyncio = "^0.21.0"
 ruff = "^0.6.8"
-mkdocstrings = {extras = ["python"], version = "^0.21.2"}
+mkdocstrings = { extras = ["python"], version = "^0.21.2" }
 
 [tool.poetry.scripts]
 gator = "gator.__main__:main"
@@ -59,7 +61,7 @@ shell = "cd gator-hub && npm run build"
 shell = "cd gator-hub && npm run build_dev"
 
 [tool.poe.tasks.hub_run]
-shell = "GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub.app"
+shell = "GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub"
 
 [tool.poe.tasks.lint]
 shell = "poetry run ruff check gator"
@@ -82,5 +84,5 @@ shell = """
 cd gator-hub
 npm run build_dev
 cd ..
-GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub.app
+GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub
 """

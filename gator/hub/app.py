@@ -17,7 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, Union
 
-from quart import Quart, render_template, request
+from quart import (
+    Quart,
+    current_app,
+    request,
+)
 
 from ..common.ws_client import WebsocketClient
 from .tables import setup_db
@@ -39,9 +43,8 @@ def setup_hub(
     # Create Quart application to host the interface and handle API requests
     hub = Quart(
         "gator-hub",
-        static_url_path="/assets",
-        static_folder=static / "src" / "assets",
-        template_folder=static,
+        static_folder=static.as_posix(),
+        static_url_path="",
     )
 
     @hub.before_serving
@@ -59,7 +62,7 @@ def setup_hub(
 
     @hub.get("/")
     async def html_root():
-        return await render_template("index.html")
+        return await current_app.send_static_file("index.html")
 
     @hub.get("/api")
     async def api_root():

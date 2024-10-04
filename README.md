@@ -79,10 +79,34 @@ $> python3 -m gator examples/job.yaml
 
 ## Hub
 
+To setup the hub:
+
+1. [Install postgress app](https://postgresapp.com/) and follow the instructions to initialise a new server with the following settings:
+  - Host: localhost
+  - Port: 5432
+  - User: postgres
+  - Database: postgres
+  - Password: dbpasswd123
+
+\* Different options can be used if supplied to the hub command manually.
+
+2. [Install npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) and install hub packages
+```bash
+$> cd gator-hub
+$> npm install
+```
+
 To run the hub:
 
 ```bash
 $> poe hub
+# OR
+$> poe hub_dev
+```
+
+Running the hub will output the hub url. This can be used in gator commands to register with the hub e.g.:
+```bash
+$> python3 -m gator examples/job.yaml --hub localhost:8080
 ```
 
 ## TODO
