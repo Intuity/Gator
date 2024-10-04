@@ -15,7 +15,7 @@
 import asyncio
 import socket
 from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -32,9 +32,7 @@ class TestWrapper:
     @pytest_asyncio.fixture(autouse=True)
     async def setup_teardown(self, mocker) -> None:
         # Patch database
-        self.mk_db_cls = mocker.patch(
-            "gator.common.layer.Database", new=MagicMock()
-        )
+        self.mk_db_cls = mocker.patch("gator.common.layer.Database", new=MagicMock())
         self.mk_db = MagicMock()
         self.mk_db_cls.return_value = self.mk_db
         self.mk_db.start = AsyncMock()
@@ -51,9 +49,7 @@ class TestWrapper:
         self.mk_db.update_metric = AsyncMock()
         # Patch wrapper timestamping
         self.mk_wrp_dt = mocker.patch("gator.wrapper.datetime")
-        self.mk_wrp_dt.now.side_effect = [
-            datetime.fromtimestamp(x) for x in (123, 234, 345, 456)
-        ]
+        self.mk_wrp_dt.now.side_effect = [datetime.fromtimestamp(x) for x in (123, 234, 345, 456)]
         # Create websocket client and logger
         self.client = WebsocketClient()
         self.client.ws_event.set()
@@ -77,9 +73,7 @@ class TestWrapper:
         )
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(
-            spec=job, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
         # Check wrapper
         assert wrp.spec is job
         assert wrp.client is self.client
@@ -127,14 +121,9 @@ class TestWrapper:
         ):
             assert self.mk_db.push_attribute.mock_calls[idx].args[0].name == key
             if key in ("started", "stopped"):
-                values[key] = (
-                    self.mk_db.push_attribute.mock_calls[idx].args[0].value
-                )
+                values[key] = self.mk_db.push_attribute.mock_calls[idx].args[0].value
             else:
-                assert (
-                    self.mk_db.push_attribute.mock_calls[idx].args[0].value
-                    == val
-                )
+                assert self.mk_db.push_attribute.mock_calls[idx].args[0].value == val
         # Check started
         assert int(float(values["started"])) == 123
         # Stopped can vary depending if procstat captured
@@ -142,18 +131,12 @@ class TestWrapper:
         # Check the 'hi' was captured
         mcs = self.mk_db.push_logentry.mock_calls
         assert any(
-            (
-                x.args[0].severity is LogSeverity.INFO
-                and x.args[0].message == "hi"
-            )
-            for x in mcs
+            (x.args[0].severity is LogSeverity.INFO and x.args[0].message == "hi") for x in mcs
         )
         # Check metrics were pushed into the database
         # NOTE: Don't check the value because the object is reused
         metrics = [x.args[0] for x in self.mk_db.push_metric.mock_calls]
-        assert set(x.name for x in metrics) == {
-            f"msg_{x.name.lower()}" for x in LogSeverity
-        }
+        assert {x.name for x in metrics} == {f"msg_{x.name.lower()}" for x in LogSeverity}
         # Check for update calls
         final = {}
         for call in self.mk_db.update_metric.mock_calls:
@@ -186,7 +169,7 @@ class TestWrapper:
         # Check for a bunch of proc stat pushes
         ps = [x.args[0] for x in self.mk_db.push_procstat.mock_calls]
         assert len(ps) >= 3 and len(ps) <= 7
-        assert set(x.timestamp for x in ps) == {datetime.fromtimestamp(12345)}
+        assert {x.timestamp for x in ps} == {datetime.fromtimestamp(12345)}
         assert all((x.nproc >= 1) for x in ps), str([x.nproc for x in ps])
         assert all((x.cpu >= 0) for x in ps), str([x.cpu for x in ps])
         assert all((x.mem >= 0) for x in ps), str([x.mem for x in ps])
@@ -227,7 +210,7 @@ class TestWrapper:
         # Check for a bunch of proc stat pushes
         ps = [x.args[0] for x in self.mk_db.push_procstat.mock_calls]
         assert len(ps) >= 10
-        assert set(x.timestamp for x in ps) == {datetime.fromtimestamp(12345)}
+        assert {x.timestamp for x in ps} == {datetime.fromtimestamp(12345)}
         assert all((x.nproc >= 1) for x in ps), str([x.nproc for x in ps])
         assert any((x.nproc >= 6) for x in ps), str([x.nproc for x in ps])
         assert all((x.cpu >= 0) for x in ps), str([x.cpu for x in ps])
@@ -240,9 +223,7 @@ class TestWrapper:
         job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[60])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(
-            spec=job, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
         # Capture the start time
         starting = datetime.now()
         # Launch in background
@@ -334,7 +315,7 @@ class TestWrapper:
         # Check a tabulate call has been made
         assert mk_tbl.called
         call = mk_tbl.mock_calls[0]
-        assert call.args[0][0] == [f"Summary of process 1000"]
+        assert call.args[0][0] == ["Summary of process 1000"]
         assert call.args[0][1] == ["Max Processes", 1]
         assert call.args[0][2] == ["Max CPU %", "10.0"]
         assert call.args[0][3] == ["Max Memory Usage (MB)", "11.00"]
@@ -348,9 +329,7 @@ class TestWrapper:
         job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[60])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(
-            spec=job, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
         # Run the job
         t_wrp = asyncio.create_task(wrp.launch())
         # Wait for process to be created

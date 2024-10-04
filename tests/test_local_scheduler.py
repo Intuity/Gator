@@ -30,7 +30,7 @@ class TestLocalScheduler:
         sched = LocalScheduler(parent="test:1234", interval=7, quiet=False)
         assert sched.parent == "test:1234"
         assert sched.interval == 7
-        assert sched.quiet == False
+        assert sched.quiet is False
         # Patch asyncio so we don't launch any real operations
         as_sub = mocker.patch(
             "gator.scheduler.local.asyncio.create_subprocess_shell",
@@ -55,10 +55,7 @@ class TestLocalScheduler:
         as_sub.side_effect = _create_proc
         # Launch some tasks
         await sched.launch(
-            [
-                Child(None, id=f"T{x}", tracking=tmp_path / f"T{x}")
-                for x in range(10)
-            ]
+            [Child(None, id=f"T{x}", tracking=tmp_path / f"T{x}") for x in range(10)]
         )
         # Check for launch calls
         as_sub.assert_has_calls(
@@ -77,6 +74,4 @@ class TestLocalScheduler:
         # Wait for all tasks to complete
         await sched.wait_for_all()
         # Check all monitors were fired up
-        as_mon.assert_has_calls(
-            [call(f"T{x}", y) for x, y in zip(range(10), procs)]
-        )
+        as_mon.assert_has_calls([call(f"T{x}", y) for x, y in zip(range(10), procs)])

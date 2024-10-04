@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import asyncio
-from copy import copy, deepcopy
 from collections import defaultdict
+from copy import copy, deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Type
 
@@ -127,9 +127,7 @@ class Tier(BaseLayer):
                         "state": child.state.name,
                         "result": child.result.name,
                         "server": child.server,
-                        "metrics": {
-                            x.name: x.value for x in child.metrics.values()
-                        },
+                        "metrics": {x.name: x.value for x in child.metrics.values()},
                         "exitcode": child.exitcode,
                         "started": int(child.started.timestamp()),
                         "updated": int(child.updated.timestamp()),
@@ -155,14 +153,10 @@ class Tier(BaseLayer):
             if id in self.jobs_launched:
                 return {"spec": Spec.dump(self.jobs_launched[id].spec)}
             else:
-                await self.logger.error(
-                    f"Unknown child of {self.id} query '{id}'"
-                )
+                await self.logger.error(f"Unknown child of {self.id} query '{id}'")
                 raise Exception(f"Bad child ID {id}")
 
-    async def __child_started(
-        self, ws: WebsocketWrapper, id: str, server: str, **_
-    ):
+    async def __child_started(self, ws: WebsocketWrapper, id: str, server: str, **_):
         """
         Register a child process with the parent's server.
 
@@ -172,9 +166,7 @@ class Tier(BaseLayer):
             if id in self.jobs_launched:
                 child = self.jobs_launched[id]
                 if child.state is not ChildState.LAUNCHED:
-                    await self.logger.error(
-                        f"Duplicate start detected for child '{child.id}'"
-                    )
+                    await self.logger.error(f"Duplicate start detected for child '{child.id}'")
                 await self.logger.debug(f"Child {id} of {self.id} has started")
                 child.server = server
                 child.state = ChildState.STARTED
@@ -182,9 +174,7 @@ class Tier(BaseLayer):
                 child.updated = datetime.now()
                 child.ws = ws
             else:
-                await self.logger.error(
-                    f"Unknown child of {self.id} start '{id}'"
-                )
+                await self.logger.error(f"Unknown child of {self.id} start '{id}'")
                 raise Exception(f"Bad child ID {id}")
 
     async def __child_updated(
@@ -225,12 +215,8 @@ class Tier(BaseLayer):
             if id in self.jobs_launched:
                 child = self.jobs_launched[id]
                 if child.state is not ChildState.STARTED:
-                    await self.logger.error(
-                        f"Update received for child '{child.id}' before start"
-                    )
-                await self.logger.debug(
-                    f"Received update from child {id} of {self.id}"
-                )
+                    await self.logger.error(f"Update received for child '{child.id}' before start")
+                await self.logger.debug(f"Received update from child {id} of {self.id}")
                 child.updated = datetime.now()
                 for m_key, m_val in metrics.items():
                     if m_key not in child.metrics:
@@ -242,14 +228,10 @@ class Tier(BaseLayer):
                 child.sub_failed = sub_failed
                 child.failed_ids = [[self.spec.id, *x] for x in failed_ids]
             elif id in self.jobs_completed:
-                await self.logger.error(
-                    f"Child {id} of {self.id} sent update after completion"
-                )
+                await self.logger.error(f"Child {id} of {self.id} sent update after completion")
                 raise Exception("Child sent update after completion")
             else:
-                await self.logger.error(
-                    f"Unknown child {id} of {self.id} update"
-                )
+                await self.logger.error(f"Unknown child {id} of {self.id} update")
                 raise Exception(f"Bad child ID {id}")
 
     async def __child_completed(
@@ -289,9 +271,7 @@ class Tier(BaseLayer):
         failed_ids = failed_ids or []
         async with self.lock:
             if id in self.jobs_launched:
-                await self.logger.debug(
-                    f"Child {id} of {self.id} has completed with {result}"
-                )
+                await self.logger.debug(f"Child {id} of {self.id} has completed with {result}")
                 child = self.jobs_launched[id]
                 # Apply updates
                 child.updated = datetime.now()
@@ -314,19 +294,13 @@ class Tier(BaseLayer):
                 # Trigger complete event
                 child.e_complete.set()
             elif id in self.jobs_completed:
-                await self.logger.error(
-                    f"Child {id} of {self.id} sent repeated completion"
-                )
+                await self.logger.error(f"Child {id} of {self.id} sent repeated completion")
                 raise Exception("Child sent a second completion message")
             else:
-                await self.logger.error(
-                    f"Unknown child of {self.id} completion '{id}'"
-                )
+                await self.logger.error(f"Unknown child of {self.id} completion '{id}'")
                 raise Exception(f"Bad child ID {id}")
 
-    async def __postpone(
-        self, id: str, wait_for: List[Child], to_launch: List[Child]
-    ) -> None:
+    async def __postpone(self, id: str, wait_for: List[Child], to_launch: List[Child]) -> None:
         await asyncio.gather(*(x.e_complete.wait() for x in wait_for))
         # If terminated, then don't launch further jobs
         if self.terminated:
@@ -335,13 +309,11 @@ class Tier(BaseLayer):
                 child.e_complete.set()
             return
         # Accumulate results for all dependencies
-        await self.logger.info(
-            f"Dependencies of {id} complete, testing for launch"
-        )
+        await self.logger.info(f"Dependencies of {id} complete, testing for launch")
         by_id = {x.spec.id: x.result for x in wait_for}
         # Check if pass/fail criteria is met
         all_ok = True
-        for spec in set(x.spec for x in to_launch):
+        for spec in {x.spec for x in to_launch}:
             for result, dep_ids in (
                 (True, spec.on_pass),
                 (False, spec.on_fail),
@@ -383,9 +355,7 @@ class Tier(BaseLayer):
         data.update(await super().summarise())
         data["failed_ids"] = []
         async with self.lock:
-            for child in list(self.jobs_launched.values()) + list(
-                self.jobs_completed.values()
-            ):
+            for child in list(self.jobs_launched.values()) + list(self.jobs_completed.values()):
                 for metric in child.metrics.values():
                     data["metrics"][metric.name] += metric.value
                 data["sub_total"] += child.sub_total
@@ -426,9 +396,7 @@ class Tier(BaseLayer):
                 else:
                     job_cp = job
                 child_dir.mkdir(parents=True, exist_ok=True)
-                grouped[job.id].append(
-                    Child(spec=job_cp, id=child_id, tracking=child_dir)
-                )
+                grouped[job.id].append(Child(spec=job_cp, id=child_id, tracking=child_dir))
         # Launch or create dependencies
         async with self.lock:
             bad_deps = False
@@ -448,14 +416,7 @@ class Tier(BaseLayer):
                             break
                         resolved += grouped[dep_id]
                     # Check if a task depends on itself
-                    if (
-                        len(
-                            {x.id for x in children}.intersection(
-                                {x.id for x in resolved}
-                            )
-                        )
-                        > 0
-                    ):
+                    if len({x.id for x in children}.intersection({x.id for x in resolved})) > 0:
                         await self.logger.error(
                             f"Cannot schedule job '{id}' as it depends on itself"
                         )
@@ -465,9 +426,7 @@ class Tier(BaseLayer):
                         continue
                     # Setup a task to wait until dependencies complete
                     self.job_tasks.append(
-                        asyncio.create_task(
-                            self.__postpone(id, resolved, children)
-                        )
+                        asyncio.create_task(self.__postpone(id, resolved, children))
                     )
                     # Add to the pending store
                     for child in children:
@@ -486,9 +445,7 @@ class Tier(BaseLayer):
             # Schedule all 'launched' jobs
             await self.scheduler.launch(list(self.jobs_launched.values()))
         # Wait for all dependency tasks to complete
-        await self.logger.info(
-            f"Waiting for {len(self.job_tasks)} dependency tasks to complete"
-        )
+        await self.logger.info(f"Waiting for {len(self.job_tasks)} dependency tasks to complete")
         await asyncio.gather(*self.job_tasks)
         # Wait until all launched jobs complete
         async with self.lock:

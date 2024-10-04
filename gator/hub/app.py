@@ -78,9 +78,7 @@ def setup_hub(
             owner=data["owner"],
             timestamp=int(datetime.now().timestamp()),
         )
-        data = await tables.Registration.insert(new_reg).returning(
-            tables.Registration.uid
-        )
+        data = await tables.Registration.insert(new_reg).returning(tables.Registration.uid)
         return {"result": "success", "uid": data[0]["uid"]}
 
     @hub.post("/api/job/<int:job_id>/complete")
@@ -90,9 +88,9 @@ def setup_hub(
             db_file=data["db_file"], timestamp=int(datetime.now().timestamp())
         )
         await tables.Completion.insert(new_cmp)
-        await tables.Registration.update(
-            {tables.Registration.completion: new_cmp}
-        ).where(tables.Registration.uid == job_id)
+        await tables.Registration.update({tables.Registration.completion: new_cmp}).where(
+            tables.Registration.uid == job_id
+        )
         return {"result": "success"}
 
     def lookup_job(func: Callable) -> Callable:
@@ -133,9 +131,9 @@ def setup_hub(
         )
         data = []
         for job in jobs:
-            metrics = await tables.Metric.select(
-                tables.Metric.name, tables.Metric.value
-            ).where(tables.Metric.registration == job)
+            metrics = await tables.Metric.select(tables.Metric.name, tables.Metric.value).where(
+                tables.Metric.registration == job
+            )
             data.append({**job.to_dict(), "metrics": metrics})
         return data
 

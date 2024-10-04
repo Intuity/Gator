@@ -24,9 +24,9 @@ from .common.logger import Logger, MessageLimits
 from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
 from .hub.api import HubAPI
-from .tier import Tier
 from .scheduler import LocalScheduler
 from .specs import Job, JobArray, JobGroup, Spec
+from .tier import Tier
 from .wrapper import Wrapper
 
 
@@ -35,7 +35,7 @@ async def launch(
     hub: Optional[str] = None,
     parent: Optional[str] = None,
     spec: Optional[Union[Spec, Path]] = None,
-    tracking: Path = Path.cwd(),
+    tracking: Optional[Path] = None,
     interval: int = 5,
     quiet: bool = False,
     all_msg: bool = False,
@@ -51,6 +51,8 @@ async def launch(
     del glyph
     # Set the hub URL
     HubAPI.url = hub
+    # Set the default tracking path
+    tracking = Path.cwd() if tracking is None else tracking
     # If a console isn't given, create one
     if not console:
         console = Console(log_path=False)
@@ -78,9 +80,7 @@ async def launch(
         spec = Spec.parse(Path(spec))
     # - Unknown
     else:
-        raise Exception(
-            "No specification file provided and no parent server to query"
-        )
+        raise Exception("No specification file provided and no parent server to query")
     # If an ID has been provided, override whatever the spec gives
     if id is not None:
         spec.id = id
@@ -113,14 +113,10 @@ async def launch(
         )
     # Unsupported forms
     else:
-        raise Exception(
-            f"Unsupported specification object of type {type(spec).__name__}"
-        )
+        raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
 
     # Setup signal handler to capture CTRL+C events
-    def _handler(
-        sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]
-    ):
+    def _handler(sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]):
         if top.is_root:
             evt_loop.create_task(top.stop())
 

@@ -87,9 +87,7 @@ class PassFailBar(JupyterMixin):
         self.passed = passed
         self.failed = failed
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         # Ensure space for the title text
         title_width = len(self.title) + 1
         # Ensure space for the progress detail i.e. '1/2/3/4'
@@ -150,9 +148,7 @@ class PassFailBar(JupyterMixin):
         )
         yield table
 
-    def __rich_measure__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Measurement:
+    def __rich_measure__(self, console: Console, options: ConsoleOptions) -> Measurement:
         return (
             Measurement(self.width, self.width)
             if self.width is not None

@@ -54,9 +54,7 @@ class WebsocketRouter:
         # NOTE: Using 'asyncio.iscoroutinefunction' as the 'inspect' variant does
         #       not correctly identify AsyncMock under Python 3.8 and 3.9, see
         #       Python issue 40573 for more details
-        self.__routes[action] = Route(
-            handler, asyncio.iscoroutinefunction(handler)
-        )
+        self.__routes[action] = Route(handler, asyncio.iscoroutinefunction(handler))
 
     async def route(self, ws: Any, data: Dict[str, Any]) -> None:
         # Check for a supported action
@@ -105,7 +103,7 @@ class WebsocketRouter:
                     await ws.send(json.dumps(response))
             except Exception as e:
                 print(
-                    f"Caught {type(e).__name__} on route {action}: {str(e)}",
+                    f"Caught {type(e).__name__} on route {action}: {e!s}",
                     file=sys.stderr,
                 )
                 if not posted:

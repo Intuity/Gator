@@ -20,9 +20,9 @@ import pytest_asyncio
 
 from gator.common.db import Database
 from gator.common.logger import Logger
+from gator.common.types import LogSeverity
 from gator.common.ws_client import WebsocketClient
 from gator.common.ws_server import WebsocketServer
-from gator.common.types import LogEntry, LogSeverity
 
 
 @pytest.mark.asyncio
@@ -125,7 +125,7 @@ class TestWebsocketLink:
         for idx, sev in enumerate(LogSeverity):
             assert self.logger.log.mock_calls[idx].args[0] == sev
             assert self.logger.log.mock_calls[idx].args[1] == f"Hi {sev.name}"
-            assert self.logger.log.mock_calls[idx].kwargs[
-                "timestamp"
-            ] == datetime.fromtimestamp(123)
+            assert self.logger.log.mock_calls[idx].kwargs["timestamp"] == datetime.fromtimestamp(
+                123
+            )
             assert self.logger.log.mock_calls[idx].kwargs["forwarded"]

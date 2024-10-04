@@ -15,10 +15,10 @@
 import asyncio
 from typing import List, Optional
 
-from .common import BaseScheduler, SchedulerError
 from ..common.child import Child
 from ..common.logger import Logger, MessageLimits
 from ..specs import Job
+from .common import BaseScheduler, SchedulerError
 
 
 class LocalScheduler(BaseScheduler):
@@ -45,9 +45,7 @@ class LocalScheduler(BaseScheduler):
         if self.concurrency < 1:
             raise SchedulerError(f"Invalid concurrency of {self.concurrency}")
 
-    async def __monitor(
-        self, id: str, proc: asyncio.subprocess.Process
-    ) -> None:
+    async def __monitor(self, id: str, proc: asyncio.subprocess.Process) -> None:
         # Check to see if the process has finished, if it hasn't then wait
         if (rc := proc.returncode) is None:
             rc = await proc.wait()
@@ -61,14 +59,10 @@ class LocalScheduler(BaseScheduler):
             del self.slots[id]
             self.update.set()
         # Log how many concurrency slots were released
-        await self.logger.debug(
-            f"Task '{id}' released {released} slots on completion"
-        )
+        await self.logger.debug(f"Task '{id}' released {released} slots on completion")
 
     async def launch(self, tasks: List[Child]) -> None:
-        await self.logger.debug(
-            f"Local scheduler using concurrency of {self.concurrency}"
-        )
+        await self.logger.debug(f"Local scheduler using concurrency of {self.concurrency}")
 
         async def _inner():
             # Track tasks to be scheduled
@@ -93,16 +87,12 @@ class LocalScheduler(BaseScheduler):
                     granted = min(slots, task.spec.expected_jobs)
                 slots -= granted
                 # Log
-                await self.logger.debug(
-                    f"Scheduling '{task.id}' with {granted} slots"
-                )
+                await self.logger.debug(f"Scheduling '{task.id}' with {granted} slots")
                 # Get the lock again
                 async with self.update_lock:
                     # Launch jobs
                     self.slots[task.id] = granted
-                    self.launched[
-                        task.id
-                    ] = await asyncio.create_subprocess_shell(
+                    self.launched[task.id] = await asyncio.create_subprocess_shell(
                         self.create_command(task, {"concurrency": granted}),
                         stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.DEVNULL,

@@ -36,7 +36,7 @@ class BaseLayer:
         spec: Union[Job, JobArray, JobGroup],
         client: Optional[WebsocketClient] = None,
         logger: Optional[Logger] = None,
-        tracking: Path = Path.cwd() / "tracking",
+        tracking: Optional[Path] = None,
         interval: int = 5,
         quiet: bool = False,
         all_msg: bool = False,
@@ -47,7 +47,8 @@ class BaseLayer:
         self.spec = spec
         self.client = client
         self.logger = logger
-        self.tracking = tracking
+        # Set the default tracking path
+        self.tracking = (Path.cwd() / "tracking") if tracking is None else tracking
         self.interval = interval
         self.quiet = quiet
         self.all_msg = all_msg
@@ -78,9 +79,7 @@ class BaseLayer:
         await self.db.register(Metric)
         # Setup base metrics
         for sev in LogSeverity:
-            await self.db.push_metric(
-                metric := Metric(name=f"msg_{sev.name.lower()}", value=0)
-            )
+            await self.db.push_metric(metric := Metric(name=f"msg_{sev.name.lower()}", value=0))
             self.metrics[metric.name] = metric
         # Setup logger
         await self.logger.set_database(self.db)
@@ -106,60 +105,42 @@ class BaseLayer:
                 owner=get_username(),
             )
             if self.__hub_uid is not None:
-                await self.logger.info(
-                    f"Registered with hub with ID {self.__hub_uid}"
-                )
+                await self.logger.info(f"Registered with hub with ID {self.__hub_uid}")
         # Schedule the heartbeat
         self.__hb_event = asyncio.Event()
-        self.__hb_task = asyncio.create_task(
-            self.__heartbeat_loop(self.__hb_event)
-        )
+        self.__hb_task = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
 
-    async def teardown(
-        self, *args: List[Any], **kwargs: Dict[str, Any]
-    ) -> None:
+    async def teardown(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
         # Stop the heartbeat process
         self.__hb_event.set()
         await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
         # Determine the result
         result = Result.SUCCESS
         if not (await self.logger.check_limits(self.limits)):
-            await self.logger.error(
-                "Job failed as it violated the message limit"
-            )
+            await self.logger.error("Job failed as it violated the message limit")
             result = Result.FAILURE
         # Tell the parent the job is complete
         summary = await self.summarise()
-        await self.client.complete(
-            id=self.id, code=self.code, result=result.name, **summary
-        )
+        await self.client.complete(id=self.id, code=self.code, result=result.name, **summary)
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
-        msg_metrics = filter(
-            lambda x: x.name in msg_keys, self.metrics.values()
-        )
+        msg_metrics = filter(lambda x: x.name in msg_keys, self.metrics.values())
         parts = [f"{x.value} {x.name.split('msg_')[1]}" for x in msg_metrics]
-        await self.logger.info(
-            "Recorded " + ", ".join(parts[:-1]) + f" and {parts[-1]} messages"
-        )
+        await self.logger.info("Recorded " + ", ".join(parts[:-1]) + f" and {parts[-1]} messages")
         # Shutdown the server
         await self.server.stop()
         # Shutdown the database
         await self.db.stop()
         # Notify the hub of completion
         if self.__hub_uid is not None:
-            await HubAPI.complete(
-                uid=self.__hub_uid, db_file=self.db.path.as_posix()
-            )
+            await HubAPI.complete(uid=self.__hub_uid, db_file=self.db.path.as_posix())
             await HubAPI.stop()
 
     async def stop(self, **kwargs) -> None:
         self.terminated = True
 
     async def __heartbeat_loop(self, done_evt: asyncio.Event) -> None:
-        cb_async = self.heartbeat_cb and asyncio.iscoroutinefunction(
-            self.heartbeat_cb
-        )
+        cb_async = self.heartbeat_cb and asyncio.iscoroutinefunction(self.heartbeat_cb)
         try:
             # NOTE: We don't loop on done_evt so that there is always a final
             #       pass after completion

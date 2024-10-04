@@ -48,11 +48,11 @@ class Spec:
         return yaml.load(data, Loader=Loader)
 
     @staticmethod
-    def dump(object: SpecBase) -> str:
+    def dump(spec: SpecBase) -> str:
         """
         Dump a spec object into a YAML string
 
         :param object: Spec object to dump
         :returns:      YAML string representation
         """
-        return yaml.dump(object, Dumper=Dumper)
+        return yaml.dump(spec, Dumper=Dumper)

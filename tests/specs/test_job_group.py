@@ -193,9 +193,7 @@ def test_spec_job_group_bad_fields():
     # Check jobs (bad types)
     with pytest.raises(SpecError) as exc:
         JobGroup(jobs=[123, "hey"]).check()
-    assert (
-        str(exc.value) == "Expecting a list of only Job, JobArray, and JobGroup"
-    )
+    assert str(exc.value) == "Expecting a list of only Job, JobArray, and JobGroup"
     assert exc.value.field == "jobs"
     # Check jobs (duplicate IDs)
     with pytest.raises(SpecError) as exc:

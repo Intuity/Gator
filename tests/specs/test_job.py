@@ -298,9 +298,7 @@ def test_spec_job_bad_fields():
     assert exc.value.field == "resources"
     # Check duplicate entries of a particular license
     with pytest.raises(SpecError) as exc:
-        Job(
-            resources=[Cores(2), License("A"), License("B"), License("B")]
-        ).check()
+        Job(resources=[Cores(2), License("A"), License("B"), License("B")]).check()
     assert str(exc.value) == "More than one entry for license 'B'"
     assert exc.value.field == "resources"
     # Check on done/fail/pass

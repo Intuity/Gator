@@ -33,9 +33,7 @@ from .common.types import Attribute, LogSeverity, Metric, ProcStat
 class Wrapper(BaseLayer):
     """Wraps a single process and tracks logging & process statistics"""
 
-    def __init__(
-        self, *args, plotting: bool = False, summary: bool = False, **kwargs
-    ) -> None:
+    def __init__(self, *args, plotting: bool = False, summary: bool = False, **kwargs) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
@@ -91,9 +89,7 @@ class Wrapper(BaseLayer):
             summary["failed_ids"] = []
         return summary
 
-    async def __handle_metric(
-        self, name: str, value: int, **_
-    ) -> Dict[str, str]:
+    async def __handle_metric(self, name: str, value: int, **_) -> Dict[str, str]:
         """
         Handle an arbitrary metric being reported from a child, the only names
         that cannot be used are those reserved for message statistics (e.g.
@@ -124,9 +120,7 @@ class Wrapper(BaseLayer):
         stdout: asyncio.subprocess.PIPE,
         stderr: asyncio.subprocess.PIPE,
     ) -> None:
-        log_fh = (self.tracking / f"raw_{proc.pid}.log").open(
-            "w", encoding="utf-8", buffering=1
-        )
+        log_fh = (self.tracking / f"raw_{proc.pid}.log").open("w", encoding="utf-8", buffering=1)
         log_lk = asyncio.Lock()
 
         async def _monitor(pipe, severity):
@@ -164,9 +158,7 @@ class Wrapper(BaseLayer):
             try:
                 # Capture statistics
                 with ps.oneshot():
-                    await self.logger.debug(
-                        f"Capturing statistics for {proc.pid}"
-                    )
+                    await self.logger.debug(f"Capturing statistics for {proc.pid}")
                     nproc = 1
                     cpu_perc = ps.cpu_percent()
                     mem_stat = ps.memory_info()
@@ -195,9 +187,9 @@ class Wrapper(BaseLayer):
                         )
                     )
                     # Check if exceeding the limits
-                    now_exceeding = (
-                        cpu_cores > 0 and cpu_perc > (100 * cpu_cores)
-                    ) or (memory_mb > 0 and (rss / 1e6) > memory_mb)
+                    now_exceeding = (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)) or (
+                        memory_mb > 0 and (rss / 1e6) > memory_mb
+                    )
                     if now_exceeding and not exceeding:
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "
@@ -228,11 +220,9 @@ class Wrapper(BaseLayer):
         env["GATOR_PARENT"] = await self.server.get_address()
         env["PYTHONUNBUFFERED"] = "1"
         # Determine the working directory
-        working_dir = Path(
-            (self.spec.cwd if self.spec else None) or os.getcwd()
-        )
+        working_dir = Path((self.spec.cwd if self.spec else None) or Path.cwd())
         # Expand variables in the command
-        all_args = [str(x) for x in ([self.spec.command] + self.spec.args)]
+        all_args = [str(x) for x in [self.spec.command, *self.spec.args]]
         full_cmd = " ".join(expandvars.expand(x, environ=env) for x in all_args)
         # Ensure the tracking directory exists
         self.tracking.mkdir(parents=True, exist_ok=True)
@@ -255,21 +245,13 @@ class Wrapper(BaseLayer):
             )
         # Setup initial attributes
         await self.db.push_attribute(Attribute(name="cmd", value=full_cmd))
-        await self.db.push_attribute(
-            Attribute(name="cwd", value=working_dir.as_posix())
-        )
-        await self.db.push_attribute(
-            Attribute(name="host", value=socket.gethostname())
-        )
+        await self.db.push_attribute(Attribute(name="cwd", value=working_dir.as_posix()))
+        await self.db.push_attribute(Attribute(name="host", value=socket.gethostname()))
         await self.db.push_attribute(
             Attribute(name="started", value=str(datetime.now().timestamp()))
         )
-        await self.db.push_attribute(
-            Attribute(name="req_cores", value=str(cpu_cores))
-        )
-        await self.db.push_attribute(
-            Attribute(name="req_memory", value=str(memory_mb))
-        )
+        await self.db.push_attribute(Attribute(name="req_cores", value=str(cpu_cores)))
+        await self.db.push_attribute(Attribute(name="req_memory", value=str(memory_mb)))
         await self.db.push_attribute(
             Attribute(
                 name="req_licenses",
@@ -290,9 +272,7 @@ class Wrapper(BaseLayer):
                 close_fds=True,
             )
         except Exception as e:
-            await self.logger.critical(
-                f"Caught exception launching {self.id}: {e}"
-            )
+            await self.logger.critical(f"Caught exception launching {self.id}: {e}")
             self.metrics["msg_critical"].value += 1
             self.complete = True
             await self.db.push_attribute(Attribute(name="pid", value="0"))
@@ -303,9 +283,7 @@ class Wrapper(BaseLayer):
             return
         # Monitor process usage
         e_done = asyncio.Event()
-        t_pmon = asyncio.create_task(
-            self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb)
-        )
+        t_pmon = asyncio.create_task(self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb))
         t_stdio = asyncio.create_task(
             self.__monitor_stdio(self.proc, self.proc.stdout, self.proc.stderr)
         )
@@ -316,22 +294,16 @@ class Wrapper(BaseLayer):
         try:
             await asyncio.wait_for(asyncio.gather(t_pmon), timeout=5)
         except asyncio.exceptions.TimeoutError:
-            await self.logger.warning(
-                "Timed out waiting for process monitor to stop"
-            )
+            await self.logger.warning("Timed out waiting for process monitor to stop")
         # Capture the exit code
         self.code = 255 if self.terminated else self.proc.returncode
         await self.logger.info(f"Task completed with return code {self.code}")
         # Insert final attributes
-        await self.db.push_attribute(
-            Attribute(name="pid", value=str(self.proc.pid))
-        )
+        await self.db.push_attribute(Attribute(name="pid", value=str(self.proc.pid)))
         await self.db.push_attribute(
             Attribute(name="stopped", value=str(datetime.now().timestamp()))
         )
-        await self.db.push_attribute(
-            Attribute(name="exit", value=str(self.code))
-        )
+        await self.db.push_attribute(Attribute(name="exit", value=str(self.code)))
         # Mark complete
         self.complete = True
 
@@ -355,18 +327,14 @@ class Wrapper(BaseLayer):
                 series["VMemory (MB)"].append(entry.vmem / (1024**3))
             fig = pg.Figure()
             for key, vals in series.items():
-                fig.add_trace(
-                    pg.Scatter(x=dates, y=vals, mode="lines", name=key)
-                )
-            fig.update_layout(
-                title=f"Resource Usage for {pid[0].value}", xaxis_title="Time"
-            )
+                fig.add_trace(pg.Scatter(x=dates, y=vals, mode="lines", name=key))
+            fig.update_layout(title=f"Resource Usage for {pid[0].value}", xaxis_title="Time")
             fig.write_image(self.plotting.as_posix(), format="png")
         # Summarise process usage
         if self.summary:
-            max_nproc = max(map(lambda x: x.nproc, data)) if data else 0
-            max_cpu = max(map(lambda x: x.cpu, data)) if data else 0
-            max_mem = max(map(lambda x: x.mem, data)) if data else 0
+            max_nproc = max(x.nproc for x in data) if data else 0
+            max_cpu = max(x.cpu for x in data) if data else 0
+            max_mem = max(x.mem for x in data) if data else 0
             print(
                 tabulate(
                     [

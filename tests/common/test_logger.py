@@ -75,9 +75,7 @@ class TestLogger:
         # Raw
         await logger.log(LogSeverity.INFO, "Testing info")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with(
-            "[bold][INFO   ][/bold] Testing info"
-        )
+        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
         logger._Logger__console.log.reset_mock()
         # Debug
         await logger.debug("Testing debug")
@@ -89,9 +87,7 @@ class TestLogger:
         # Info
         await logger.info("Testing info")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with(
-            "[bold][INFO   ][/bold] Testing info"
-        )
+        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
         logger._Logger__console.log.reset_mock()
         # Warning
         await logger.warning("Testing warning")
@@ -118,9 +114,7 @@ class TestLogger:
         logger.ws_cli.log.assert_called_with(
             timestamp=1234, severity="INFO", message="Testing info", posted=True
         )
-        logger._Logger__console.log.assert_called_with(
-            "[bold][INFO   ][/bold] Testing info"
-        )
+        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Debug
@@ -141,9 +135,7 @@ class TestLogger:
         logger.ws_cli.log.assert_called_with(
             timestamp=1234, severity="INFO", message="Testing info", posted=True
         )
-        logger._Logger__console.log.assert_called_with(
-            "[bold][INFO   ][/bold] Testing info"
-        )
+        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Warning

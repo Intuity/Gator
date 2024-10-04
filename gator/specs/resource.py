@@ -38,18 +38,14 @@ class Cores(SpecBase):
 class Memory(SpecBase):
     yaml_tag = "!Memory"
 
-    def __init__(
-        self, size: int, unit: str = "MB", yaml_path: Optional[Path] = None
-    ) -> None:
+    def __init__(self, size: int, unit: str = "MB", yaml_path: Optional[Path] = None) -> None:
         super().__init__(yaml_path)
         self.size = size
         self.unit = unit
 
     @property
     def in_megabytes(self) -> int:
-        mapping = {"KB": 0.1, "MB": 1, "GB": 1e3, "TB": 1e6}.get(
-            self.unit.strip().upper()
-        )
+        mapping = {"KB": 0.1, "MB": 1, "GB": 1e3, "TB": 1e6}.get(self.unit.strip().upper())
         return self.size * mapping
 
     def check(self) -> None:
@@ -68,9 +64,7 @@ class Memory(SpecBase):
 class License(SpecBase):
     yaml_tag = "!License"
 
-    def __init__(
-        self, name: str, count: int = 1, yaml_path: Optional[Path] = None
-    ) -> None:
+    def __init__(self, name: str, count: int = 1, yaml_path: Optional[Path] = None) -> None:
         super().__init__(yaml_path)
         self.name = name
         self.count = count

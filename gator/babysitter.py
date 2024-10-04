@@ -21,10 +21,9 @@ import os
 import socket
 import subprocess
 import sys
+from pathlib import Path
 
-with open(
-    f"log_{socket.gethostname()}_{os.getpid()}.log", "w", encoding="utf-8"
-) as fh:
+with Path(f"log_{socket.gethostname()}_{os.getpid()}.log").open("w", encoding="utf-8") as fh:
     fh.write(f"Starting process with arguments: {sys.argv[1:]}\n")
     fh.flush()
     proc = subprocess.Popen(

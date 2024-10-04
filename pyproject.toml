@@ -52,7 +52,8 @@ indent-width = 4
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "UP", "N", "W", "I", "A", "C4", "PTH", "RUF"]
-ignore = []
+# TODO: Turn these rules on
+ignore = ["A", "B"]
 fixable = ["ALL"]
 unfixable = []
 
