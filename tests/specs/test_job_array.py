@@ -18,24 +18,27 @@ from gator.specs import Spec
 from gator.specs.common import SpecError
 from gator.specs.jobs import Job, JobArray, JobArray
 
+
 def test_spec_job_array_positional():
-    """ A job array should preserve all positional arguments provided to it """
+    """A job array should preserve all positional arguments provided to it"""
     jobs = [Job() for _ in range(5)]
     array = JobArray("arr_123", 3, jobs)
     assert array.id == "arr_123"
     assert array.repeats == 3
     assert array.jobs == jobs
 
+
 def test_spec_job_array_named():
-    """ A job array should preserve all named arguments provided to it """
+    """A job array should preserve all named arguments provided to it"""
     jobs = [Job() for _ in range(5)]
     array = JobArray(id="arr_123", repeats=3, jobs=jobs)
     assert array.id == "arr_123"
     assert array.repeats == 3
     assert array.jobs == jobs
 
+
 def test_spec_job_array_parse(tmp_path):
-    """ Parse a specification from a YAML string """
+    """Parse a specification from a YAML string"""
     spec_file = tmp_path / "job_array.yaml"
     spec_file.write_text(
         "!JobArray\n"
@@ -72,7 +75,7 @@ def test_spec_job_array_parse(tmp_path):
     # JOBS[0]
     assert isinstance(array.jobs[0], Job)
     assert array.jobs[0].id == "id_123"
-    assert array.jobs[0].env == { "key_a": 2345, "key_b": False }
+    assert array.jobs[0].env == {"key_a": 2345, "key_b": False}
     assert array.jobs[0].cwd == "/path/to/working/dir_a"
     assert array.jobs[0].command == "echo"
     assert array.jobs[0].args == ["String to print A"]
@@ -83,15 +86,16 @@ def test_spec_job_array_parse(tmp_path):
     assert len(array.jobs[1].jobs) == 1
     # JOBS[1].JOBS[0]
     assert array.jobs[1].jobs[0].id == "id_234"
-    assert array.jobs[1].jobs[0].env == { "key_a": 3456, "key_b": True }
+    assert array.jobs[1].jobs[0].env == {"key_a": 3456, "key_b": True}
     assert array.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
     assert array.jobs[1].jobs[0].command == "echo"
     assert array.jobs[1].jobs[0].args == ["String to print B"]
     # Check estimation of number of jobs to run
     assert array.expected_jobs == 6
 
+
 def test_spec_job_array_parse_str():
-    """ Parse a specification from a YAML string """
+    """Parse a specification from a YAML string"""
     spec_str = (
         "!JobArray\n"
         "  id: arr_123\n"
@@ -127,7 +131,7 @@ def test_spec_job_array_parse_str():
     # JOBS[0]
     assert isinstance(array.jobs[0], Job)
     assert array.jobs[0].id == "id_123"
-    assert array.jobs[0].env == { "key_a": 2345, "key_b": False }
+    assert array.jobs[0].env == {"key_a": 2345, "key_b": False}
     assert array.jobs[0].cwd == "/path/to/working/dir_a"
     assert array.jobs[0].command == "echo"
     assert array.jobs[0].args == ["String to print A"]
@@ -138,20 +142,23 @@ def test_spec_job_array_parse_str():
     assert len(array.jobs[1].jobs) == 1
     # JOBS[1].JOBS[0]
     assert array.jobs[1].jobs[0].id == "id_234"
-    assert array.jobs[1].jobs[0].env == { "key_a": 3456, "key_b": True }
+    assert array.jobs[1].jobs[0].env == {"key_a": 3456, "key_b": True}
     assert array.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
     assert array.jobs[1].jobs[0].command == "echo"
     assert array.jobs[1].jobs[0].args == ["String to print B"]
     # Check estimation of number of jobs to run
     assert array.expected_jobs == 6
 
+
 def test_spec_job_array_dump():
-    """ Dump a specification to a YAML string """
-    job = Job(id     ="id_123",
-              env    ={ "key_a": 2345, "key_b": False },
-              cwd    ="/path/to/working/dir",
-              command="echo",
-              args   =["String to print"])
+    """Dump a specification to a YAML string"""
+    job = Job(
+        id="id_123",
+        env={"key_a": 2345, "key_b": False},
+        cwd="/path/to/working/dir",
+        command="echo",
+        args=["String to print"],
+    )
     grp = JobArray(id="arr_123", repeats=5, jobs=[job])
     spec_str = Spec.dump(grp)
     assert spec_str == (
@@ -179,8 +186,9 @@ def test_spec_job_array_dump():
         "repeats: 5\n"
     )
 
+
 def test_spec_job_array_bad_fields():
-    """ Bad field values should be flagged """
+    """Bad field values should be flagged"""
     # Check ID
     with pytest.raises(SpecError) as exc:
         JobArray(id=123).check()
@@ -199,7 +207,9 @@ def test_spec_job_array_bad_fields():
     # Check jobs (bad types)
     with pytest.raises(SpecError) as exc:
         JobArray(jobs=[123, "hey"]).check()
-    assert str(exc.value) == "Expecting a list of only Job, JobArray, and JobGroup"
+    assert (
+        str(exc.value) == "Expecting a list of only Job, JobArray, and JobGroup"
+    )
     assert exc.value.field == "jobs"
     # Check jobs (duplicate IDs)
     with pytest.raises(SpecError) as exc:

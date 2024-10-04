@@ -26,13 +26,15 @@ from gator.common.ws_client import WebsocketClient
 from gator.specs import Cores, Job, License, Memory
 from gator.wrapper import Wrapper
 
+
 @pytest.mark.asyncio
 class TestWrapper:
-
     @pytest_asyncio.fixture(autouse=True)
     async def setup_teardown(self, mocker) -> None:
         # Patch database
-        self.mk_db_cls = mocker.patch("gator.common.layer.Database", new=MagicMock())
+        self.mk_db_cls = mocker.patch(
+            "gator.common.layer.Database", new=MagicMock()
+        )
         self.mk_db = MagicMock()
         self.mk_db_cls.return_value = self.mk_db
         self.mk_db.start = AsyncMock()
@@ -49,7 +51,9 @@ class TestWrapper:
         self.mk_db.update_metric = AsyncMock()
         # Patch wrapper timestamping
         self.mk_wrp_dt = mocker.patch("gator.wrapper.datetime")
-        self.mk_wrp_dt.now.side_effect = [datetime.fromtimestamp(x) for x in (123, 234, 345, 456)]
+        self.mk_wrp_dt.now.side_effect = [
+            datetime.fromtimestamp(x) for x in (123, 234, 345, 456)
+        ]
         # Create websocket client and logger
         self.client = WebsocketClient()
         self.client.ws_event.set()
@@ -59,11 +63,23 @@ class TestWrapper:
 
     async def test_wrapper_basic(self, tmp_path) -> None:
         # Define a job specification
-        job = Job("test", cwd=tmp_path.as_posix(), command="echo", args=["hi"],
-                  resources=[Cores(2), License("A", 1), License("B", 3), Memory(1.5, "GB")])
+        job = Job(
+            "test",
+            cwd=tmp_path.as_posix(),
+            command="echo",
+            args=["hi"],
+            resources=[
+                Cores(2),
+                License("A", 1),
+                License("B", 3),
+                Memory(1.5, "GB"),
+            ],
+        )
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
+        wrp = Wrapper(
+            spec=job, client=self.client, tracking=trk_dir, logger=self.logger
+        )
         # Check wrapper
         assert wrp.spec is job
         assert wrp.client is self.client
@@ -95,32 +111,49 @@ class TestWrapper:
         self.mk_db.register.assert_any_call(ProcStat)
         # Check attributes pushed into the database
         values = {}
-        for idx, (key, val) in enumerate((("cmd",          "echo hi"               ),
-                                          ("cwd",          tmp_path.as_posix()     ),
-                                          ("host",         socket.gethostname()    ),
-                                          ("started",      None                    ),
-                                          ("req_cores",    "2"                     ),
-                                          ("req_memory",   "1500.0"                ),
-                                          ("req_licenses", "A=1,B=3"               ),
-                                          ("pid",          str(wrp.proc.pid)       ),
-                                          ("stopped",      None                    ),
-                                          ("exit",         str(wrp.proc.returncode)))):
+        for idx, (key, val) in enumerate(
+            (
+                ("cmd", "echo hi"),
+                ("cwd", tmp_path.as_posix()),
+                ("host", socket.gethostname()),
+                ("started", None),
+                ("req_cores", "2"),
+                ("req_memory", "1500.0"),
+                ("req_licenses", "A=1,B=3"),
+                ("pid", str(wrp.proc.pid)),
+                ("stopped", None),
+                ("exit", str(wrp.proc.returncode)),
+            )
+        ):
             assert self.mk_db.push_attribute.mock_calls[idx].args[0].name == key
             if key in ("started", "stopped"):
-                values[key] = self.mk_db.push_attribute.mock_calls[idx].args[0].value
+                values[key] = (
+                    self.mk_db.push_attribute.mock_calls[idx].args[0].value
+                )
             else:
-                assert self.mk_db.push_attribute.mock_calls[idx].args[0].value == val
+                assert (
+                    self.mk_db.push_attribute.mock_calls[idx].args[0].value
+                    == val
+                )
         # Check started
         assert int(float(values["started"])) == 123
         # Stopped can vary depending if procstat captured
         assert int(float(values["stopped"])) in (234, 345)
         # Check the 'hi' was captured
         mcs = self.mk_db.push_logentry.mock_calls
-        assert any((x.args[0].severity is LogSeverity.INFO and x.args[0].message == "hi") for x in mcs)
+        assert any(
+            (
+                x.args[0].severity is LogSeverity.INFO
+                and x.args[0].message == "hi"
+            )
+            for x in mcs
+        )
         # Check metrics were pushed into the database
         # NOTE: Don't check the value because the object is reused
         metrics = [x.args[0] for x in self.mk_db.push_metric.mock_calls]
-        assert set(x.name for x in metrics) == { f"msg_{x.name.lower()}" for x in LogSeverity }
+        assert set(x.name for x in metrics) == {
+            f"msg_{x.name.lower()}" for x in LogSeverity
+        }
         # Check for update calls
         final = {}
         for call in self.mk_db.update_metric.mock_calls:
@@ -133,7 +166,7 @@ class TestWrapper:
         assert final["msg_debug"] > 0
 
     async def test_wrapper_procstat(self, tmp_path) -> None:
-        """ Check that process statistics are captured at regular intervals """
+        """Check that process statistics are captured at regular intervals"""
         # Mock datetime to always return one value
         self.mk_wrp_dt.now.side_effect = None
         self.mk_wrp_dt.now.return_value = datetime.fromtimestamp(12345)
@@ -141,7 +174,13 @@ class TestWrapper:
         job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[5])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger, interval=1)
+        wrp = Wrapper(
+            spec=job,
+            client=self.client,
+            tracking=trk_dir,
+            logger=self.logger,
+            interval=1,
+        )
         # Run the job
         await wrp.launch()
         # Check for a bunch of proc stat pushes
@@ -154,24 +193,35 @@ class TestWrapper:
         assert all((x.vmem >= 0) for x in ps), str([x.vmem for x in ps])
 
     async def test_wrapper_procstat_tree(self, tmp_path):
-        """ Check that process statistics track children too """
+        """Check that process statistics track children too"""
         # Mock datetime to always return one value
         self.mk_wrp_dt.now.side_effect = None
         self.mk_wrp_dt.now.return_value = datetime.fromtimestamp(12345)
         # Create a chain of simple test scripts
         for idx in range(5):
             script = tmp_path / f"script_{idx}.sh"
-            lines  = ["sleep 2"]
+            lines = ["sleep 2"]
             if idx > 0:
                 inner = tmp_path / f"script_{idx-1}.sh"
                 lines.append(f"sh {inner.as_posix()}")
             script.write_text("\n".join(lines) + "\n")
             script.chmod(0o777)
         # Define a job specification
-        job = Job("test", cwd=tmp_path.as_posix(), command="sh", args=[script.as_posix()])
+        job = Job(
+            "test",
+            cwd=tmp_path.as_posix(),
+            command="sh",
+            args=[script.as_posix()],
+        )
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger, interval=1)
+        wrp = Wrapper(
+            spec=job,
+            client=self.client,
+            tracking=trk_dir,
+            logger=self.logger,
+            interval=1,
+        )
         # Run the job
         await wrp.launch()
         # Check for a bunch of proc stat pushes
@@ -185,12 +235,14 @@ class TestWrapper:
         assert all((x.vmem >= 0) for x in ps), str([x.vmem for x in ps])
 
     async def test_wrapper_terminate(self, tmp_path) -> None:
-        """ Terminate a long running job partway through """
+        """Terminate a long running job partway through"""
         # Define a job specification
         job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[60])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
+        wrp = Wrapper(
+            spec=job, client=self.client, tracking=trk_dir, logger=self.logger
+        )
         # Capture the start time
         starting = datetime.now()
         # Launch in background
@@ -221,26 +273,27 @@ class TestWrapper:
         assert wrp.code == 255
 
     async def test_wrapper_plotting(self, tmp_path) -> None:
-        """ Check a plot is drawn if requested """
+        """Check a plot is drawn if requested"""
         # Mock datetime to always return one value
         self.mk_wrp_dt.now.side_effect = None
         self.mk_wrp_dt.now.return_value = datetime.fromtimestamp(12345)
         # Define a job specification
         job = Job("test", cwd=tmp_path.as_posix(), command="echo", args=["hi"])
         # Mock procstats returned by DB
-        self.mk_db.get_procstat.return_value = [ProcStat(db_uid=0,
-                                                         nproc=1,
-                                                         cpu=0.1,
-                                                         mem=11 * (1024 ** 3))] * 5
+        self.mk_db.get_procstat.return_value = [
+            ProcStat(db_uid=0, nproc=1, cpu=0.1, mem=11 * (1024**3))
+        ] * 5
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
         plt_path = tmp_path / "plot.png"
-        wrp = Wrapper(spec=job,
-                      client=self.client,
-                      tracking=trk_dir,
-                      logger=self.logger,
-                      interval=1,
-                      plotting=plt_path)
+        wrp = Wrapper(
+            spec=job,
+            client=self.client,
+            tracking=trk_dir,
+            logger=self.logger,
+            interval=1,
+            plotting=plt_path,
+        )
         # Check no plot exists
         assert not plt_path.exists()
         # Run the job
@@ -249,30 +302,33 @@ class TestWrapper:
         assert plt_path.exists()
 
     async def test_wrapper_summary(self, tmp_path, mocker) -> None:
-        """ Check that a process summary table is produced """
+        """Check that a process summary table is produced"""
         # Patch tabulate and print
         mocker.patch("gator.wrapper.print")
         mk_tbl = mocker.patch("gator.wrapper.tabulate")
         # Mock procstats returned by DB
-        self.mk_db.get_procstat.return_value = [ProcStat(db_uid=0,
-                                                         nproc=1,
-                                                         cpu=0.1,
-                                                         mem=11 * (1024 ** 3))]
+        self.mk_db.get_procstat.return_value = [
+            ProcStat(db_uid=0, nproc=1, cpu=0.1, mem=11 * (1024**3))
+        ]
+
         # Mock attributes returned by the DB
         def _get_attr(name) -> Attribute:
-            values = { "pid": "1000", "started": "123", "stopped": 234 }
+            values = {"pid": "1000", "started": "123", "stopped": 234}
             return [Attribute(name=name, value=values.get(name, "0"))]
+
         self.mk_db.get_attribute.side_effect = _get_attr
         # Define a job specification
         job = Job("test", cwd=tmp_path.as_posix(), command="echo", args=["hi"])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(spec=job,
-                      client=self.client,
-                      tracking=trk_dir,
-                      logger=self.logger,
-                      interval=1,
-                      summary=True)
+        wrp = Wrapper(
+            spec=job,
+            client=self.client,
+            tracking=trk_dir,
+            logger=self.logger,
+            interval=1,
+            summary=True,
+        )
         # Run the job
         await wrp.launch()
         # Check a tabulate call has been made
@@ -287,12 +343,14 @@ class TestWrapper:
         assert call.kwargs["tablefmt"] == "simple_grid"
 
     async def test_wrapper_metric(self, tmp_path, mocker) -> None:
-        """ Check that metrics can be recorded and aggregated """
+        """Check that metrics can be recorded and aggregated"""
         # Define a job specification
         job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[60])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
-        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
+        wrp = Wrapper(
+            spec=job, client=self.client, tracking=trk_dir, logger=self.logger
+        )
         # Run the job
         t_wrp = asyncio.create_task(wrp.launch())
         # Wait for process to be created
@@ -303,38 +361,50 @@ class TestWrapper:
         await sub_cli.start()
         # Push up some metrics
         await sub_cli.metric(name="widgets", value=123)
-        await sub_cli.metric(name="gizmos",  value=345)
+        await sub_cli.metric(name="gizmos", value=345)
         await sub_cli.metric(name="gadgets", value=567)
         # Check for those metrics
         assert wrp.metrics["widgets"].value == 123
-        assert wrp.metrics["gizmos"].value  == 345
+        assert wrp.metrics["gizmos"].value == 345
         assert wrp.metrics["gadgets"].value == 567
         # Check they've been written to the database
-        assert any((x.args[0].name  == "widgets" and
-                    x.args[0].value == 123) for x in self.mk_db.push_metric.mock_calls)
-        assert any((x.args[0].name  == "gizmos" and
-                    x.args[0].value == 345) for x in self.mk_db.push_metric.mock_calls)
-        assert any((x.args[0].name  == "gadgets" and
-                    x.args[0].value == 567) for x in self.mk_db.push_metric.mock_calls)
+        assert any(
+            (x.args[0].name == "widgets" and x.args[0].value == 123)
+            for x in self.mk_db.push_metric.mock_calls
+        )
+        assert any(
+            (x.args[0].name == "gizmos" and x.args[0].value == 345)
+            for x in self.mk_db.push_metric.mock_calls
+        )
+        assert any(
+            (x.args[0].name == "gadgets" and x.args[0].value == 567)
+            for x in self.mk_db.push_metric.mock_calls
+        )
         # Update some metrics
         await sub_cli.metric(name="widgets", value=678)
-        await sub_cli.metric(name="gizmos",  value=789)
+        await sub_cli.metric(name="gizmos", value=789)
         await sub_cli.metric(name="gadgets", value=890)
         # Check for those metrics
         assert wrp.metrics["widgets"].value == 678
-        assert wrp.metrics["gizmos"].value  == 789
+        assert wrp.metrics["gizmos"].value == 789
         assert wrp.metrics["gadgets"].value == 890
         # Check they've been written to the database
-        assert any((x.args[0].name  == "widgets" and
-                    x.args[0].value == 678) for x in self.mk_db.update_metric.mock_calls)
-        assert any((x.args[0].name  == "gizmos" and
-                    x.args[0].value == 789) for x in self.mk_db.update_metric.mock_calls)
-        assert any((x.args[0].name  == "gadgets" and
-                    x.args[0].value == 890) for x in self.mk_db.update_metric.mock_calls)
+        assert any(
+            (x.args[0].name == "widgets" and x.args[0].value == 678)
+            for x in self.mk_db.update_metric.mock_calls
+        )
+        assert any(
+            (x.args[0].name == "gizmos" and x.args[0].value == 789)
+            for x in self.mk_db.update_metric.mock_calls
+        )
+        assert any(
+            (x.args[0].name == "gadgets" and x.args[0].value == 890)
+            for x in self.mk_db.update_metric.mock_calls
+        )
         # Check that the metrics are included in the summary
         summary = await wrp.summarise()
         assert summary["metrics"]["widgets"] == 678
-        assert summary["metrics"]["gizmos"]  == 789
+        assert summary["metrics"]["gizmos"] == 789
         assert summary["metrics"]["gadgets"] == 890
         # Stop the client
         await sub_cli.stop()

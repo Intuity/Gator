@@ -27,7 +27,6 @@ from gator.common.types import LogEntry, LogSeverity
 
 @pytest.mark.asyncio
 class TestWebsocketLink:
-
     @pytest_asyncio.fixture(autouse=True)
     async def setup_teardown(self, tmp_path):
         # Create a database
@@ -53,7 +52,7 @@ class TestWebsocketLink:
         await self.db.stop()
 
     async def test_ws_link_double_start(self) -> None:
-        """ Starting client again should have no effect """
+        """Starting client again should have no effect"""
         # Normal
         await self.client.start()
         assert self.client.ws_event.is_set()
@@ -65,23 +64,25 @@ class TestWebsocketLink:
         assert self.client.linked
 
     async def test_ws_link_double_stop(self) -> None:
-        """ Stopping database, server, or client twice should have no effect """
+        """Stopping database, server, or client twice should have no effect"""
         await self.client.stop()
         await self.server.stop()
         await self.db.stop()
 
     async def test_ws_link_link(self) -> None:
-        """ Send a ping from client to server to measure latency """
+        """Send a ping from client to server to measure latency"""
         latency = await self.client.measure_latency()
         assert latency > 0
 
     async def test_ws_link_version(self, mocker) -> None:
-        """ Send an empty message, should return the version info """
+        """Send an empty message, should return the version info"""
         # Capture routing requests on the client side
         evt_route = asyncio.Event()
+
         async def _route(*_):
             nonlocal evt_route
             evt_route.set()
+
         mocker.patch.object(self.client, "fallback")
         self.client.fallback.side_effect = _route
         # Send the empty message
@@ -89,37 +90,42 @@ class TestWebsocketLink:
         # Wait for a response
         await evt_route.wait()
         # Check for the response captured
-        assert self.client.fallback.mock_calls[-1].args[1] == {"action" : "identify",
-                                                               "result" : "success",
-                                                               "rsp_id" : 0,
-                                                               "payload": {
-                                                                   "tool": "gator",
-                                                                   "version": "1.0"
-                                                               }}
+        assert self.client.fallback.mock_calls[-1].args[1] == {
+            "action": "identify",
+            "result": "success",
+            "rsp_id": 0,
+            "payload": {"tool": "gator", "version": "1.0"},
+        }
 
     async def test_ws_link_logging(self, mocker) -> None:
-        """ Log to the server """
+        """Log to the server"""
         # Patch the log entry function
         evt_log = asyncio.Event()
         hit_count = 0
+
         async def _log(*_args, **_kwargs):
             nonlocal evt_log, hit_count
             hit_count += 1
             if hit_count == len(LogSeverity):
                 evt_log.set()
+
         mocker.patch.object(self.logger, "log")
         self.logger.log.side_effect = _log
         # Send logging requests
         for sev in LogSeverity:
-            await self.client.log(timestamp=123,
-                                  severity=sev.name,
-                                  message=f"Hi {sev.name}",
-                                  posted=True)
+            await self.client.log(
+                timestamp=123,
+                severity=sev.name,
+                message=f"Hi {sev.name}",
+                posted=True,
+            )
         # Wait for call to log function
         await evt_log.wait()
         # Check the call
         for idx, sev in enumerate(LogSeverity):
             assert self.logger.log.mock_calls[idx].args[0] == sev
             assert self.logger.log.mock_calls[idx].args[1] == f"Hi {sev.name}"
-            assert self.logger.log.mock_calls[idx].kwargs["timestamp"] == datetime.fromtimestamp(123)
+            assert self.logger.log.mock_calls[idx].kwargs[
+                "timestamp"
+            ] == datetime.fromtimestamp(123)
             assert self.logger.log.mock_calls[idx].kwargs["forwarded"]

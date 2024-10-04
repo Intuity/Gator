@@ -12,14 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pathlib import Path
+from typing import Optional
+
 from .common import SpecBase, SpecError
 
 
 class Cores(SpecBase):
     yaml_tag = "!Cores"
 
-    def __init__(self, count : int) -> None:
+    def __init__(self, count: int, yaml_path: Optional[Path] = None) -> None:
+        super().__init__(yaml_path)
         self.count = count
+        self.yaml_path = yaml_path
 
     def check(self) -> None:
         if not isinstance(self.count, int):
@@ -33,13 +38,18 @@ class Cores(SpecBase):
 class Memory(SpecBase):
     yaml_tag = "!Memory"
 
-    def __init__(self, size : int, unit : str = "MB") -> None:
+    def __init__(
+        self, size: int, unit: str = "MB", yaml_path: Optional[Path] = None
+    ) -> None:
+        super().__init__(yaml_path)
         self.size = size
         self.unit = unit
 
     @property
     def in_megabytes(self) -> int:
-        mapping = { "KB": 0.1, "MB": 1, "GB": 1E3, "TB": 1E6 }.get(self.unit.strip().upper())
+        mapping = {"KB": 0.1, "MB": 1, "GB": 1e3, "TB": 1e6}.get(
+            self.unit.strip().upper()
+        )
         return self.size * mapping
 
     def check(self) -> None:
@@ -58,7 +68,10 @@ class Memory(SpecBase):
 class License(SpecBase):
     yaml_tag = "!License"
 
-    def __init__(self, name : str, count : int = 1) -> None:
+    def __init__(
+        self, name: str, count: int = 1, yaml_path: Optional[Path] = None
+    ) -> None:
+        super().__init__(yaml_path)
         self.name = name
         self.count = count
 

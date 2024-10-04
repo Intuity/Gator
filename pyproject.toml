@@ -1,10 +1,11 @@
 [tool.poetry]
-name = "gator"
-version = "1.0"
+name = "gator-eda"
+version = "0.1"
 description = "Hierarchical job execution and logging"
 authors = ["Peter Birch <peter@lightlogic.co.uk>"]
 license = "Apache-2.0"
 readme = "README.md"
+packages = [{ include="gator", from="." }]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -14,7 +15,6 @@ psutil = "^5.9.4"
 pandas = "^2.0.0"
 kaleido = "0.2.1"
 requests = "^2.28.2"
-flask = "^2.2.3"
 rich = "^13.3.4"
 tabulate = "^0.9.0"
 pyyaml = "^6.0"
@@ -22,6 +22,9 @@ uwsgi = "^2.0.21"
 expandvars = "^0.9.0"
 websockets = "^11.0.2"
 aiosqlite = "^0.19.0"
+quart = "^0.18.4"
+piccolo = {extras = ["orjson", "postgres", "uvloop"], version = "^0.111.1"}
+aiohttp = "^3.8.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3.1"
@@ -31,7 +34,7 @@ mkdocs = "^1.4.2"
 mkdocs-material = "^9.1.6"
 poethepoet = "^0.19.0"
 pytest-asyncio = "^0.21.0"
-ruff = "^0.0.267"
+ruff = "^0.6.8"
 mkdocstrings = {extras = ["python"], version = "^0.21.2"}
 
 [tool.poetry.scripts]
@@ -42,7 +45,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
-line-length = 120
+line-length = 80
 
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -55,8 +58,8 @@ shell = "cd gator-hub && npm run build"
 [tool.poe.tasks.npm_build_dev]
 shell = "cd gator-hub && npm run build_dev"
 
-[tool.poe.tasks.uwsgi]
-shell = "uwsgi --http 127.0.0.1:8080 --master -p 4 -w gator.hub.app:hub --set react_root=$(PWD)/gator-hub/src/dist"
+[tool.poe.tasks.hub_run]
+shell = "GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub.app"
 
 [tool.poe.tasks.lint]
 shell = "poetry run ruff check gator"
@@ -71,5 +74,13 @@ shell = "poetry run mkdocs build"
 shell = "poetry run mkdocs serve"
 
 [tool.poe.tasks]
-hub = ["npm_build", "uwsgi"]
-hub_dev = ["npm_build_dev", "uwsgi"]
+hub = ["npm_build", "hub_run"]
+
+[tool.poe.tasks.hub_dev]
+help = "Run a hub instance in development mode"
+shell = """
+cd gator-hub
+npm run build_dev
+cd ..
+GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub.app
+"""

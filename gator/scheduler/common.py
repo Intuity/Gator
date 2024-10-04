@@ -14,20 +14,43 @@
 
 import abc
 import functools
-from typing import List
+from typing import Any, List, Optional, Type
 
 from ..common.child import Child
+from ..common.logger import Logger, MessageLimits
+
+
+class SchedulerError(Exception):
+    pass
+
 
 class BaseScheduler:
-    """ Launches a set of tasks on a particular infrastructure """
+    """Launches a set of tasks on a particular infrastructure"""
 
-    def __init__(self,
-                 parent   : str,
-                 interval : int = 5,
-                 quiet    : bool = True) -> None:
-        self.parent   = parent
+    def __init__(
+        self,
+        parent: str,
+        interval: int = 5,
+        quiet: bool = True,
+        logger: Optional[Logger] = None,
+        options: Optional[dict[str, str]] = None,
+        limits: MessageLimits | None = None,
+    ) -> None:
+        self.parent = parent
         self.interval = interval
-        self.quiet    = quiet
+        self.quiet = quiet
+        self.logger = logger
+        self.limits = limits or MessageLimits()
+        self.options = {
+            k.strip().lower(): v for k, v in (options or {}).items()
+        }
+        self.babysit = self.options.get("babysit", False)
+
+    def get_option(
+        self, name: str, default: Any = None, as_type: Type | None = None
+    ) -> Any:
+        value = self.options.get(name, default)
+        return value if as_type is None else as_type(value)
 
     @property
     @functools.lru_cache()
@@ -37,25 +60,50 @@ class BaseScheduler:
     @property
     @functools.lru_cache()
     def base_command(self) -> List[str]:
-        return ["python3", "-m", "gator",
-                "--parent", self.parent,
-                "--interval", f"{self.interval}",
-                "--scheduler", self.scheduler_id,
-                ["--all-msg", "--quiet"][self.quiet]]
+        cmd = []
+        if self.babysit:
+            cmd += ["python3", "-m", "gator.babysitter"]
+        cmd += ["python3", "-m", "gator"]
+        if self.limits.warning is not None:
+            cmd.append(f"--limit-warning={self.limits.warning}")
+        if self.limits.error is not None:
+            cmd.append(f"--limit-error={self.limits.error}")
+        if self.limits.critical is not None:
+            cmd.append(f"--limit-critical={self.limits.critical}")
+        cmd += [
+            "--parent",
+            self.parent,
+            "--interval",
+            f"{self.interval}",
+            "--scheduler",
+            self.scheduler_id,
+            ["--all-msg", "--quiet"][self.quiet],
+        ]
+        return cmd
 
-    def create_command(self, child : Child) -> str:
+    def create_command(
+        self, child: Child, options: Optional[dict[str, str]] = None
+    ) -> str:
         """
         Build a command for launching a job on the compute infrastructure using
         details from the child object.
 
         :param child:   Describes the task to launch
+        :param options: Override options
         :returns:       String of the full command
         """
-        return " ".join(self.base_command + ["--id", child.id,
-                                             "--tracking", child.tracking.as_posix()])
+        full_opts = self.options.copy()
+        full_opts.update(options or {})
+        return " ".join(
+            self.base_command
+            + ["--id", child.id, "--tracking", child.tracking.as_posix()]
+            + sum(
+                [["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()], []
+            )
+        )
 
     @abc.abstractmethod
-    async def launch(self, tasks : List[Child]) -> None:
+    async def launch(self, tasks: List[Child]) -> None:
         """
         Launch all given tasks onto the compute infrastructure, this function is
         asynchronous but should return as soon as all tasks are launched (i.e.

@@ -23,32 +23,37 @@ from .ws_wrapper import WebsocketWrapper
 from ..specs import Job, JobArray, JobGroup
 from .types import Metric, Result
 
+
 class ChildState(Enum):
-    PENDING  = auto()
+    PENDING = auto()
     LAUNCHED = auto()
-    STARTED  = auto()
+    STARTED = auto()
     COMPLETE = auto()
+
 
 @dataclass
 class Child:
-    spec       : Union[Job, JobArray, JobGroup]
-    id         : str               = "N/A"
-    tracking   : Optional[Path]    = None
-    state      : ChildState        = ChildState.PENDING
-    result     : Result            = Result.UNKNOWN
-    server     : str               = ""
-    exitcode   : int               = 0
+    spec: Union[Job, JobArray, JobGroup]
+    id: str = "N/A"
+    tracking: Optional[Path] = None
+    state: ChildState = ChildState.PENDING
+    result: Result = Result.UNKNOWN
+    server: str = ""
+    exitcode: int = 0
     # Metric tracking
-    metrics    : Dict[str, Metric] = field(default_factory=dict)
+    metrics: Dict[str, Metric] = field(default_factory=dict)
     # Tracking of the state of the child tree
-    sub_total  : int               = 0
-    sub_active : int               = 0
-    sub_passed : int               = 0
-    sub_failed : int               = 0
+    sub_total: int = 0
+    sub_active: int = 0
+    sub_passed: int = 0
+    sub_failed: int = 0
+    failed_ids: list[list[str]] = field(default_factory=list)
     # Timestamping
-    started    : datetime          = field(default_factory=lambda: datetime.fromtimestamp(0))
-    updated    : datetime          = field(default_factory=lambda: datetime.fromtimestamp(0))
-    completed  : datetime          = field(default_factory=lambda: datetime.fromtimestamp(0))
-    e_complete : asyncio.Event     = field(default_factory=asyncio.Event)
+    started: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
+    updated: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
+    completed: datetime = field(
+        default_factory=lambda: datetime.fromtimestamp(0)
+    )
+    e_complete: asyncio.Event = field(default_factory=asyncio.Event)
     # Socket
-    ws         : Optional[WebsocketWrapper] = None
+    ws: Optional[WebsocketWrapper] = None

@@ -1,14 +1,83 @@
 // Import all of Bootstrap's CSS
 @import "~bootstrap/scss/bootstrap";
 
-.sidebar {
-    position: fixed;
-    display: block !important;
-    top: 56px;
-    bottom: 0;
-    left: 0;
+.root, html, body {
+    height: 100%;
+    margin: 0;
+}
+
+.root {
+    min-width: 100%;
+    display: inline-flex;
+    flex-direction: column;
+}
+
+.root main {
+    display: flex;
+    flex: 2;
+}
+
+.root main nav {
+    flex: 0 1 250px;
+    box-sizing: border-box;
+    border-right: 1px solid #EEE;
+    min-width: 0;
+}
+
+.root main .log {
+    flex: 10 10 auto;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.root main .log_inner {
+    flex: 1 1 10px;
+    overflow-x: hidden;
+    overflow-y: hidden;
 }
 
 nav > ol.breadcrumb {
     margin: 0;
+}
+
+tr.active {
+    background-color: green;
+}
+
+td.msg_debug {
+    color: grey !important;
+    font-weight: bold;
+}
+
+td.msg_info {
+    color: blue !important;
+    font-weight: bold;
+}
+
+td.msg_warning {
+    color: orange !important;
+    font-weight: bold;
+}
+
+td.msg_error {
+    color: red !important;
+    font-weight: bold;
+}
+
+td.msg_critical {
+    background-color: red !important;
+    color: white !important;
+    font-weight: bold;
+}
+
+.dataTables_wrapper {
+    height: 100%;
+}
+
+.dataTables_paginate,
+.dataTables_length,
+.dts_label {
+    display: none;
 }

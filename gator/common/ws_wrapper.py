@@ -27,18 +27,19 @@ from .ws_router import WebsocketRouter
 
 @dataclasses.dataclass
 class WebsocketWrapperPending:
-    req_id   : int
-    event    : asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
-    response : Optional[Dict] = None
+    req_id: int
+    event: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
+    response: Optional[Dict] = None
+
 
 class WebsocketWrapperError(Exception):
     pass
 
 
 class WebsocketWrapper(WebsocketRouter):
-
-    def __init__(self,
-                 ws : Optional[websockets.WebSocketClientProtocol] = None) -> None:
+    def __init__(
+        self, ws: Optional[websockets.WebSocketClientProtocol] = None
+    ) -> None:
         super().__init__()
         self.ws = ws
         self.ws_event = asyncio.Event()
@@ -53,8 +54,10 @@ class WebsocketWrapper(WebsocketRouter):
 
     async def start_monitor(self) -> None:
         self.__monitor_task = asyncio.create_task(self.monitor())
+
         def _teardown() -> None:
             asyncio.run(self.stop_monitor())
+
         atexit.register(_teardown)
 
     async def stop_monitor(self) -> None:
@@ -63,7 +66,7 @@ class WebsocketWrapper(WebsocketRouter):
             await self.__monitor_task
             self.__monitor_task = None
 
-    async def send(self, data : Union[str, dict]) -> None:
+    async def send(self, data: Union[str, dict]) -> None:
         await self.ws.send(data if isinstance(data, str) else json.dumps(data))
 
     async def measure_latency(self) -> float:
@@ -79,7 +82,9 @@ class WebsocketWrapper(WebsocketRouter):
                     # See if a pending request is matched
                     if (rsp_id := message.get("rsp_id", None)) is not None:
                         async with self.__request_lock:
-                            if (pend := self.__pending.get(rsp_id, None)) is not None:
+                            if (
+                                pend := self.__pending.get(rsp_id, None)
+                            ) is not None:
                                 pend.response = message
                                 pend.event.set()
                                 del self.__pending[rsp_id]
@@ -87,19 +92,23 @@ class WebsocketWrapper(WebsocketRouter):
                     # Else, route
                     await self.route(self, message)
                 except json.JSONDecodeError:
-                    raise WebsocketWrapperError(f"Failed to decode message: {raw}")
+                    raise WebsocketWrapperError(
+                        f"Failed to decode message: {raw}"
+                    )
         except asyncio.CancelledError:
             pass
 
     @functools.lru_cache()
-    def __getattr__(self, key : str) -> Any:
+    def __getattr__(self, key: str) -> Any:
         # Attempt to resolve
         try:
             return getattr(super(), key)
         except AttributeError:
             pass
-        async def _shim(posted   : bool = False,
-                        **kwargs : Dict[str, Union[str, int]]) -> Dict[str, Union[str, int]]:
+
+        async def _shim(
+            posted: bool = False, **kwargs: Dict[str, Union[str, int]]
+        ) -> Dict[str, Union[str, int]]:
             # Wait until server is available
             await self.ws_event.wait()
             if not self.ws:
@@ -111,10 +120,16 @@ class WebsocketWrapper(WebsocketRouter):
             pending = None
             if not posted:
                 async with self.__request_lock:
-                    pending = WebsocketWrapperPending(next(self.__next_request_id))
+                    pending = WebsocketWrapperPending(
+                        next(self.__next_request_id)
+                    )
                     self.__pending[pending.req_id] = pending
             # Serialise and send the request
-            full_req = { "action": key.lower(), "posted": posted, "payload": kwargs }
+            full_req = {
+                "action": key.lower(),
+                "posted": posted,
+                "payload": kwargs,
+            }
             if not posted:
                 full_req["req_id"] = pending.req_id
             await self.send(full_req)
@@ -127,8 +142,10 @@ class WebsocketWrapper(WebsocketRouter):
                 pending.event.clear()
                 # Check for result
                 if pending.response.get("result", "error") != "success":
-                    raise WebsocketWrapperError(f"Server responded with an "
-                                                f"error for '{key}': {pending.response}")
+                    raise WebsocketWrapperError(
+                        f"Server responded with an "
+                        f"error for '{key}': {pending.response}"
+                    )
                 # Return response
                 return pending.response.get("payload", {})
 

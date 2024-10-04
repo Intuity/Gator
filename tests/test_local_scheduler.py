@@ -21,44 +21,62 @@ import pytest
 from gator.common.child import Child
 from gator.scheduler import LocalScheduler
 
+
 @pytest.mark.asyncio
 class TestLocalScheduler:
-
     async def test_local_scheduling(self, mocker, tmp_path):
-        """ Launch a number of tasks """
+        """Launch a number of tasks"""
         # Create an scheduler
         sched = LocalScheduler(parent="test:1234", interval=7, quiet=False)
         assert sched.parent == "test:1234"
         assert sched.interval == 7
         assert sched.quiet == False
         # Patch asyncio so we don't launch any real operations
-        as_sub = mocker.patch("gator.scheduler.local.asyncio.create_subprocess_shell", new=AsyncMock())
-        as_tsk = mocker.patch("gator.scheduler.local.asyncio.create_task", new=MagicMock(wraps=asyncio.create_task))
-        as_mon = mocker.patch.object(sched,
-                                     "_LocalScheduler__monitor",
-                                     new=AsyncMock(wraps=sched._LocalScheduler__monitor))
+        as_sub = mocker.patch(
+            "gator.scheduler.local.asyncio.create_subprocess_shell",
+            new=AsyncMock(),
+        )
+        as_tsk = mocker.patch(
+            "gator.scheduler.local.asyncio.create_task",
+            new=MagicMock(wraps=asyncio.create_task),
+        )
+        as_mon = mocker.patch.object(
+            sched,
+            "_LocalScheduler__monitor",
+            new=AsyncMock(wraps=sched._LocalScheduler__monitor),
+        )
         procs = []
+
         def _create_proc(*_args, **_kwargs):
             nonlocal procs
             procs.append(proc := AsyncMock())
             return proc
+
         as_sub.side_effect = _create_proc
         # Launch some tasks
-        await sched.launch([Child(None, id=f"T{x}", tracking=tmp_path / f"T{x}")
-                            for x in range(10)])
+        await sched.launch(
+            [
+                Child(None, id=f"T{x}", tracking=tmp_path / f"T{x}")
+                for x in range(10)
+            ]
+        )
         # Check for launch calls
-        as_sub.assert_has_calls([
-            call(f"python3 -m gator --parent test:1234 --interval 7 --scheduler local --all-msg "
-                 f"--id T{x} --tracking {(tmp_path / f'T{x}').as_posix()}",
-                 stdin =subprocess.DEVNULL,
-                 stdout=subprocess.DEVNULL)
-            for x in range(10)
-        ])
+        as_sub.assert_has_calls(
+            [
+                call(
+                    f"python3 -m gator --parent test:1234 --interval 7 --scheduler local --all-msg "
+                    f"--id T{x} --tracking {(tmp_path / f'T{x}').as_posix()}",
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                )
+                for x in range(10)
+            ]
+        )
         # Check for task creation calls
         assert len(as_tsk.mock_calls) == 10
         # Wait for all tasks to complete
         await sched.wait_for_all()
         # Check all monitors were fired up
-        as_mon.assert_has_calls([
-            call(f"T{x}", y) for x, y in zip(range(10), procs)
-        ])
+        as_mon.assert_has_calls(
+            [call(f"T{x}", y) for x, y in zip(range(10), procs)]
+        )

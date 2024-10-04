@@ -29,18 +29,17 @@ from .ws_wrapper import WebsocketWrapper
 
 
 class WebsocketServer(WebsocketRouter):
-    """ Websocket server that exposes a local server with extensible routes """
+    """Websocket server that exposes a local server with extensible routes"""
 
-    def __init__(self,
-                 db     : Database,
-                 logger : Logger,
-                 port   : Optional[int] = None) -> None:
+    def __init__(
+        self, db: Database, logger: Logger, port: Optional[int] = None
+    ) -> None:
         super().__init__()
         # Store the database and logger pointers
         self.db = db
         self.logger = logger
         # Create a lock which is held until server thread starts
-        self.__port     = port
+        self.__port = port
         self.__port_set = asyncio.Event()
         # Register standard routes
         self.add_route("log", self.handle_log)
@@ -48,20 +47,22 @@ class WebsocketServer(WebsocketRouter):
         self.__ws = None
 
     async def get_port(self) -> int:
-        """ Return the allocated port number """
+        """Return the allocated port number"""
         # If no port is known, wait for the server to start and be allocated one
         if self.__port is None:
             await self.__port_set.wait()
         return self.__port
 
     async def get_address(self) -> str:
-        """ Returns the URI of the server """
+        """Returns the URI of the server"""
         # First try to establish IP address from hostname
         try:
             # Attempt to get the hostname (fully qualified)
             hostname = socket.getfqdn()
             if not hostname:
-                raise Exception("Blank hostname returned from socket.gethostname()")
+                raise Exception(
+                    "Blank hostname returned from socket.gethostname()"
+                )
             # Get all known IP addresses for this host (note this can raise an
             # exception if the host is unresolvable)
             _, _, ipaddrs = socket.gethostbyname_ex(hostname)
@@ -81,11 +82,13 @@ class WebsocketServer(WebsocketRouter):
     # Standard Routes
     # ==========================================================================
 
-    async def handle_log(self,
-                         timestamp : Optional[str] = None,
-                         severity  : str = "INFO",
-                         message   : str = "N/A",
-                         **_kwargs) -> None:
+    async def handle_log(
+        self,
+        timestamp: Optional[str] = None,
+        severity: str = "INFO",
+        message: str = "N/A",
+        **_kwargs,
+    ) -> None:
         """
         Service remote logging request from a child process.
 
@@ -96,9 +99,13 @@ class WebsocketServer(WebsocketRouter):
             timestamp = datetime.now()
         else:
             timestamp = datetime.fromtimestamp(int(timestamp))
-        severity = getattr(LogSeverity, severity.strip().upper(), LogSeverity.INFO)
+        severity = getattr(
+            LogSeverity, severity.strip().upper(), LogSeverity.INFO
+        )
         # Log the message
-        await self.logger.log(severity, message.strip(), timestamp=timestamp, forwarded=True)
+        await self.logger.log(
+            severity, message.strip(), timestamp=timestamp, forwarded=True
+        )
 
     # ==========================================================================
     # Server
@@ -107,16 +114,22 @@ class WebsocketServer(WebsocketRouter):
     async def start(self) -> None:
         # If no port number provided, choose a random one
         if self.__port is None:
-            with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-                s.bind(('', 0))
+            with closing(
+                socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            ) as s:
+                s.bind(("", 0))
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 self.__port = s.getsockname()[1]
         self.__port_set.set()
         # Start an asyncio task to run the websocket in the background
-        self.__ws = await websockets.serve(self.__handle_client, "0.0.0.0", self.__port)
+        self.__ws = await websockets.serve(
+            self.__handle_client, "0.0.0.0", self.__port
+        )
+
         # Setup teardown
         def _teardown() -> None:
             asyncio.run(self.stop())
+
         atexit.register(_teardown)
         # Return the address
         address = await self.get_address()

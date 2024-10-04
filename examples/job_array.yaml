@@ -1,0 +1,16 @@
+!JobArray
+id     : array
+repeats: 4
+jobs   :
+- !Job
+    id     : say_count
+    command: echo
+    args   : ["count", "${GATOR_ARRAY_INDEX}"]
+- !JobArray
+    id     : nested
+    repeats: 3
+    jobs   :
+    - !Job
+        id     : nested_say_count
+        command: echo
+        args   : ["inner count $GATOR_ARRAY_INDEX"]

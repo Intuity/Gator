@@ -12,32 +12,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pathlib import Path
+from typing import Any, Dict, Optional
+
 import yaml
+
 try:
     from yaml import CDumper as Dumper
     from yaml import CLoader as Loader
 except ImportError:
     from yaml import Dumper, Loader
 
+
 class SpecBase(yaml.YAMLObject):
-    yaml_tag    = "!unset"
+    yaml_tag = "!unset"
     yaml_loader = Loader
     yaml_dumper = Dumper
 
+    def __init__(self, yaml_path: Optional[Path] = None) -> None:
+        super().__init__()
+        self.yaml_path = yaml_path
+
     @classmethod
-    def from_yaml(cls, loader : Loader, node : yaml.Node) -> "SpecBase":
+    def from_yaml(cls, loader: Loader, node: yaml.Node) -> "SpecBase":
+        fpath = Path(node.start_mark.name).absolute()
         if isinstance(node, yaml.nodes.MappingNode):
-            return cls(**loader.construct_mapping(node, deep=True))
+            return cls(
+                **loader.construct_mapping(node, deep=True), yaml_path=fpath
+            )
         else:
-            return cls(*loader.construct_sequence(node))
+            return cls(*loader.construct_sequence(node), yaml_path=fpath)
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state = self.__dict__.copy()
+        if "yaml_path" in state:
+            del state["yaml_path"]
+        return state
 
     def check(self) -> None:
         pass
 
-class SpecError(Exception):
-    """ Custom exception type for syntax errors in specifications """
 
-    def __init__(self, obj : SpecBase, field : str, msg : str) -> None:
+class SpecError(Exception):
+    """Custom exception type for syntax errors in specifications"""
+
+    def __init__(self, obj: SpecBase, field: str, msg: str) -> None:
         super().__init__(msg)
         self.obj = obj
         self.field = field

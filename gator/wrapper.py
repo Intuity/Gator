@@ -31,13 +31,11 @@ from .common.types import Attribute, LogSeverity, Metric, ProcStat
 
 
 class Wrapper(BaseLayer):
-    """ Wraps a single process and tracks logging & process statistics """
+    """Wraps a single process and tracks logging & process statistics"""
 
-    def __init__(self,
-                 *args,
-                 plotting : bool = False,
-                 summary  : bool = False,
-                 **kwargs) -> None:
+    def __init__(
+        self, *args, plotting: bool = False, summary: bool = False, **kwargs
+    ) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
@@ -46,8 +44,11 @@ class Wrapper(BaseLayer):
         """
         super().__init__(*args, **kwargs)
         self.plotting = plotting
-        self.summary  = summary
-        self.proc     = None
+        self.summary = summary
+        self.proc = None
+        # Capture forwarded messages from the wrapped job
+        if self.logger:
+            self.logger.capture_all = True
 
     async def launch(self, *args, **kwargs) -> None:
         await self.setup(*args, **kwargs)
@@ -77,14 +78,22 @@ class Wrapper(BaseLayer):
 
     async def summarise(self) -> Dict[str, int]:
         summary = await super().summarise()
-        passed  = self.complete and (self.code == 0) and (summary.get("errors", 0) == 0)
-        summary["sub_total" ] = 1
+        msg_ok = await self.logger.check_limits(self.limits)
+        passed = all((self.complete, (self.code == 0), msg_ok))
+        summary["sub_total"] = 1
         summary["sub_active"] = [1, 0][self.complete]
         summary["sub_passed"] = [0, 1][passed]
-        summary["sub_failed"] = [0, 1][self.complete and not passed]
+        if self.complete and not passed:
+            summary["sub_failed"] = 1
+            summary["failed_ids"] = [[self.spec.id]]
+        else:
+            summary["sub_failed"] = 0
+            summary["failed_ids"] = []
         return summary
 
-    async def __handle_metric(self, name : str, value : int, **_) -> Dict[str, str]:
+    async def __handle_metric(
+        self, name: str, value: int, **_
+    ) -> Dict[str, str]:
         """
         Handle an arbitrary metric being reported from a child, the only names
         that cannot be used are those reserved for message statistics (e.g.
@@ -94,7 +103,10 @@ class Wrapper(BaseLayer):
         """
         # Check name doesn't clash
         if name in (f"msg_{x.name.lower()}" for x in LogSeverity):
-            return { "result": "error", "reason": f"Reserved metric name '{name}'"}
+            return {
+                "result": "error",
+                "reason": f"Reserved metric name '{name}'",
+            }
         # Check if a metric already exists
         if (metric := self.metrics.get(name, None)) is not None:
             metric.value = value
@@ -104,14 +116,19 @@ class Wrapper(BaseLayer):
             self.metrics[name] = (metric := Metric(name=name, value=value))
             await self.db.push_metric(metric)
         # Return success
-        return { "result": "success" }
+        return {"result": "success"}
 
-    async def __monitor_stdio(self,
-                              proc   : asyncio.subprocess.Process,
-                              stdout : asyncio.subprocess.PIPE,
-                              stderr : asyncio.subprocess.PIPE) -> None:
-        log_fh = (self.tracking / f"raw_{proc.pid}.log").open("w", encoding="utf-8", buffering=1)
+    async def __monitor_stdio(
+        self,
+        proc: asyncio.subprocess.Process,
+        stdout: asyncio.subprocess.PIPE,
+        stderr: asyncio.subprocess.PIPE,
+    ) -> None:
+        log_fh = (self.tracking / f"raw_{proc.pid}.log").open(
+            "w", encoding="utf-8", buffering=1
+        )
         log_lk = asyncio.Lock()
+
         async def _monitor(pipe, severity):
             while not pipe.at_eof():
                 line = await pipe.readline()
@@ -121,17 +138,20 @@ class Wrapper(BaseLayer):
                 clean = line.rstrip()
                 if len(clean) > 0:
                     await self.logger.log(severity, clean)
+
         t_stdout = asyncio.create_task(_monitor(stdout, LogSeverity.INFO))
         t_stderr = asyncio.create_task(_monitor(stderr, LogSeverity.ERROR))
         await asyncio.gather(t_stdout, t_stderr)
         log_fh.flush()
         log_fh.close()
 
-    async def __monitor_usage(self,
-                              proc      : asyncio.subprocess.Process,
-                              done_evt  : asyncio.Event,
-                              cpu_cores : int,
-                              memory_mb : int) -> None:
+    async def __monitor_usage(
+        self,
+        proc: asyncio.subprocess.Process,
+        done_evt: asyncio.Event,
+        cpu_cores: int,
+        memory_mb: int,
+    ) -> None:
         # Catch NoSuchProcess in case it exits before monitoring can start
         try:
             ps = psutil.Process(pid=proc.pid)
@@ -144,8 +164,10 @@ class Wrapper(BaseLayer):
             try:
                 # Capture statistics
                 with ps.oneshot():
-                    await self.logger.debug(f"Capturing statistics for {proc.pid}")
-                    nproc    = 1
+                    await self.logger.debug(
+                        f"Capturing statistics for {proc.pid}"
+                    )
+                    nproc = 1
                     cpu_perc = ps.cpu_percent()
                     mem_stat = ps.memory_info()
                     rss, vms = mem_stat.rss, mem_stat.vms
@@ -156,27 +178,32 @@ class Wrapper(BaseLayer):
                             c_mem_stat = child.memory_info()
                         except psutil.ZombieProcess:
                             continue
-                        nproc    += 1
+                        nproc += 1
                         cpu_perc += c_cpu_perc
-                        rss      += c_mem_stat.rss
-                        vms      += c_mem_stat.vms
+                        rss += c_mem_stat.rss
+                        vms += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
-                    # Push statistics to the databvase
-                    await self.db.push_procstat(ProcStat(timestamp=datetime.now(),
-                                                         nproc=nproc,
-                                                         cpu=cpu_perc,
-                                                         mem=rss,
-                                                         vmem=vms))
+                    # Push statistics to the database
+                    await self.db.push_procstat(
+                        ProcStat(
+                            timestamp=datetime.now(),
+                            nproc=nproc,
+                            cpu=cpu_perc,
+                            mem=rss,
+                            vmem=vms,
+                        )
+                    )
                     # Check if exceeding the limits
-                    now_exceeding = ((cpu_cores > 0 and cpu_perc > cpu_cores) or
-                                     (memory_mb > 0 and (rss / 1E6) > memory_mb))
+                    now_exceeding = (
+                        cpu_cores > 0 and cpu_perc > (100 * cpu_cores)
+                    ) or (memory_mb > 0 and (rss / 1e6) > memory_mb)
                     if now_exceeding and not exceeding:
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "
                             f"{cpu_cores} CPU cores and {memory_mb} MB of RAM - "
-                            f"current usage is {cpu_perc:.01f} CPU cores and "
-                            f"{rss / 1E6:0.1} MB of RAM"
+                            f"current usage is {cpu_perc / 100:.01f} CPU cores and "
+                            f"{rss / 1E6:0.1f} MB of RAM"
                         )
                     exceeding = now_exceeding
             except psutil.NoSuchProcess:
@@ -197,10 +224,13 @@ class Wrapper(BaseLayer):
         :returns:   The process ID of the launched task
         """
         # Overlay any custom variables on the environment
-        env = { str(k): str(v) for k, v in (self.spec.env or os.environ).items() }
+        env = {str(k): str(v) for k, v in (self.spec.env or os.environ).items()}
         env["GATOR_PARENT"] = await self.server.get_address()
+        env["PYTHONUNBUFFERED"] = "1"
         # Determine the working directory
-        working_dir = Path((self.spec.cwd if self.spec else None) or os.getcwd())
+        working_dir = Path(
+            (self.spec.cwd if self.spec else None) or os.getcwd()
+        )
         # Expand variables in the command
         all_args = [str(x) for x in ([self.spec.command] + self.spec.args)]
         full_cmd = " ".join(expandvars.expand(x, environ=env) for x in all_args)
@@ -209,60 +239,106 @@ class Wrapper(BaseLayer):
         # Pickup CPU and RAM resource requirements
         cpu_cores = self.spec.requested_cores
         memory_mb = self.spec.requested_memory
-        await self.logger.debug(f"Task requests {cpu_cores} CPU cores and "
-                                f"{memory_mb} MB of RAM")
+        await self.logger.debug(
+            f"Task requests {cpu_cores} CPU cores and " f"{memory_mb} MB of RAM"
+        )
         # Pickup license requests
         licenses = self.spec.requested_licenses
         if licenses:
-            await self.logger.debug("Task requests the following licenses\n" +
-                                    tabulate(list(licenses.items()),
-                                             ("License", "Count"),
-                                             tablefmt="simple_grid"))
+            await self.logger.debug(
+                "Task requests the following licenses\n"
+                + tabulate(
+                    list(licenses.items()),
+                    ("License", "Count"),
+                    tablefmt="simple_grid",
+                )
+            )
         # Setup initial attributes
-        await self.db.push_attribute(Attribute(name="cmd",        value=full_cmd))
-        await self.db.push_attribute(Attribute(name="cwd",        value=working_dir.as_posix()))
-        await self.db.push_attribute(Attribute(name="host",       value=socket.gethostname()))
-        await self.db.push_attribute(Attribute(name="started",    value=str(datetime.now().timestamp())))
-        await self.db.push_attribute(Attribute(name="req_cores",  value=str(cpu_cores)))
-        await self.db.push_attribute(Attribute(name="req_memory", value=str(memory_mb)))
-        await self.db.push_attribute(Attribute(name="req_licenses",
-                                               value=",".join(f"{k}={v}" for k, v in licenses.items())))
+        await self.db.push_attribute(Attribute(name="cmd", value=full_cmd))
+        await self.db.push_attribute(
+            Attribute(name="cwd", value=working_dir.as_posix())
+        )
+        await self.db.push_attribute(
+            Attribute(name="host", value=socket.gethostname())
+        )
+        await self.db.push_attribute(
+            Attribute(name="started", value=str(datetime.now().timestamp()))
+        )
+        await self.db.push_attribute(
+            Attribute(name="req_cores", value=str(cpu_cores))
+        )
+        await self.db.push_attribute(
+            Attribute(name="req_memory", value=str(memory_mb))
+        )
+        await self.db.push_attribute(
+            Attribute(
+                name="req_licenses",
+                value=",".join(f"{k}={v}" for k, v in licenses.items()),
+            )
+        )
         # Launch the process
         await self.logger.info(f"Launching task: {full_cmd}")
-        self.proc = await asyncio.create_subprocess_shell(full_cmd,
-                                                          cwd=working_dir,
-                                                          env=env,
-                                                          stdin=subprocess.PIPE,
-                                                          stdout=subprocess.PIPE,
-                                                          stderr=subprocess.PIPE,
-                                                          close_fds=True)
+        try:
+            self.proc = await asyncio.create_subprocess_exec(
+                self.spec.command,
+                *list(map(str, self.spec.args)),
+                cwd=working_dir,
+                env=env,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                close_fds=True,
+            )
+        except Exception as e:
+            await self.logger.critical(
+                f"Caught exception launching {self.id}: {e}"
+            )
+            self.metrics["msg_critical"].value += 1
+            self.complete = True
+            await self.db.push_attribute(Attribute(name="pid", value="0"))
+            await self.db.push_attribute(
+                Attribute(name="stopped", value=str(datetime.now().timestamp()))
+            )
+            await self.db.push_attribute(Attribute(name="exit", value=255))
+            return
         # Monitor process usage
-        e_done  = asyncio.Event()
-        t_pmon  = asyncio.create_task(self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb))
-        t_stdio = asyncio.create_task(self.__monitor_stdio(self.proc, self.proc.stdout, self.proc.stderr))
+        e_done = asyncio.Event()
+        t_pmon = asyncio.create_task(
+            self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb)
+        )
+        t_stdio = asyncio.create_task(
+            self.__monitor_stdio(self.proc, self.proc.stdout, self.proc.stderr)
+        )
         # Run until process complete & STDOUT/STDERR digested
-        await self.logger.info("Monitoring task")
         await asyncio.gather(self.proc.wait(), t_stdio)
         e_done.set()
         # Wait for process monitor to drain
         try:
             await asyncio.wait_for(asyncio.gather(t_pmon), timeout=5)
         except asyncio.exceptions.TimeoutError:
-            await self.logger.warning("Timed out waiting for process monitor to stop")
+            await self.logger.warning(
+                "Timed out waiting for process monitor to stop"
+            )
         # Capture the exit code
         self.code = 255 if self.terminated else self.proc.returncode
         await self.logger.info(f"Task completed with return code {self.code}")
         # Insert final attributes
-        await self.db.push_attribute(Attribute(name="pid",     value=str(self.proc.pid)))
-        await self.db.push_attribute(Attribute(name="stopped", value=str(datetime.now().timestamp())))
-        await self.db.push_attribute(Attribute(name="exit",    value=str(self.code)))
+        await self.db.push_attribute(
+            Attribute(name="pid", value=str(self.proc.pid))
+        )
+        await self.db.push_attribute(
+            Attribute(name="stopped", value=str(datetime.now().timestamp()))
+        )
+        await self.db.push_attribute(
+            Attribute(name="exit", value=str(self.code))
+        )
         # Mark complete
         self.complete = True
 
     async def __report(self) -> None:
         # Pull data back from resource tracking
-        data       = await self.db.get_procstat(sql_order_by=("timestamp", True))
-        pid        = await self.db.get_attribute(name="pid")
+        data = await self.db.get_procstat(sql_order_by=("timestamp", True))
+        pid = await self.db.get_attribute(name="pid")
         ts_started = await self.db.get_attribute(name="started")
         ts_stopped = await self.db.get_attribute(name="stopped")
         started_at = datetime.fromtimestamp(float(ts_started[0].value))
@@ -279,18 +355,30 @@ class Wrapper(BaseLayer):
                 series["VMemory (MB)"].append(entry.vmem / (1024**3))
             fig = pg.Figure()
             for key, vals in series.items():
-                fig.add_trace(pg.Scatter(x=dates, y=vals, mode="lines", name=key))
-            fig.update_layout(title=f"Resource Usage for {pid[0].value}",
-                              xaxis_title="Time")
+                fig.add_trace(
+                    pg.Scatter(x=dates, y=vals, mode="lines", name=key)
+                )
+            fig.update_layout(
+                title=f"Resource Usage for {pid[0].value}", xaxis_title="Time"
+            )
             fig.write_image(self.plotting.as_posix(), format="png")
         # Summarise process usage
         if self.summary:
             max_nproc = max(map(lambda x: x.nproc, data)) if data else 0
-            max_cpu   = max(map(lambda x: x.cpu, data)) if data else 0
-            max_mem   = max(map(lambda x: x.mem, data)) if data else 0
-            print(tabulate([[f"Summary of process {pid[0].value}"],
-                            ["Max Processes",           max_nproc],
-                            ["Max CPU %",               f"{max_cpu * 100:.1f}"],
-                            ["Max Memory Usage (MB)",   f"{max_mem / 1024**3:.2f}"],
-                            ["Total Runtime (H:MM:SS)", str(stopped_at - started_at).split(".")[0]]],
-                            tablefmt="simple_grid"))
+            max_cpu = max(map(lambda x: x.cpu, data)) if data else 0
+            max_mem = max(map(lambda x: x.mem, data)) if data else 0
+            print(
+                tabulate(
+                    [
+                        [f"Summary of process {pid[0].value}"],
+                        ["Max Processes", max_nproc],
+                        ["Max CPU %", f"{max_cpu * 100:.1f}"],
+                        ["Max Memory Usage (MB)", f"{max_mem / 1024**3:.2f}"],
+                        [
+                            "Total Runtime (H:MM:SS)",
+                            str(stopped_at - started_at).split(".")[0],
+                        ],
+                    ],
+                    tablefmt="simple_grid",
+                )
+            )

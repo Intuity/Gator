@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .common import SchedulerError
-from .local import LocalScheduler
+import functools
+import os
+import pwd
 
-assert all((LocalScheduler, SchedulerError))
+
+@functools.lru_cache()
+def get_username() -> str:
+    return pwd.getpwuid(os.getuid())[0]

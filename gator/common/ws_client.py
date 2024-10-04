@@ -23,11 +23,10 @@ from .ws_wrapper import WebsocketWrapper
 
 
 class WebsocketClient(WebsocketWrapper):
-
-    def __init__(self, address : Optional[str] = None) -> None:
+    def __init__(self, address: Optional[str] = None) -> None:
         super().__init__()
-        if address is None and "GATOR_SERVER" in os.environ:
-            address = os.environ["GATOR_SERVER"]
+        if address is None and "GATOR_PARENT" in os.environ:
+            address = os.environ["GATOR_PARENT"]
         self.address = address
 
     async def start(self) -> None:
@@ -39,9 +38,11 @@ class WebsocketClient(WebsocketWrapper):
         # Start an asyncio task to run the websocket in the background
         self.ws = await websockets.connect(f"ws://{self.address}")
         self.ws_event.set()
+
         # Setup teardown
         def _teardown() -> None:
             asyncio.run(self.stop())
+
         atexit.register(_teardown)
         # Start socket monitor
         await self.start_monitor()
@@ -53,3 +54,10 @@ class WebsocketClient(WebsocketWrapper):
             await self.ws.close()
             await self.stop_monitor()
             self.ws = None
+
+    async def __aenter__(self) -> None:
+        await self.start()
+        return self
+
+    async def __aexit__(self, *_) -> None:
+        await self.stop()

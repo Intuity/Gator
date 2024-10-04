@@ -12,57 +12,185 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import dataclasses
-import socket
+import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Callable, Dict, Union
 
-from flask import Flask, render_template, request
-import uwsgi
+from quart import Quart, render_template, request
 
-from ..common.db import Base, Database
-from ..common.types import Attribute
+from ..common.ws_client import WebsocketClient
+from .tables import setup_db
 
-react_dir = uwsgi.opt["react_root"].decode("utf-8")
-print(f"Static content: {react_dir}")
 
-hub = Flask("gator-hub",
-            static_url_path="/assets",
-            static_folder=f"{react_dir}/assets",
-            template_folder=react_dir)
+def setup_hub(
+    host: str,
+    port: int,
+    static: Path,
+    db_host: str,
+    db_port: str,
+    db_name: str,
+    db_user: str,
+    db_pwd: str,
+):
+    # Setup database
+    db, tables = setup_db(db_host, db_port, db_name, db_user, db_pwd)
 
-# Local SQLite database
-@dataclasses.dataclass
-class Registration(Base):
-    id         : str      = ""
-    server_url : str      = ""
-    timestamp  : datetime = dataclasses.field(default_factory=datetime.now)
+    # Create Quart application to host the interface and handle API requests
+    hub = Quart(
+        "gator-hub",
+        static_url_path="/assets",
+        static_folder=static / "src" / "assets",
+        template_folder=static,
+    )
 
-db = Database(path=Path.cwd() / "hub.sqlite", uwsgi=True)
-db.register(Attribute)
-db.register(Registration)
+    @hub.before_serving
+    async def start_database():
+        nonlocal db
+        await db.start_connection_pool()
+        await tables.Completion.create_table(if_not_exists=True)
+        await tables.Registration.create_table(if_not_exists=True)
+        await tables.Metric.create_table(if_not_exists=True)
 
-db.push_attribute(Attribute(name="last_start", value=datetime.now().isoformat()))
-db.push_attribute(Attribute(name="running_on", value=socket.gethostname()))
+    @hub.after_serving
+    async def stop_database():
+        nonlocal db
+        await db.close_connection_pool()
 
-@hub.get("/")
-def html_root():
-    return render_template("index.html")
+    @hub.get("/")
+    async def html_root():
+        return await render_template("index.html")
 
-@hub.get("/api")
-def api_root():
-    return { "tool"   : "gator-hub",
-             "version": "1.0" }
+    @hub.get("/api")
+    async def api_root():
+        return {"tool": "gator-hub", "version": "1.0"}
 
-@hub.post("/api/register")
-def register():
-    data = request.json
-    uid = db.push(reg := Registration(id=data["id"], server_url=data["url"]))
-    print(f"Process registered {reg.id}, {reg.server_url}")
-    return { "result": "success", "uid": uid }
+    @hub.post("/api/register")
+    async def register():
+        data = await request.get_json()
+        new_reg = tables.Registration(
+            id=data["id"],
+            layer=data["layer"],
+            server_url=data["url"],
+            owner=data["owner"],
+            timestamp=int(datetime.now().timestamp()),
+        )
+        data = await tables.Registration.insert(new_reg).returning(
+            tables.Registration.uid
+        )
+        return {"result": "success", "uid": data[0]["uid"]}
 
-@hub.get("/api/jobs")
-def jobs():
-    return [vars(x) for x in db.get(Registration,
-                                    sql_order_by=("timestamp", False),
-                                    sql_limit   =10)]
+    @hub.post("/api/job/<int:job_id>/complete")
+    async def complete(job_id: int):
+        data = await request.get_json()
+        new_cmp = tables.Completion(
+            db_file=data["db_file"], timestamp=int(datetime.now().timestamp())
+        )
+        await tables.Completion.insert(new_cmp)
+        await tables.Registration.update(
+            {tables.Registration.completion: new_cmp}
+        ).where(Registration.uid == job_id)
+        return {"result": "success"}
+
+    def lookup_job(func: Callable) -> Callable:
+        async def _inner(job_id: int, **kwargs) -> Dict[str, Union[str, int]]:
+            reg = (
+                await tables.Registration.objects()
+                .get(tables.Registration.uid == int(job_id))
+                .first()
+            )
+            return await func(reg, **kwargs)
+
+        setattr(_inner, "__name__", getattr(func, "__name__"))
+        return _inner
+
+    @hub.post("/api/job/<int:job_id>/heartbeat")
+    @lookup_job
+    async def heartbeat(job: tables.Registration):
+        data = await request.get_json()
+        for key, value in data.get("metrics", {}).items():
+            if await tables.Metric.exists().where(
+                (tables.Metric.registration == job)
+                & (tables.Metric.name == key)
+            ):
+                await tables.Metric.update({tables.Metric.value: value}).where(
+                    (tables.Metric.registration == job)
+                    & (tables.Metric.name == key)
+                )
+            else:
+                new_mtc = tables.Metric(registration=job, name=key, value=value)
+                await tables.Metric.insert(new_mtc)
+        return {"result": "success"}
+
+    @hub.get("/api/jobs")
+    async def jobs():
+        jobs = (
+            await tables.Registration.objects(tables.Registration.completion)
+            .order_by(tables.Registration.timestamp, ascending=False)
+            .output()
+            .limit(10)
+        )
+        data = []
+        for job in jobs:
+            metrics = await tables.Metric.select(
+                tables.Metric.name, tables.Metric.value
+            ).where(tables.Metric.registration == job)
+            data.append({**job.to_dict(), "metrics": metrics})
+        return data
+
+    @hub.get("/api/job/<int:job_id>")
+    @hub.get("/api/job/<int:job_id>/")
+    @lookup_job
+    async def job_info(job):
+        # Get all metrics
+        metrics = await tables.Metric.select().where(
+            tables.Metric.registration == job
+        )
+        # Return data
+        return {"result": "success", "job": job.to_dict(), "metrics": metrics}
+
+    @hub.get("/api/job/<int:job_id>/messages")
+    @hub.get("/api/job/<int:job_id>/messages/")
+    @hub.get("/api/job/<int:job_id>/messages/<path:hierarchy>")
+    @lookup_job
+    async def job_messages(job, hierarchy: str = ""):
+        # Get query parameters
+        after_uid = int(request.args.get("after", 0))
+        limit_num = int(request.args.get("limit", 10))
+        hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
+        # If necessary, dig down through the hierarchy to find the job
+        if hierarchy:
+            async with WebsocketClient(job.server_url) as ws:
+                data = await ws.resolve(path=hierarchy)
+                server_url = data["server_url"]
+        # If no hierarchy, we're using the top-level job
+        else:
+            server_url = job.server_url
+        # Query messages via the job's websocket
+        async with WebsocketClient(server_url) as ws:
+            data = await ws.get_messages(after=after_uid, limit=limit_num)
+        # Return data
+        return data
+
+    @hub.get("/api/job/<int:job_id>/layer")
+    @hub.get("/api/job/<int:job_id>/layer/")
+    @hub.get("/api/job/<int:job_id>/layer/<path:hierarchy>")
+    @lookup_job
+    async def job_layer(job, hierarchy: str = ""):
+        # If this is a tier, resolve the hierarchy
+        if job.layer == "tier":
+            logging.info(f"Resolving tier: {job.id} -> {hierarchy}")
+            hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
+            async with WebsocketClient(job.server_url) as ws:
+                return await ws.resolve(path=hierarchy)
+        # Otherwise, it's a wrapper so just return the top job
+        else:
+            logging.info(f"Returning wrapper: {job.id}")
+            return {
+                "id": job.id,
+                "path": [],
+                "children": [],
+            }
+
+    # Launch
+    hub.run(host=host, port=port)
