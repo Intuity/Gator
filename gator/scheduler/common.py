@@ -45,7 +45,9 @@ class BaseScheduler:
         self.options = {k.strip().lower(): v for k, v in (options or {}).items()}
         self.babysit = self.options.get("babysit", False)
 
-    def get_option(self, name: str, default: Any = None, as_type: Type | None = None) -> Any:
+    def get_option(
+        self, name: str, default: Any = None, as_type: Type | None = None
+    ) -> Any:
         value = self.options.get(name, default)
         return value if as_type is None else as_type(value)
 
@@ -76,7 +78,9 @@ class BaseScheduler:
         ]
         return cmd
 
-    def create_command(self, child: Child, options: Optional[dict[str, str]] = None) -> str:
+    def create_command(
+        self, child: Child, options: Optional[dict[str, str]] = None
+    ) -> str:
         """
         Build a command for launching a job on the compute infrastructure using
         details from the child object.

@@ -87,7 +87,9 @@ class WebsocketWrapper(WebsocketRouter):
                     # Else, route
                     await self.route(self, message)
                 except json.JSONDecodeError as e:
-                    raise WebsocketWrapperError(f"Failed to decode message: {raw}") from e
+                    raise WebsocketWrapperError(
+                        f"Failed to decode message: {raw}"
+                    ) from e
         except asyncio.CancelledError:
             pass
 
@@ -133,7 +135,8 @@ class WebsocketWrapper(WebsocketRouter):
                 # Check for result
                 if pending.response.get("result", "error") != "success":
                     raise WebsocketWrapperError(
-                        f"Server responded with an " f"error for '{key}': {pending.response}"
+                        f"Server responded with an "
+                        f"error for '{key}': {pending.response}"
                     )
                 # Return response
                 return pending.response.get("payload", {})

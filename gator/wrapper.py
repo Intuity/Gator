@@ -33,7 +33,9 @@ from .common.types import Attribute, LogSeverity, Metric, ProcStat
 class Wrapper(BaseLayer):
     """Wraps a single process and tracks logging & process statistics"""
 
-    def __init__(self, *args, plotting: bool = False, summary: bool = False, **kwargs) -> None:
+    def __init__(
+        self, *args, plotting: bool = False, summary: bool = False, **kwargs
+    ) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
@@ -120,7 +122,9 @@ class Wrapper(BaseLayer):
         stdout: asyncio.subprocess.PIPE,
         stderr: asyncio.subprocess.PIPE,
     ) -> None:
-        log_fh = (self.tracking / f"raw_{proc.pid}.log").open("w", encoding="utf-8", buffering=1)
+        log_fh = (self.tracking / f"raw_{proc.pid}.log").open(
+            "w", encoding="utf-8", buffering=1
+        )
         log_lk = asyncio.Lock()
 
         async def _monitor(pipe, severity):
@@ -187,9 +191,9 @@ class Wrapper(BaseLayer):
                         )
                     )
                     # Check if exceeding the limits
-                    now_exceeding = (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)) or (
-                        memory_mb > 0 and (rss / 1e6) > memory_mb
-                    )
+                    now_exceeding = (
+                        cpu_cores > 0 and cpu_perc > (100 * cpu_cores)
+                    ) or (memory_mb > 0 and (rss / 1e6) > memory_mb)
                     if now_exceeding and not exceeding:
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "
@@ -245,7 +249,9 @@ class Wrapper(BaseLayer):
             )
         # Setup initial attributes
         await self.db.push_attribute(Attribute(name="cmd", value=full_cmd))
-        await self.db.push_attribute(Attribute(name="cwd", value=working_dir.as_posix()))
+        await self.db.push_attribute(
+            Attribute(name="cwd", value=working_dir.as_posix())
+        )
         await self.db.push_attribute(Attribute(name="host", value=socket.gethostname()))
         await self.db.push_attribute(
             Attribute(name="started", value=str(datetime.now().timestamp()))
@@ -283,7 +289,9 @@ class Wrapper(BaseLayer):
             return
         # Monitor process usage
         e_done = asyncio.Event()
-        t_pmon = asyncio.create_task(self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb))
+        t_pmon = asyncio.create_task(
+            self.__monitor_usage(self.proc, e_done, cpu_cores, memory_mb)
+        )
         t_stdio = asyncio.create_task(
             self.__monitor_stdio(self.proc, self.proc.stdout, self.proc.stderr)
         )
@@ -328,7 +336,9 @@ class Wrapper(BaseLayer):
             fig = pg.Figure()
             for key, vals in series.items():
                 fig.add_trace(pg.Scatter(x=dates, y=vals, mode="lines", name=key))
-            fig.update_layout(title=f"Resource Usage for {pid[0].value}", xaxis_title="Time")
+            fig.update_layout(
+                title=f"Resource Usage for {pid[0].value}", xaxis_title="Time"
+            )
             fig.write_image(self.plotting.as_posix(), format="png")
         # Summarise process usage
         if self.summary:

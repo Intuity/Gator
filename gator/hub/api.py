@@ -25,7 +25,9 @@ class _HubAPI(HTTPAPI):
     HEARTBEAT = "job/{job_id}/heartbeat"
 
     async def register(self, ident: str, url: str, layer: str, owner: str) -> str:
-        response = await self.post(self.REGISTER, ident=ident, url=url, layer=layer, owner=owner)
+        response = await self.post(
+            self.REGISTER, ident=ident, url=url, layer=layer, owner=owner
+        )
         return response.get("uid", None)
 
     async def complete(self, uid: str, db_file: str) -> None:

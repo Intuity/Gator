@@ -79,7 +79,9 @@ class Job(SpecBase):
         if set(map(type, self.env.keys())).difference({str}):
             raise SpecError(self, "env", "Environment keys must be strings")
         if set(map(type, self.env.values())).difference({str, int}):
-            raise SpecError(self, "env", "Environment values must be strings or integers")
+            raise SpecError(
+                self, "env", "Environment values must be strings or integers"
+            )
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
         if self.command is not None and not isinstance(self.command, str):
@@ -102,7 +104,9 @@ class Job(SpecBase):
         if type_count[Memory] > 1:
             raise SpecError(self, "resources", "More than one !Memory resource request")
         # NOTE: Any number of licenses may be specified
-        lic_name_count = Counter(x.name for x in self.resources if isinstance(x, License))
+        lic_name_count = Counter(
+            x.name for x in self.resources if isinstance(x, License)
+        )
         for name, count in lic_name_count.items():
             if count > 1:
                 raise SpecError(
@@ -147,7 +151,9 @@ class JobArray(SpecBase):
     def expected_jobs(self) -> int:
         expected = 0
         for job in self.jobs:
-            expected += self.repeats * (1 if isinstance(job, Job) else job.expected_jobs)
+            expected += self.repeats * (
+                1 if isinstance(job, Job) else job.expected_jobs
+            )
         return expected
 
     def check(self) -> None:
@@ -176,7 +182,9 @@ class JobArray(SpecBase):
         if set(map(type, self.env.keys())).difference({str}):
             raise SpecError(self, "env", "Environment keys must be strings")
         if set(map(type, self.env.values())).difference({str, int}):
-            raise SpecError(self, "env", "Environment values must be strings or integers")
+            raise SpecError(
+                self, "env", "Environment values must be strings or integers"
+            )
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
         for field in ("on_done", "on_fail", "on_pass"):
@@ -244,7 +252,9 @@ class JobGroup(SpecBase):
         if set(map(type, self.env.keys())).difference({str}):
             raise SpecError(self, "env", "Environment keys must be strings")
         if set(map(type, self.env.values())).difference({str, int}):
-            raise SpecError(self, "env", "Environment values must be strings or integers")
+            raise SpecError(
+                self, "env", "Environment values must be strings or integers"
+            )
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
         for field in ("on_done", "on_fail", "on_pass"):
