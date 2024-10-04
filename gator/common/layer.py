@@ -79,7 +79,9 @@ class BaseLayer:
         await self.db.register(Metric)
         # Setup base metrics
         for sev in LogSeverity:
-            await self.db.push_metric(metric := Metric(name=f"msg_{sev.name.lower()}", value=0))
+            await self.db.push_metric(
+                metric := Metric(name=f"msg_{sev.name.lower()}", value=0)
+            )
             self.metrics[metric.name] = metric
         # Setup logger
         await self.logger.set_database(self.db)
@@ -121,12 +123,16 @@ class BaseLayer:
             result = Result.FAILURE
         # Tell the parent the job is complete
         summary = await self.summarise()
-        await self.client.complete(ident=self.ident, code=self.code, result=result.name, **summary)
+        await self.client.complete(
+            ident=self.ident, code=self.code, result=result.name, **summary
+        )
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
         msg_metrics = filter(lambda x: x.name in msg_keys, self.metrics.values())
         parts = [f"{x.value} {x.name.split('msg_')[1]}" for x in msg_metrics]
-        await self.logger.info("Recorded " + ", ".join(parts[:-1]) + f" and {parts[-1]} messages")
+        await self.logger.info(
+            "Recorded " + ", ".join(parts[:-1]) + f" and {parts[-1]} messages"
+        )
         # Shutdown the server
         await self.server.stop()
         # Shutdown the database

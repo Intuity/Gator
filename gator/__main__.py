@@ -49,7 +49,7 @@ from .specs.common import SpecError
     count=True,
     help="Propagate all messages to the top level",
 )
-@click.option("-v", "--verbose", default=False, count=True, help="Show debug messages")
+@click.option("--verbose", default=False, count=True, help="Show debug messages")
 @click.option("--progress", default=False, count=True, help="Show progress bar")
 @click.option(
     "--scheduler",
@@ -97,7 +97,9 @@ def main(
 ) -> None:
     # Determine a tracking directory
     tracking = (
-        Path(tracking) if tracking else (Path.cwd() / "tracking" / datetime.now().isoformat())
+        Path(tracking)
+        if tracking
+        else (Path.cwd() / "tracking" / datetime.now().isoformat())
     )
     tracking.mkdir(parents=True, exist_ok=True)
     # Select the right scheduler
