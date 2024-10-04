@@ -72,7 +72,9 @@ class TestTier:
         grp = JobGroup("group", jobs=[job])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(spec=grp, client=self.client, tracking=trk_dir, logger=self.logger)
+        tier = Tier(
+            spec=grp, client=self.client, sched_opts={}, tracking=trk_dir, logger=self.logger
+        )
         # Check tier
         assert tier.spec is grp
         assert tier.client is self.client
@@ -125,6 +127,7 @@ class TestTier:
         tier = Tier(
             spec=grp_top,
             client=self.client,
+            sched_opts={},
             tracking=trk_dir,
             logger=self.logger,
         )
@@ -156,7 +159,9 @@ class TestTier:
         array = JobArray("arr", repeats=5, jobs=[job_n])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(spec=array, client=self.client, tracking=trk_dir, logger=self.logger)
+        tier = Tier(
+            spec=array, client=self.client, sched_opts={}, tracking=trk_dir, logger=self.logger
+        )
         # Check state
         assert not tier.complete
         assert not tier.terminated
