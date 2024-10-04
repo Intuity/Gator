@@ -92,7 +92,7 @@ def setup_hub(
         await tables.Completion.insert(new_cmp)
         await tables.Registration.update(
             {tables.Registration.completion: new_cmp}
-        ).where(Registration.uid == job_id)
+        ).where(tables.Registration.uid == job_id)
         return {"result": "success"}
 
     def lookup_job(func: Callable) -> Callable:
@@ -104,7 +104,7 @@ def setup_hub(
             )
             return await func(reg, **kwargs)
 
-        setattr(_inner, "__name__", getattr(func, "__name__"))
+        _inner.__name__ = func.__name__
         return _inner
 
     @hub.post("/api/job/<int:job_id>/heartbeat")
@@ -113,12 +113,10 @@ def setup_hub(
         data = await request.get_json()
         for key, value in data.get("metrics", {}).items():
             if await tables.Metric.exists().where(
-                (tables.Metric.registration == job)
-                & (tables.Metric.name == key)
+                (tables.Metric.registration == job) & (tables.Metric.name == key)
             ):
                 await tables.Metric.update({tables.Metric.value: value}).where(
-                    (tables.Metric.registration == job)
-                    & (tables.Metric.name == key)
+                    (tables.Metric.registration == job) & (tables.Metric.name == key)
                 )
             else:
                 new_mtc = tables.Metric(registration=job, name=key, value=value)
@@ -146,9 +144,7 @@ def setup_hub(
     @lookup_job
     async def job_info(job):
         # Get all metrics
-        metrics = await tables.Metric.select().where(
-            tables.Metric.registration == job
-        )
+        metrics = await tables.Metric.select().where(tables.Metric.registration == job)
         # Return data
         return {"result": "success", "job": job.to_dict(), "metrics": metrics}
 

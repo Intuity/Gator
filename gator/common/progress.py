@@ -79,7 +79,8 @@ class PassFailBar(JupyterMixin):
 
         Args:
             completed (float): Number of steps completed.
-            total (float, optional): Total number of steps, or ``None`` to not change. Defaults to None.
+            total (float, optional): Total number of steps, or ``None`` to not change.
+            Defaults to None.
         """
         self.total = total
         self.active = active
@@ -99,8 +100,8 @@ class PassFailBar(JupyterMixin):
         width -= title_width + detail_width + 1
 
         # Determine if unicode fully supported
-        ascii = options.legacy_windows or options.ascii_only
-        char_full_bar = "-" if ascii else "━"
+        using_ascii = options.legacy_windows or options.ascii_only
+        char_full_bar = "-" if using_ascii else "━"
 
         # Work out the sizes of each part of the progress bar
         max_halves = int(width * 2)
@@ -163,7 +164,8 @@ if __name__ == "__main__":  # pragma: no cover
     console = Console()
     bar = PassFailBar("Regression", 100, 0, 0, 0)
 
-    import random, time
+    import random
+    import time
 
     console.show_cursor(False)
     total = 100
