@@ -15,6 +15,7 @@
 import asyncio
 import math
 import signal
+from functools import partial
 from pathlib import Path
 from typing import Callable, Optional, Type, Union
 
@@ -122,7 +123,7 @@ async def launch(
 
     evt_loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        evt_loop.add_signal_handler(sig, lambda: _handler(sig, evt_loop, top))
+        evt_loop.add_signal_handler(sig, partial(_handler, sig, evt_loop, top))
     # Wait for the executor to complete
     await top.launch()
     # Calculate final summary

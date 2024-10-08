@@ -48,8 +48,7 @@ class Job(SpecBase):
         self.on_fail = on_fail or []
         self.on_pass = on_pass or []
 
-    @property
-    @functools.lru_cache
+    @functools.cached_property
     def requested_cores(self) -> int:
         """Return the number of requested cores or 0 if not specified"""
         for resource in self.resources:
@@ -58,8 +57,7 @@ class Job(SpecBase):
         else:
             return 0
 
-    @property
-    @functools.lru_cache
+    @functools.cached_property
     def requested_memory(self) -> int:
         """Return the amount of memory requested in megabytes or 0 if not specified"""
         for resource in self.resources:
@@ -68,8 +66,7 @@ class Job(SpecBase):
         else:
             return 0
 
-    @property
-    @functools.lru_cache
+    @functools.cached_property
     def requested_licenses(self) -> Dict[str, int]:
         """Return a summary of all of the licenses requested"""
         return {x.name: x.count for x in self.resources if isinstance(x, License)}
@@ -146,8 +143,7 @@ class JobArray(SpecBase):
         self.on_pass = on_pass or []
         self.on_done = on_done or []
 
-    @property
-    @functools.lru_cache
+    @functools.cached_property
     def expected_jobs(self) -> int:
         expected = 0
         for job in self.jobs:
@@ -217,8 +213,7 @@ class JobGroup(SpecBase):
         self.on_pass = on_pass or []
         self.on_done = on_done or []
 
-    @property
-    @functools.lru_cache
+    @functools.cached_property
     def expected_jobs(self) -> int:
         expected = 0
         for job in self.jobs:

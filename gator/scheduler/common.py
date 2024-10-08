@@ -49,13 +49,11 @@ class BaseScheduler:
         value = self.options.get(name, default)
         return value if as_type is None else as_type(value)
 
-    @property
-    @functools.lru_cache
+    @functools.cached_property
     def scheduler_id(self) -> str:
         return type(self).__name__.lower().replace("scheduler", "")
 
-    @property
-    @functools.lru_cache
+    @functools.cached_property
     def base_command(self) -> List[str]:
         cmd = []
         if self.babysit:

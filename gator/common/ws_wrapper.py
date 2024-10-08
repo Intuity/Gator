@@ -15,7 +15,6 @@
 import asyncio
 import atexit
 import dataclasses
-import functools
 import itertools
 import json
 from typing import Any, Dict, Optional, Union
@@ -87,12 +86,11 @@ class WebsocketWrapper(WebsocketRouter):
                                 continue
                     # Else, route
                     await self.route(self, message)
-                except json.JSONDecodeError:
-                    raise WebsocketWrapperError(f"Failed to decode message: {raw}")
+                except json.JSONDecodeError as e:
+                    raise WebsocketWrapperError(f"Failed to decode message: {raw}") from e
         except asyncio.CancelledError:
             pass
 
-    @functools.lru_cache
     def __getattr__(self, key: str) -> Any:
         # Attempt to resolve
         try:
@@ -140,4 +138,6 @@ class WebsocketWrapper(WebsocketRouter):
                 # Return response
                 return pending.response.get("payload", {})
 
+        # Cache the shim result as a attribute on the wrapped class
+        setattr(super(), key, _shim)
         return _shim
