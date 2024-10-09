@@ -34,12 +34,12 @@ class Tier(BaseLayer):
         self,
         *args,
         scheduler: Type = LocalScheduler,
-        sched_opts: dict[str, str],
+        sched_opts: dict[str, str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.sched_cls = scheduler
-        self.sched_opts = sched_opts
+        self.sched_opts = sched_opts or {}
         self.scheduler = None
         self.lock = asyncio.Lock()
         # Tracking for jobs in different phases

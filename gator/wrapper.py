@@ -14,6 +14,7 @@
 
 import asyncio
 import os
+import shlex
 import socket
 import subprocess
 from collections import defaultdict
@@ -222,8 +223,9 @@ class Wrapper(BaseLayer):
         # Determine the working directory
         working_dir = Path((self.spec.cwd if self.spec else None) or Path.cwd())
         # Expand variables in the command
-        all_args = [str(x) for x in [self.spec.command, *self.spec.args]]
-        full_cmd = " ".join(expandvars.expand(x, environ=env) for x in all_args)
+        command = expandvars.expand(self.spec.command, environ=env)
+        args = [expandvars.expand(str(arg), environ=env) for arg in self.spec.args]
+        full_cmd = shlex.join((command, *args))
         # Ensure the tracking directory exists
         self.tracking.mkdir(parents=True, exist_ok=True)
         # Pickup CPU and RAM resource requirements
@@ -262,8 +264,8 @@ class Wrapper(BaseLayer):
         await self.logger.info(f"Launching task: {full_cmd}")
         try:
             self.proc = await asyncio.create_subprocess_exec(
-                self.spec.command,
-                *list(map(str, self.spec.args)),
+                command,
+                *args,
                 cwd=working_dir,
                 env=env,
                 stdin=subprocess.PIPE,

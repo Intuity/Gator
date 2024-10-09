@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Dict
 
@@ -30,7 +30,7 @@ class SpecBase(yaml.YAMLObject):
     yaml_tag = "!unset"
     yaml_loader = Loader
     yaml_dumper = Dumper
-    yaml_path: Path
+    yaml_path: Path | None = field(repr=False, default=None)
 
     @classmethod
     def from_yaml(cls, loader: Loader, node: yaml.Node) -> "SpecBase":
@@ -42,10 +42,10 @@ class SpecBase(yaml.YAMLObject):
 
     def __getstate__(self) -> Dict[str, Any]:
         state = {}
-        for field in fields(self):
-            if field.name == "yaml_path":
+        for dc_field in fields(self):
+            if dc_field.name == "yaml_path":
                 continue
-            state[field.name] = getattr(self, field.name)
+            state[dc_field.name] = getattr(self, dc_field.name)
         return state
 
     def check(self) -> None:
