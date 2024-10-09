@@ -62,34 +62,34 @@ A simple example of the syntax can be seen below:
 
 ```yaml title="regression.yaml" linenums="1"
 !JobGroup
-  id  : regression
+  ident  : regression
   jobs:
   # Run the build first
   - !Job
-    id     : build
+    ident     : build
     command: make
     args   :
       - build
   # Launch a series of simulations once the build completes
   - !JobArray
-    id     : simulations
+    ident     : simulations
     on_pass: [build]
     repeats: 20
     jobs   :
     - !Job
-      id     : simulate
+      ident     : simulate
       command: make
       args   :
         - run
         - SEED=${GATOR_ARRAY_INDEX}
   # Generate reports after all simulations complete
   - !JobGroup
-    id     : reports
+    ident     : reports
     on_pass: [simulations]
     jobs   :
     # Merge test coverage
     - !Job
-      id     : coverage
+      ident     : coverage
       command: make
       args   :
         - merge_coverage

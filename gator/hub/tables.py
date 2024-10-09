@@ -41,7 +41,7 @@ def setup_db(host: str, port: str, name: str, user: str, password: str):
     class Registration(Table, db=db):
         uid = Serial(primary_key=True, unique=True, index=True)
         layer = Varchar(16)
-        id = Varchar(250)
+        ident = Varchar(250)
         server_url = Varchar(250)
         owner = Varchar(250)
         timestamp = Integer()

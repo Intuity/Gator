@@ -91,7 +91,7 @@ class BaseScheduler:
         return " ".join(
             itertools.chain(
                 self.base_command,
-                ["--id", child.id, "--tracking", child.tracking.as_posix()],
+                ["--id", child.ident, "--tracking", child.tracking.as_posix()],
                 *(["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()),
             )
         )

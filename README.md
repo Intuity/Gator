@@ -33,30 +33,30 @@ A simple specification may look like this:
 
 ```yaml
 !JobGroup
-  id  : top
+  ident  : top
   jobs:
   # Nested layer
   - !JobGroup
-      id  : inner
+      ident  : inner
       jobs:
       - !Job
-          id     : say_hi
+          ident     : say_hi
           command: echo
           args   : ["hi"]
   # Arrayed job - waits for 'say_hi' to complete
   - !JobArray
-      id     : counting
+      ident     : counting
       on_pass:
         - say_hi
       repeats: 4
       jobs   :
       - !Job
-          id     : echo_count
+          ident     : echo_count
           command: echo
           args   : ["$GATOR_ARRAY_INDEX"]
   # Directly attached to root - waits for 'counting' to complete
   - !Job
-      id     : say_bye
+      ident     : say_bye
       on_pass:
         - counting
       command: echo

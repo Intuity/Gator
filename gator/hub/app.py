@@ -72,7 +72,7 @@ def setup_hub(
     async def register():
         data = await request.get_json()
         new_reg = tables.Registration(
-            id=data["id"],
+            ident=data["ident"],
             layer=data["layer"],
             server_url=data["url"],
             owner=data["owner"],
@@ -176,15 +176,15 @@ def setup_hub(
     async def job_layer(job, hierarchy: str = ""):
         # If this is a tier, resolve the hierarchy
         if job.layer == "tier":
-            logging.info(f"Resolving tier: {job.id} -> {hierarchy}")
+            logging.info(f"Resolving tier: {job.ident} -> {hierarchy}")
             hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
             async with WebsocketClient(job.server_url) as ws:
                 return await ws.resolve(path=hierarchy)
         # Otherwise, it's a wrapper so just return the top job
         else:
-            logging.info(f"Returning wrapper: {job.id}")
+            logging.info(f"Returning wrapper: {job.ident}")
             return {
-                "id": job.id,
+                "ident": job.ident,
                 "path": [],
                 "children": [],
             }

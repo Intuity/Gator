@@ -29,7 +29,7 @@ from .specs.common import SpecError
 
 
 @click.command()
-@click.option("--id", default=None, type=str, help="Instance identifier")
+@click.option("--id", "ident", default=None, type=str, help="Instance identifier")
 @click.option("--hub", default=None, type=str, help="URL of a Gator Hub instance")
 @click.option("--parent", default=None, type=str, help="Pointer to parent node")
 @click.option(
@@ -47,7 +47,7 @@ from .specs.common import SpecError
     count=True,
     help="Propagate all messages to the top level",
 )
-@click.option("--verbose", default=False, count=True, help="Show debug messages")
+@click.option("-v", "--verbose", default=False, count=True, help="Show debug messages")
 @click.option("--progress", default=False, count=True, help="Show progress bar")
 @click.option(
     "--scheduler",
@@ -77,7 +77,7 @@ from .specs.common import SpecError
 )
 @click.argument("spec", type=click.Path(exists=True), required=False)
 def main(
-    id: str,
+    ident: str,
     hub: str,
     parent: str,
     interval: int,
@@ -116,7 +116,7 @@ def main(
     try:
         asyncio.run(
             (launch_progress if progress else launch).launch(
-                id=id,
+                ident=ident,
                 hub=hub,
                 parent=parent,
                 spec=Path(spec) if spec is not None else None,

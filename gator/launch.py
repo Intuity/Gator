@@ -32,7 +32,7 @@ from .wrapper import Wrapper
 
 
 async def launch(
-    id: Optional[str] = None,
+    ident: Optional[str] = None,
     hub: Optional[str] = None,
     parent: Optional[str] = None,
     spec: Optional[Union[Spec, Path]] = None,
@@ -70,8 +70,8 @@ async def launch(
     logger.set_console(console)
     # Work out where the spec is coming from
     # - From server (nested call)
-    if spec is None and client.linked and id:
-        raw_spec = await client.spec(id=id)
+    if spec is None and client.linked and ident:
+        raw_spec = await client.spec(ident=ident)
         spec = Spec.parse_str(raw_spec.get("spec", ""))
     # - Passed in directly (when used as a library
     elif spec is not None and isinstance(spec, (Job, JobArray, JobGroup)):
@@ -82,9 +82,9 @@ async def launch(
     # - Unknown
     else:
         raise Exception("No specification file provided and no parent server to query")
-    # If an ID has been provided, override whatever the spec gives
-    if id is not None:
-        spec.id = id
+    # If an ident has been provided, override whatever the spec gives
+    if ident is not None:
+        spec.ident = ident
     # Check the spec object
     spec.check()
     # If a JobArray or JobGroup is provided, launch a tier

@@ -83,7 +83,7 @@ class Wrapper(BaseLayer):
         summary["sub_passed"] = [0, 1][passed]
         if self.complete and not passed:
             summary["sub_failed"] = 1
-            summary["failed_ids"] = [[self.spec.id]]
+            summary["failed_ids"] = [[self.spec.ident]]
         else:
             summary["sub_failed"] = 0
             summary["failed_ids"] = []
@@ -272,7 +272,7 @@ class Wrapper(BaseLayer):
                 close_fds=True,
             )
         except Exception as e:
-            await self.logger.critical(f"Caught exception launching {self.id}: {e}")
+            await self.logger.critical(f"Caught exception launching {self.ident}: {e}")
             self.metrics["msg_critical"].value += 1
             self.complete = True
             await self.db.push_attribute(Attribute(name="pid", value="0"))

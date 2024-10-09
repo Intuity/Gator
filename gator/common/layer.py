@@ -95,11 +95,11 @@ class BaseLayer:
         # If linked, ping and then register with the parent
         if self.client.linked:
             await self.client.measure_latency()
-            await self.client.register(id=self.id, server=server_address)
+            await self.client.register(ident=self.ident, server=server_address)
         # Otherwise, register with the parent
         else:
             self.__hub_uid = await HubAPI.register(
-                id=self.id,
+                ident=self.ident,
                 url=server_address,
                 layer=type(self).__name__.lower(),
                 owner=get_username(),
@@ -121,7 +121,7 @@ class BaseLayer:
             result = Result.FAILURE
         # Tell the parent the job is complete
         summary = await self.summarise()
-        await self.client.complete(id=self.id, code=self.code, result=result.name, **summary)
+        await self.client.complete(ident=self.ident, code=self.code, result=result.name, **summary)
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
         msg_metrics = filter(lambda x: x.name in msg_keys, self.metrics.values())
@@ -175,7 +175,7 @@ class BaseLayer:
         # Summarise state
         summary = await self.summarise()
         # Report to parent
-        await self.client.update(id=self.id, **summary)
+        await self.client.update(ident=self.ident, **summary)
         # Return the summary
         return summary
 
@@ -188,7 +188,7 @@ class BaseLayer:
             db_uid=Query(gte=after),
         )
         total: int = await self.db.get_logentry(sql_count=True)
-        format = [
+        messages = [
             {
                 "uid": x.db_uid,
                 "severity": int(x.severity),
@@ -197,19 +197,19 @@ class BaseLayer:
             }
             for x in msgs
         ]
-        return {"messages": format, "total": total}
+        return {"messages": messages, "total": total}
 
     async def resolve(self, path: List[str], **_) -> None:
         del path
         return {
-            "id": self.id,
+            "ident": self.ident,
             "server_url": await self.server.get_address(),
             "metrics": (await self.summarise()).get("metrics", {}),
         }
 
     @property
-    def id(self) -> str:
-        return self.spec.id or str(os.getpid())
+    def ident(self) -> str:
+        return self.spec.ident or str(os.getpid())
 
     @property
     def is_root(self) -> bool:

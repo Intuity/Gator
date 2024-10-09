@@ -55,7 +55,7 @@ class TestLocalScheduler:
         as_sub.side_effect = _create_proc
         # Launch some tasks
         await sched.launch(
-            [Child(None, id=f"T{x}", tracking=tmp_path / f"T{x}") for x in range(10)]
+            [Child(None, ident=f"T{x}", tracking=tmp_path / f"T{x}") for x in range(10)]
         )
         # Check for launch calls
         as_sub.assert_has_calls(

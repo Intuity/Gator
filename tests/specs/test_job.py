@@ -33,7 +33,7 @@ def test_spec_job_positional():
         ["job_1"],
         ["job_2"],
     )
-    assert job.id == "id_123"
+    assert job.ident == "id_123"
     assert job.env == {"key_a": 2345, "key_b": False}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
@@ -57,7 +57,7 @@ def test_spec_job_positional():
 def test_spec_job_named():
     """A job should preserve all named arguments provided to it"""
     job = Job(
-        id="id_123",
+        ident="id_123",
         env={"key_a": 2345, "key_b": False},
         cwd="/path/to/working/dir",
         command="echo",
@@ -67,7 +67,7 @@ def test_spec_job_named():
         on_fail=["job_1"],
         on_pass=["job_2"],
     )
-    assert job.id == "id_123"
+    assert job.ident == "id_123"
     assert job.env == {"key_a": 2345, "key_b": False}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
@@ -93,7 +93,7 @@ def test_spec_job_parse(tmp_path):
     spec_file = tmp_path / "job.yaml"
     spec_file.write_text(
         "!Job\n"
-        "  id: id_123\n"
+        "  ident: id_123\n"
         "  env:\n"
         "    key_a: 2345\n"
         "    key_b: False\n"
@@ -114,7 +114,7 @@ def test_spec_job_parse(tmp_path):
     )
     job = Spec.parse(spec_file)
     assert isinstance(job, Job)
-    assert job.id == "id_123"
+    assert job.ident == "id_123"
     assert job.env == {"key_a": 2345, "key_b": False}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
@@ -139,7 +139,7 @@ def test_spec_job_parse_str():
     """Parse a specification from a YAML string"""
     spec_str = (
         "!Job\n"
-        "  id: id_123\n"
+        "  ident: id_123\n"
         "  env:\n"
         "    key_a: 2345\n"
         "    key_b: False\n"
@@ -160,7 +160,7 @@ def test_spec_job_parse_str():
     )
     job = Spec.parse_str(spec_str)
     assert isinstance(job, Job)
-    assert job.id == "id_123"
+    assert job.ident == "id_123"
     assert job.env == {"key_a": 2345, "key_b": False}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
@@ -184,7 +184,7 @@ def test_spec_job_parse_str():
 def test_spec_job_dump():
     """Dump a specification to a YAML string"""
     job = Job(
-        id="id_123",
+        ident="id_123",
         env={"key_a": 2345, "key_b": False},
         cwd="/path/to/working/dir",
         command="echo",
@@ -204,7 +204,7 @@ def test_spec_job_dump():
         "env:\n"
         "  key_a: 2345\n"
         "  key_b: false\n"
-        "id: id_123\n"
+        "ident: id_123\n"
         "on_done:\n"
         "- job_0\n"
         "on_fail:\n"
@@ -236,11 +236,11 @@ def test_spec_job_default_resources():
 
 def test_spec_job_bad_fields():
     """Bad field values should be flagged"""
-    # Check ID
+    # Check ident
     with pytest.raises(SpecError) as exc:
-        Job(id=123).check()
-    assert str(exc.value) == "ID must be a string"
-    assert exc.value.field == "id"
+        Job(ident=123).check()
+    assert str(exc.value) == "ident must be a string"
+    assert exc.value.field == "ident"
     # Check environment (non-dictionary)
     with pytest.raises(SpecError) as exc:
         Job(env=[1, 2, 3]).check()

@@ -26,7 +26,7 @@ class Job(SpecBase):
 
     def __init__(
         self,
-        id: Optional[str] = None,
+        ident: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         cwd: Optional[str] = None,
         command: Optional[str] = None,
@@ -38,7 +38,7 @@ class Job(SpecBase):
         yaml_path: Optional[Path] = None,
     ) -> None:
         super().__init__(yaml_path)
-        self.id = id
+        self.ident = ident
         self.env = env or {}
         self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
         self.command = command
@@ -72,8 +72,8 @@ class Job(SpecBase):
         return {x.name: x.count for x in self.resources if isinstance(x, License)}
 
     def check(self) -> None:
-        if self.id is not None and not isinstance(self.id, str):
-            raise SpecError(self, "id", "ID must be a string")
+        if self.ident is not None and not isinstance(self.ident, str):
+            raise SpecError(self, "ident", "ident must be a string")
         if not isinstance(self.env, dict):
             raise SpecError(self, "env", "Environment must be a dictionary")
         if set(map(type, self.env.keys())).difference({str}):
@@ -123,7 +123,7 @@ class JobArray(SpecBase):
 
     def __init__(
         self,
-        id: Optional[str] = None,
+        ident: Optional[str] = None,
         repeats: Optional[int] = None,
         jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = None,
         env: Optional[Dict[str, str]] = None,
@@ -134,7 +134,7 @@ class JobArray(SpecBase):
         yaml_path: Optional[Path] = None,
     ) -> None:
         super().__init__(yaml_path)
-        self.id = id
+        self.ident = ident
         self.repeats = 1 if (repeats is None) else repeats
         self.jobs = jobs or []
         self.env = env or {}
@@ -151,8 +151,8 @@ class JobArray(SpecBase):
         return expected
 
     def check(self) -> None:
-        if self.id is not None and not isinstance(self.id, str):
-            raise SpecError(self, "id", "ID must be a string")
+        if self.ident is not None and not isinstance(self.ident, str):
+            raise SpecError(self, "ident", "ident must be a string")
         if not isinstance(self.repeats, int) or self.repeats < 0:
             raise SpecError(self, "repeats", "Repeats must be a positive integer")
         if not isinstance(self.jobs, list):
@@ -163,7 +163,7 @@ class JobArray(SpecBase):
                 "jobs",
                 "Expecting a list of only Job, JobArray, and JobGroup",
             )
-        id_count = Counter(x.id for x in self.jobs)
+        id_count = Counter(x.ident for x in self.jobs)
         duplicated = [k for k, v in id_count.items() if v > 1]
         if duplicated:
             raise SpecError(
@@ -195,7 +195,7 @@ class JobGroup(SpecBase):
 
     def __init__(
         self,
-        id: Optional[str] = None,
+        ident: Optional[str] = None,
         jobs: Optional[List[Union[Job, "JobGroup", JobArray]]] = None,
         env: Optional[Dict[str, str]] = None,
         cwd: Optional[str] = None,
@@ -205,7 +205,7 @@ class JobGroup(SpecBase):
         yaml_path: Optional[Path] = None,
     ) -> None:
         super().__init__(yaml_path)
-        self.id = id
+        self.ident = ident
         self.jobs = jobs or []
         self.env = env or {}
         self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
@@ -221,8 +221,8 @@ class JobGroup(SpecBase):
         return expected
 
     def check(self) -> None:
-        if self.id is not None and not isinstance(self.id, str):
-            raise SpecError(self, "id", "ID must be a string")
+        if self.ident is not None and not isinstance(self.ident, str):
+            raise SpecError(self, "ident", "ident must be a string")
         if not isinstance(self.jobs, list):
             raise SpecError(self, "jobs", "Jobs must be a list")
         if set(map(type, self.jobs)).difference({Job, JobArray, JobGroup}):
@@ -231,7 +231,7 @@ class JobGroup(SpecBase):
                 "jobs",
                 "Expecting a list of only Job, JobArray, and JobGroup",
             )
-        id_count = Counter(x.id for x in self.jobs)
+        id_count = Counter(x.ident for x in self.jobs)
         duplicated = [k for k, v in id_count.items() if v > 1]
         if duplicated:
             raise SpecError(

@@ -34,7 +34,7 @@ class ChildState(Enum):
 @dataclass
 class Child:
     spec: Union[Job, JobArray, JobGroup]
-    id: str = "N/A"
+    ident: str = "N/A"
     tracking: Optional[Path] = None
     state: ChildState = ChildState.PENDING
     result: Result = Result.UNKNOWN

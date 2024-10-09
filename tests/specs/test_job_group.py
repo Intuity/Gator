@@ -23,15 +23,15 @@ def test_spec_job_group_positional():
     """A job group should preserve all positional arguments provided to it"""
     jobs = [JobGroup() for _ in range(5)]
     group = JobGroup("grp_123", jobs)
-    assert group.id == "grp_123"
+    assert group.ident == "grp_123"
     assert group.jobs == jobs
 
 
 def test_spec_job_group_named():
     """A job group should preserve all named arguments provided to it"""
     jobs = [JobGroup() for _ in range(5)]
-    group = JobGroup(id="grp_123", jobs=jobs)
-    assert group.id == "grp_123"
+    group = JobGroup(ident="grp_123", jobs=jobs)
+    assert group.ident == "grp_123"
     assert group.jobs == jobs
 
 
@@ -40,10 +40,10 @@ def test_spec_job_group_parse(tmp_path):
     spec_file = tmp_path / "job_group.yaml"
     spec_file.write_text(
         "!JobGroup\n"
-        "  id: grp_123\n"
+        "  ident: grp_123\n"
         "  jobs:\n"
         "  - !Job\n"
-        "      id: id_123\n"
+        "      ident: id_123\n"
         "      env:\n"
         "        key_a: 2345\n"
         "        key_b: False\n"
@@ -52,10 +52,10 @@ def test_spec_job_group_parse(tmp_path):
         "      args:\n"
         "        - String to print A\n"
         "  - !JobGroup\n"
-        "      id: grp_234\n"
+        "      ident: grp_234\n"
         "      jobs: \n"
         "      - !Job\n"
-        "          id: id_234\n"
+        "          ident: id_234\n"
         "          env:\n"
         "            key_a: 3456\n"
         "            key_b: True\n"
@@ -66,21 +66,21 @@ def test_spec_job_group_parse(tmp_path):
     )
     group = Spec.parse(spec_file)
     assert isinstance(group, JobGroup)
-    assert group.id == "grp_123"
+    assert group.ident == "grp_123"
     assert len(group.jobs) == 2
     # JOBS[0]
     assert isinstance(group.jobs[0], Job)
-    assert group.jobs[0].id == "id_123"
+    assert group.jobs[0].ident == "id_123"
     assert group.jobs[0].env == {"key_a": 2345, "key_b": False}
     assert group.jobs[0].cwd == "/path/to/working/dir_a"
     assert group.jobs[0].command == "echo"
     assert group.jobs[0].args == ["String to print A"]
     # JOBS[1]
     assert isinstance(group.jobs[1], JobGroup)
-    assert group.jobs[1].id == "grp_234"
+    assert group.jobs[1].ident == "grp_234"
     assert len(group.jobs[1].jobs) == 1
     # JOBS[1].JOBS[0]
-    assert group.jobs[1].jobs[0].id == "id_234"
+    assert group.jobs[1].jobs[0].ident == "id_234"
     assert group.jobs[1].jobs[0].env == {"key_a": 3456, "key_b": True}
     assert group.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
     assert group.jobs[1].jobs[0].command == "echo"
@@ -93,10 +93,10 @@ def test_spec_job_group_parse_str():
     """Parse a specification from a YAML string"""
     spec_str = (
         "!JobGroup\n"
-        "  id: grp_123\n"
+        "  ident: grp_123\n"
         "  jobs:\n"
         "  - !Job\n"
-        "      id: id_123\n"
+        "      ident: id_123\n"
         "      env:\n"
         "        key_a: 2345\n"
         "        key_b: False\n"
@@ -105,10 +105,10 @@ def test_spec_job_group_parse_str():
         "      args:\n"
         "        - String to print A\n"
         "  - !JobGroup\n"
-        "      id: grp_234\n"
+        "      ident: grp_234\n"
         "      jobs: \n"
         "      - !Job\n"
-        "          id: id_234\n"
+        "          ident: id_234\n"
         "          env:\n"
         "            key_a: 3456\n"
         "            key_b: True\n"
@@ -119,21 +119,21 @@ def test_spec_job_group_parse_str():
     )
     group = Spec.parse_str(spec_str)
     assert isinstance(group, JobGroup)
-    assert group.id == "grp_123"
+    assert group.ident == "grp_123"
     assert len(group.jobs) == 2
     # JOBS[0]
     assert isinstance(group.jobs[0], Job)
-    assert group.jobs[0].id == "id_123"
+    assert group.jobs[0].ident == "id_123"
     assert group.jobs[0].env == {"key_a": 2345, "key_b": False}
     assert group.jobs[0].cwd == "/path/to/working/dir_a"
     assert group.jobs[0].command == "echo"
     assert group.jobs[0].args == ["String to print A"]
     # JOBS[1]
     assert isinstance(group.jobs[1], JobGroup)
-    assert group.jobs[1].id == "grp_234"
+    assert group.jobs[1].ident == "grp_234"
     assert len(group.jobs[1].jobs) == 1
     # JOBS[1].JOBS[0]
-    assert group.jobs[1].jobs[0].id == "id_234"
+    assert group.jobs[1].jobs[0].ident == "id_234"
     assert group.jobs[1].jobs[0].env == {"key_a": 3456, "key_b": True}
     assert group.jobs[1].jobs[0].cwd == "/path/to/working/dir_b"
     assert group.jobs[1].jobs[0].command == "echo"
@@ -145,19 +145,19 @@ def test_spec_job_group_parse_str():
 def test_spec_job_group_dump():
     """Dump a specification to a YAML string"""
     job = Job(
-        id="id_123",
+        ident="id_123",
         env={"key_a": 2345, "key_b": False},
         cwd="/path/to/working/dir",
         command="echo",
         args=["String to print"],
     )
-    grp = JobGroup(id="grp_123", jobs=[job])
+    grp = JobGroup(ident="grp_123", jobs=[job])
     spec_str = Spec.dump(grp)
     assert spec_str == (
         "!JobGroup\n"
         "cwd: null\n"
         "env: {}\n"
-        "id: grp_123\n"
+        "ident: grp_123\n"
         "jobs:\n"
         "- !Job\n"
         "  args:\n"
@@ -167,7 +167,7 @@ def test_spec_job_group_dump():
         "  env:\n"
         "    key_a: 2345\n"
         "    key_b: false\n"
-        "  id: id_123\n"
+        "  ident: id_123\n"
         "  on_done: []\n"
         "  on_fail: []\n"
         "  on_pass: []\n"
@@ -180,11 +180,11 @@ def test_spec_job_group_dump():
 
 def test_spec_job_group_bad_fields():
     """Bad field values should be flagged"""
-    # Check ID
+    # Check ident
     with pytest.raises(SpecError) as exc:
-        JobGroup(id=123).check()
-    assert str(exc.value) == "ID must be a string"
-    assert exc.value.field == "id"
+        JobGroup(ident=123).check()
+    assert str(exc.value) == "ident must be a string"
+    assert exc.value.field == "ident"
     # Check jobs (non-list)
     with pytest.raises(SpecError) as exc:
         JobGroup(jobs={"a": 1}).check()
@@ -234,6 +234,6 @@ def test_spec_job_group_bad_fields():
         assert exc.value.field == field
     # Check recursion of check into child
     with pytest.raises(SpecError) as exc:
-        JobGroup(jobs=[Job(id="hi"), Job(id=123)]).check()
-    assert str(exc.value) == "ID must be a string"
-    assert exc.value.field == "id"
+        JobGroup(jobs=[Job(ident="hi"), Job(ident=123)]).check()
+    assert str(exc.value) == "ident must be a string"
+    assert exc.value.field == "ident"
