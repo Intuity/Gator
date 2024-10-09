@@ -59,14 +59,10 @@ class LocalScheduler(BaseScheduler):
             del self.slots[ident]
             self.update.set()
         # Log how many concurrency slots were released
-        await self.logger.debug(
-            f"Task '{ident}' released {released} slots on completion"
-        )
+        await self.logger.debug(f"Task '{ident}' released {released} slots on completion")
 
     async def launch(self, tasks: List[Child]) -> None:
-        await self.logger.debug(
-            f"Local scheduler using concurrency of {self.concurrency}"
-        )
+        await self.logger.debug(f"Local scheduler using concurrency of {self.concurrency}")
 
         async def _inner():
             # Track tasks to be scheduled
@@ -91,9 +87,7 @@ class LocalScheduler(BaseScheduler):
                     granted = min(slots, task.spec.expected_jobs)
                 slots -= granted
                 # Log
-                await self.logger.debug(
-                    f"Scheduling '{task.ident}' with {granted} slots"
-                )
+                await self.logger.debug(f"Scheduling '{task.ident}' with {granted} slots")
                 # Get the lock again
                 async with self.update_lock:
                     # Launch jobs

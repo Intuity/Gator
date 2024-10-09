@@ -114,14 +114,10 @@ async def launch(
         )
     # Unsupported forms
     else:
-        raise Exception(
-            f"Unsupported specification object of type {type(spec).__name__}"
-        )
+        raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
 
     # Setup signal handler to capture CTRL+C events
-    def _handler(
-        sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]
-    ):
+    def _handler(sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]):
         if top.is_root:
             evt_loop.create_task(top.stop())
 
