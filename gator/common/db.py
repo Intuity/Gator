@@ -209,15 +209,15 @@ class Database:
                 f"VALUES ({', '.join(['?' for _ in fnames])})"
             )
 
-            async def _push(object: descr) -> None:
+            async def _push(item: descr) -> int | None:
                 nonlocal sql_put, transforms_put
-                assert isinstance(object, descr), "Wrong object type"
-                values = [x(y) for x, y in zip(transforms_put, dataclasses.astuple(object)[1:])]
+                assert isinstance(item, descr), "Wrong object type"
+                values = [x(y) for x, y in zip(transforms_put, dataclasses.astuple(item)[1:])]
                 async with self.__db.execute(sql_put, values) as cursor:
-                    object.db_uid = cursor.lastrowid
+                    item.db_uid = cursor.lastrowid
                 if push_callback is not None:
-                    await push_callback(object)
-                return object.db_uid
+                    await push_callback(item)
+                return item.db_uid
 
             setattr(self, f"push_{descr.__name__.lower()}", _push)
             # Create an 'update' method
@@ -227,15 +227,15 @@ class Database:
                 + " WHERE db_uid = :db_uid"
             )
 
-            async def _update(object: descr) -> None:
+            async def _update(item: descr) -> None:
                 nonlocal sql_update, transforms_put
-                assert isinstance(object, descr), "Wrong object type"
-                assert object.db_uid is not None, "Object has no UID field"
+                assert isinstance(item, descr), "Wrong object type"
+                assert item.db_uid is not None, "Object has no UID field"
                 params = {
                     k: x(y)
-                    for k, x, y in zip(fnames, transforms_put, dataclasses.astuple(object)[1:])
+                    for k, x, y in zip(fnames, transforms_put, dataclasses.astuple(item)[1:])
                 }
-                params["db_uid"] = object.db_uid
+                params["db_uid"] = item.db_uid
                 await self.__db.execute(sql_update, params)
 
             setattr(self, f"update_{descr.__name__.lower()}", _update)
@@ -305,18 +305,18 @@ class Database:
             # Track registration
             self.registered.append(descr)
 
-    async def push(self, object: Any) -> None:
-        descr = type(object)
+    async def push(self, item: Any) -> None:
+        descr = type(item)
         if descr not in self.registered:
             await self.register(descr)
-        result = await getattr(self, f"push_{descr.__name__.lower()}")(object)
+        result = await getattr(self, f"push_{descr.__name__.lower()}")(item)
         return result
 
-    async def update(self, object: Any) -> None:
-        descr = type(object)
+    async def update(self, item: Any) -> None:
+        descr = type(item)
         if descr not in self.registered:
             await self.register(descr)
-        result = await getattr(self, f"update_{descr.__name__.lower()}")(object)
+        result = await getattr(self, f"update_{descr.__name__.lower()}")(item)
         return result
 
     async def get(self, descr: Type[dataclasses.dataclass], **kwargs: Dict[str, Any]) -> Any:
