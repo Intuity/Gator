@@ -230,7 +230,7 @@ specification to execute.
         "req_id" : 1,
         "posted" : false,
         "payload": {
-            "id": "child_job_a"
+            "ident": "child_job_a"
         }
     }
     ```
@@ -243,7 +243,7 @@ specification to execute.
         "rsp_id" : 1,
         "result" : "success",
         "payload": {
-            "spec": "!Job\nid: child_job_a\n..."
+            "spec": "!Job\nident: child_job_a\n..."
         }
     }
     ```
@@ -252,7 +252,7 @@ The request fields of this action are as follows:
 
 | Field | Required         | Type    | Description                             |
 |-------|:----------------:|---------|-----------------------------------------|
-| id    | :material-check: | string  | Identifier of the child tier or wrapper |
+| ident | :material-check: | string  | Identifier of the child tier or wrapper |
 
 The response fields of this action are as follows:
 
@@ -274,7 +274,7 @@ and sends the `register` action which updates its state to `STARTED`.
         "req_id" : 1,
         "posted" : false,
         "payload": {
-            "id"    : "child_job_a",
+            "ident" : "child_job_a",
             "server": "192.168.0.65:54241"
         }
     }
@@ -295,7 +295,7 @@ The request fields of this action are as follows:
 
 | Field  | Required         | Type    | Description                             |
 |--------|:----------------:|---------|-----------------------------------------|
-| id     | :material-check: | string  | Identifier of the child tier or wrapper |
+| ident  | :material-check: | string  | Identifier of the child tier or wrapper |
 | server | :material-check: | string  | URL of the child's websocket            |
 
 ### Update
@@ -312,7 +312,7 @@ via the `update` action.
         "req_id" : 1,
         "posted" : false,
         "payload": {
-            "id"        : "child_a",
+            "ident"     : "child_a",
             "sub_total" : 10,
             "sub_active": 4,
             "sub_passed": 2,
@@ -344,7 +344,7 @@ The request fields of this action are as follows:
 
 | Field      | Required         | Type    | Description                                                           |
 |------------|:----------------:|---------|-----------------------------------------------------------------------|
-| id         | :material-check: | string  | Identifier of the child tier or wrapper                               |
+| ident      | :material-check: | string  | Identifier of the child tier or wrapper                               |
 | sub_total  | :material-check: | integer | Number of total jobs expected to run at or beneath the child layer    |
 | sub_active | :material-check: | integer | Number of currently active jobs running at or beneath the child layer |
 | sub_passed | :material-check: | integer | Number of jobs completed successful at or beneath the child layer     |
@@ -371,7 +371,7 @@ to the parent tier using the `complete` action.
         "req_id" : 1,
         "posted" : false,
         "payload": {
-            "id"        : "child_a",
+            "ident"     : "child_a",
             "result"    : "SUCCESS",
             "code"      : 0,
             "sub_total" : 10,
@@ -404,7 +404,7 @@ The request fields of this action are as follows:
 
 | Field      | Required         | Type    | Description                                                        |
 |------------|:----------------:|---------|--------------------------------------------------------------------|
-| id         | :material-check: | string  | Identifier of the child tier or wrapper                            |
+| ident      | :material-check: | string  | Identifier of the child tier or wrapper                            |
 | result     | :material-check: | string  | Child's result either `SUCCESS` or `FAILURE`                       |
 | code       | :material-check: | integer | Exit code of the child wrapper's task                              |
 | sub_total  | :material-check: | integer | Number of total jobs expected to run at or beneath the child layer |

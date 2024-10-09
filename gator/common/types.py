@@ -14,8 +14,8 @@
 
 import dataclasses
 import logging
-from enum import IntEnum
 from datetime import datetime
+from enum import IntEnum
 
 from .db import Base
 

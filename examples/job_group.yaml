@@ -1,21 +1,21 @@
 !JobGroup
-id  : test_group
+ident: test_group
 jobs:
   - !Job
-      id     : job_a
+      ident  : job_a
       command: sleep
       args   :
         - 10
   - !JobGroup
-      id  : nested
+      ident: nested
       jobs:
         - !Job
-            id     : job_b
+            ident  : job_b
             command: echo
             args   :
               - "This is B"
         - !Job
-            id     : job_c
+            ident  : job_c
             command: echo
             args   :
               - "This is C"

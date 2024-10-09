@@ -31,16 +31,14 @@ class TestTypes:
         await database.start()
         # Push a bunch of attributes
         for idx in range(100):
-            await database.push(
-                Attribute(name=f"attr_{idx}", value=f"value_{idx}")
-            )
+            await database.push(Attribute(name=f"attr_{idx}", value=f"value_{idx}"))
         # Get attributes
         attrs = await database.get(Attribute, value=Query(like="value_1%"))
         assert len(attrs) == 11
-        assert set(x.name for x in attrs) == {
+        assert {x.name for x in attrs} == {
             f"attr_{x}" for x in (1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
         }
-        assert set(x.value for x in attrs) == {
+        assert {x.value for x in attrs} == {
             f"value_{x}" for x in (1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
         }
         # Clean-up
@@ -65,13 +63,9 @@ class TestTypes:
         for sev in LogSeverity:
             entries = await database.get(LogEntry, severity=sev)
             assert len(entries) == 10
-            assert set(x.severity for x in entries) == {sev}
-            assert set(x.message for x in entries) == {
-                f"{sev.name} - {x}" for x in range(10)
-            }
-            assert set(x.timestamp.timestamp() for x in entries) == set(
-                range(10)
-            )
+            assert {x.severity for x in entries} == {sev}
+            assert {x.message for x in entries} == {f"{sev.name} - {x}" for x in range(10)}
+            assert {x.timestamp.timestamp() for x in entries} == set(range(10))
         # Clean-up
         await database.stop()
 
@@ -90,22 +84,12 @@ class TestTypes:
                 )
             )
         # Retrieve
-        entries = await database.get(
-            ProcStat, timestamp=Query(gte=datetime.fromtimestamp(90))
-        )
+        entries = await database.get(ProcStat, timestamp=Query(gte=datetime.fromtimestamp(90)))
         assert len(entries) == 10
-        assert set(x.nproc for x in entries) == {
-            (1 + x) for x in range(90, 100)
-        }
-        assert set(x.cpu for x in entries) == {(20 * x) for x in range(90, 100)}
-        assert set(x.mem for x in entries) == {
-            (100 * x) for x in range(90, 100)
-        }
-        assert set(x.vmem for x in entries) == {
-            ((100 * x) + 25) for x in range(90, 100)
-        }
-        assert set(x.timestamp.timestamp() for x in entries) == set(
-            range(90, 100)
-        )
+        assert {x.nproc for x in entries} == {(1 + x) for x in range(90, 100)}
+        assert {x.cpu for x in entries} == {(20 * x) for x in range(90, 100)}
+        assert {x.mem for x in entries} == {(100 * x) for x in range(90, 100)}
+        assert {x.vmem for x in entries} == {((100 * x) + 25) for x in range(90, 100)}
+        assert {x.timestamp.timestamp() for x in entries} == set(range(90, 100))
         # Clean-up
         await database.stop()

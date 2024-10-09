@@ -136,8 +136,7 @@ class TestWebsocketWrapper:
         # Check the exception
         assert isinstance(exception.value, WebsocketWrapperError)
         assert (
-            str(exception.value)
-            == f"Server responded with an error for 'some_route': {response}"
+            str(exception.value) == f"Server responded with an error for 'some_route': {response}"
         )
 
     async def test_monitor_fallback(self, wrapper, mocker):
@@ -211,9 +210,7 @@ class TestWebsocketWrapper:
         mk_async = AsyncMock()
         mk_route = mocker.patch.object(wrapper, "route", new=mk_async.route)
         # Setup a pending item
-        wrapper._WebsocketWrapper__pending[123] = (
-            pend := WebsocketWrapperPending(123)
-        )
+        wrapper._WebsocketWrapper__pending[123] = (pend := WebsocketWrapperPending(123))
         # Check that an unsolicited response uses the fallback
         message = {
             "action": "some_route",

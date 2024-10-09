@@ -14,9 +14,9 @@
 
 from types import SimpleNamespace
 
+from piccolo.columns import ForeignKey, Integer, Serial, Varchar
 from piccolo.engine.postgres import PostgresEngine
 from piccolo.table import Table
-from piccolo.columns import Varchar, Integer, Serial, ForeignKey
 
 
 def setup_db(host: str, port: str, name: str, user: str, password: str):
@@ -41,7 +41,7 @@ def setup_db(host: str, port: str, name: str, user: str, password: str):
     class Registration(Table, db=db):
         uid = Serial(primary_key=True, unique=True, index=True)
         layer = Varchar(16)
-        id = Varchar(250)
+        ident = Varchar(250)
         server_url = Varchar(250)
         owner = Varchar(250)
         timestamp = Integer()
@@ -54,6 +54,4 @@ def setup_db(host: str, port: str, name: str, user: str, password: str):
         name = Varchar(250)
         value = Integer()
 
-    return db, SimpleNamespace(
-        **{x.__name__: x for x in (Completion, Registration, Metric)}
-    )
+    return db, SimpleNamespace(**{x.__name__: x for x in (Completion, Registration, Metric)})

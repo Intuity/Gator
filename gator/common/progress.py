@@ -79,16 +79,15 @@ class PassFailBar(JupyterMixin):
 
         Args:
             completed (float): Number of steps completed.
-            total (float, optional): Total number of steps, or ``None`` to not change. Defaults to None.
+            total (float, optional): Total number of steps, or ``None`` to not change.
+            Defaults to None.
         """
         self.total = total
         self.active = active
         self.passed = passed
         self.failed = failed
 
-    def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         # Ensure space for the title text
         title_width = len(self.title) + 1
         # Ensure space for the progress detail i.e. '1/2/3/4'
@@ -99,8 +98,8 @@ class PassFailBar(JupyterMixin):
         width -= title_width + detail_width + 1
 
         # Determine if unicode fully supported
-        ascii = options.legacy_windows or options.ascii_only
-        char_full_bar = "-" if ascii else "━"
+        using_ascii = options.legacy_windows or options.ascii_only
+        char_full_bar = "-" if using_ascii else "━"
 
         # Work out the sizes of each part of the progress bar
         max_halves = int(width * 2)
@@ -149,9 +148,7 @@ class PassFailBar(JupyterMixin):
         )
         yield table
 
-    def __rich_measure__(
-        self, console: Console, options: ConsoleOptions
-    ) -> Measurement:
+    def __rich_measure__(self, console: Console, options: ConsoleOptions) -> Measurement:
         return (
             Measurement(self.width, self.width)
             if self.width is not None
@@ -163,7 +160,8 @@ if __name__ == "__main__":  # pragma: no cover
     console = Console()
     bar = PassFailBar("Regression", 100, 0, 0, 0)
 
-    import random, time
+    import random
+    import time
 
     console.show_cursor(False)
     total = 100

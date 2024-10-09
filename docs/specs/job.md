@@ -3,7 +3,7 @@ should be executed within:
 
 ```yaml linenums="1"
 !Job
-  id       : test_job
+  ident: test_job
   cwd      : /path/to/working/directory
   command  : echo
   args     :
@@ -26,7 +26,7 @@ should be executed within:
 
 | Field       | Required         | Description                                                                           |
 |-------------|:----------------:|---------------------------------------------------------------------------------------|
-| `id`        | :material-check: | Identifier for the job, used to navigate job hierarchy                                |
+| `ident`     | :material-check: | Identifier for the job, used to navigate job hierarchy                                |
 | `cwd`       |                  | Working directory, if not specified then the launch shell's `$CWD` is used            |
 | `command`   | :material-check: | Command to execute                                                                    |
 | `args`      |                  | List of arguments to provide to the command                                           |

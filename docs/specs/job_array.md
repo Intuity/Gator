@@ -5,7 +5,7 @@ times.
 
 ```yaml linenums="1"
 !JobArray
-  id     : top
+  ident  : top
   repeats: 4
   cwd    : /path/to/working/directory
   env    :
@@ -13,7 +13,7 @@ times.
     ENV_KEY_B: 12345
   jobs   :
     - !Job
-        id     : echo_count
+        ident  : echo_count
         command: echo
         args   :
           - "${GATOR_ARRAY_INDEX}"
@@ -33,7 +33,7 @@ times.
 
 | Field       | Required         | Description                                                                       |
 |-------------|:----------------:|-----------------------------------------------------------------------------------|
-| `id`        | :material-check: | Identifier for the job array, used to navigate job hierarchy                      |
+| `ident`     | :material-check: | Identifier for the job array, used to navigate job hierarchy                      |
 | `repeats`   |                  | Number of times to repeat jobs in the list, defaults to 1                         |
 | `cwd`       |                  | Working directory, if not specified then the launch shell's `$CWD` is used        |
 | `env`       |                  | Dictionary of environment variables to overlay                                    |
