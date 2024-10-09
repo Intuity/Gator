@@ -298,8 +298,8 @@ class TestTier:
         touch_c = tmp_path / "touch.c"
         touch_d = tmp_path / "touch.d"
         # Define jobs
-        job_x = Job("x", command="exit", args=[1])
-        job_y = Job("y", command="exit", args=[0])
+        job_x = Job("x", command="fake", args=[])
+        job_y = Job("y", command="true", args=[])
         job_a = Job("a", command="touch", args=[touch_a.as_posix()], on_pass=["x"])
         job_b = Job("b", command="touch", args=[touch_b.as_posix()], on_fail=["x"])
         job_c = Job("c", command="touch", args=[touch_c.as_posix()], on_pass=["y"])
