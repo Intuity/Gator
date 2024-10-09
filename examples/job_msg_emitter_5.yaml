@@ -9,8 +9,9 @@ jobs:
       command: python3
       args:
         - emitter.py
-        - 10000
-        - A
+        - --count=5
+        - --exclude_errors
+        - --prefix=A
       resources:
         - !Cores [1]
         - !Memory [30, MB]
@@ -22,8 +23,9 @@ jobs:
       command: python3
       args:
         - emitter.py
-        - 10000
-        - B
+        - --count=5
+        - --exclude_errors
+        - --prefix=B
       resources:
         - !Cores [1]
         - !Memory [30, MB]

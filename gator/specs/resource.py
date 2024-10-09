@@ -12,19 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import Path
-from typing import Optional
+from dataclasses import dataclass
 
 from .common import SpecBase, SpecError
 
 
+@dataclass
 class Cores(SpecBase):
     yaml_tag = "!Cores"
 
-    def __init__(self, count: int, yaml_path: Optional[Path] = None) -> None:
-        super().__init__(yaml_path)
-        self.count = count
-        self.yaml_path = yaml_path
+    count: int
 
     def check(self) -> None:
         if not isinstance(self.count, int):
@@ -35,13 +32,12 @@ class Cores(SpecBase):
             raise SpecError(self, "count", "Count must be zero or greater")
 
 
+@dataclass
 class Memory(SpecBase):
     yaml_tag = "!Memory"
 
-    def __init__(self, size: int, unit: str = "MB", yaml_path: Optional[Path] = None) -> None:
-        super().__init__(yaml_path)
-        self.size = size
-        self.unit = unit
+    size: int
+    unit: str = "MB"
 
     @property
     def in_megabytes(self) -> int:
@@ -61,13 +57,12 @@ class Memory(SpecBase):
             raise SpecError(self, "unit", f"Unknown unit '{self.unit}'")
 
 
+@dataclass
 class License(SpecBase):
     yaml_tag = "!License"
 
-    def __init__(self, name: str, count: int = 1, yaml_path: Optional[Path] = None) -> None:
-        super().__init__(yaml_path)
-        self.name = name
-        self.count = count
+    name: str
+    count: int = 1
 
     def check(self) -> None:
         if not isinstance(self.name, str):

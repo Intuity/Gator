@@ -15,7 +15,6 @@
 import functools
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase, SpecError
@@ -35,7 +34,6 @@ class Job(SpecBase):
     on_done: Optional[List[str]] = field(default_factory=list)
     on_fail: Optional[List[str]] = field(default_factory=list)
     on_pass: Optional[List[str]] = field(default_factory=list)
-    yaml_path: Optional[Path] = None
 
     def __post_init__(self):
         self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
@@ -104,7 +102,7 @@ class Job(SpecBase):
                 )
         for condition in ("on_done", "on_fail", "on_pass"):
             value = getattr(self, condition)
-            if not isinstance(value, condition):
+            if not isinstance(value, list):
                 raise SpecError(self, condition, f"The {condition} dependencies must be a list")
             if set(map(type, value)).difference({str}):
                 raise SpecError(self, condition, f"The {condition} entries must be strings")
@@ -122,7 +120,6 @@ class JobArray(SpecBase):
     on_fail: Optional[List[str]] = field(default_factory=list)
     on_pass: Optional[List[str]] = field(default_factory=list)
     on_done: Optional[List[str]] = field(default_factory=list)
-    yaml_path: Optional[Path] = None
 
     def __post_init__(self):
         self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
@@ -185,7 +182,6 @@ class JobGroup(SpecBase):
     on_fail: Optional[List[str]] = field(default_factory=list)
     on_pass: Optional[List[str]] = field(default_factory=list)
     on_done: Optional[List[str]] = field(default_factory=list)
-    yaml_path: Optional[Path] = None
 
     def __post_init__(self):
         self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)

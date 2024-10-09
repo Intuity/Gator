@@ -1,0 +1,31 @@
+!JobGroup
+ident: top
+jobs:
+- !JobGroup
+  ident: path_a
+  jobs:
+  - !Job
+      ident: msg_emitter
+      command: python3
+      args:
+        - emitter.py
+        - --count=10000
+        - --exclude_errors
+        - --prefix=A
+      resources:
+        - !Cores [1]
+        - !Memory [30, MB]
+- !JobGroup
+  ident: path_b
+  jobs:
+  - !Job
+      ident: msg_emitter
+      command: python3
+      args:
+        - emitter.py
+        - --count=10000
+        - --exclude_errors
+        - --prefix=B
+      resources:
+        - !Cores [1]
+        - !Memory [30, MB]
