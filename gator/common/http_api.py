@@ -74,9 +74,7 @@ class HTTPAPI:
         else:
             return {}
 
-    async def post(
-        self, route: str, **kwargs: Dict[str, Union[str, int]]
-    ) -> Dict[str, str]:
+    async def post(self, route: str, **kwargs: Dict[str, Union[str, int]]) -> Dict[str, str]:
         """
         Perform a POST request on a route supported by the parent server,
         attaching a JSON encoded dictionary of the keyword arguments to the query.

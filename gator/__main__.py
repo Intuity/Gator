@@ -21,8 +21,7 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from . import launch
-from . import launch_progress
+from . import launch, launch_progress
 from .common.logger import MessageLimits
 from .scheduler import LocalScheduler
 from .specs import Spec
@@ -30,10 +29,8 @@ from .specs.common import SpecError
 
 
 @click.command()
-@click.option("--id", default=None, type=str, help="Instance identifier")
-@click.option(
-    "--hub", default=None, type=str, help="URL of a Gator Hub instance"
-)
+@click.option("--id", "ident", default=None, type=str, help="Instance identifier")
+@click.option("--hub", default=None, type=str, help="URL of a Gator Hub instance")
 @click.option("--parent", default=None, type=str, help="Pointer to parent node")
 @click.option(
     "--interval",
@@ -42,21 +39,15 @@ from .specs.common import SpecError
     help="Polling interval",
     show_default=True,
 )
-@click.option(
-    "--tracking", default=None, type=click.Path(), help="Tracking directory"
-)
-@click.option(
-    "--quiet", default=False, count=True, help="Silence STDOUT logging"
-)
+@click.option("--tracking", default=None, type=click.Path(), help="Tracking directory")
+@click.option("--quiet", default=False, count=True, help="Silence STDOUT logging")
 @click.option(
     "--all-msg",
     default=False,
     count=True,
     help="Propagate all messages to the top level",
 )
-@click.option(
-    "--verbose", default=False, count=True, help="Show debug messages"
-)
+@click.option("-v", "--verbose", default=False, count=True, help="Show debug messages")
 @click.option("--progress", default=False, count=True, help="Show progress bar")
 @click.option(
     "--scheduler",
@@ -65,9 +56,7 @@ from .specs.common import SpecError
     help="Select the scheduler to use for launching jobs",
     show_default=True,
 )
-@click.option(
-    "--sched-arg", multiple=True, type=str, help="Arguments to the scheduler"
-)
+@click.option("--sched-arg", multiple=True, type=str, help="Arguments to the scheduler")
 @click.option(
     "--limit-warning",
     type=int,
@@ -88,7 +77,7 @@ from .specs.common import SpecError
 )
 @click.argument("spec", type=click.Path(exists=True), required=False)
 def main(
-    id: str,
+    ident: str,
     hub: str,
     parent: str,
     interval: int,
@@ -106,9 +95,7 @@ def main(
 ) -> None:
     # Determine a tracking directory
     tracking = (
-        Path(tracking)
-        if tracking
-        else (Path.cwd() / "tracking" / datetime.now().isoformat())
+        Path(tracking) if tracking else (Path.cwd() / "tracking" / datetime.now().isoformat())
     )
     tracking.mkdir(parents=True, exist_ok=True)
     # Select the right scheduler
@@ -129,7 +116,7 @@ def main(
     try:
         asyncio.run(
             (launch_progress if progress else launch).launch(
-                id=id,
+                ident=ident,
                 hub=hub,
                 parent=parent,
                 spec=Path(spec) if spec is not None else None,

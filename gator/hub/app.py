@@ -17,7 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, Union
 
-from quart import Quart, render_template, request
+from quart import (
+    Quart,
+    current_app,
+    request,
+)
 
 from ..common.ws_client import WebsocketClient
 from .tables import setup_db
@@ -39,9 +43,8 @@ def setup_hub(
     # Create Quart application to host the interface and handle API requests
     hub = Quart(
         "gator-hub",
-        static_url_path="/assets",
-        static_folder=static / "src" / "assets",
-        template_folder=static,
+        static_folder=static.as_posix(),
+        static_url_path="",
     )
 
     @hub.before_serving
@@ -59,7 +62,7 @@ def setup_hub(
 
     @hub.get("/")
     async def html_root():
-        return await render_template("index.html")
+        return await current_app.send_static_file("index.html")
 
     @hub.get("/api")
     async def api_root():
@@ -69,15 +72,13 @@ def setup_hub(
     async def register():
         data = await request.get_json()
         new_reg = tables.Registration(
-            id=data["id"],
+            ident=data["ident"],
             layer=data["layer"],
             server_url=data["url"],
             owner=data["owner"],
             timestamp=int(datetime.now().timestamp()),
         )
-        data = await tables.Registration.insert(new_reg).returning(
-            tables.Registration.uid
-        )
+        data = await tables.Registration.insert(new_reg).returning(tables.Registration.uid)
         return {"result": "success", "uid": data[0]["uid"]}
 
     @hub.post("/api/job/<int:job_id>/complete")
@@ -87,9 +88,9 @@ def setup_hub(
             db_file=data["db_file"], timestamp=int(datetime.now().timestamp())
         )
         await tables.Completion.insert(new_cmp)
-        await tables.Registration.update(
-            {tables.Registration.completion: new_cmp}
-        ).where(Registration.uid == job_id)
+        await tables.Registration.update({tables.Registration.completion: new_cmp}).where(
+            tables.Registration.uid == job_id
+        )
         return {"result": "success"}
 
     def lookup_job(func: Callable) -> Callable:
@@ -101,7 +102,7 @@ def setup_hub(
             )
             return await func(reg, **kwargs)
 
-        setattr(_inner, "__name__", getattr(func, "__name__"))
+        _inner.__name__ = func.__name__
         return _inner
 
     @hub.post("/api/job/<int:job_id>/heartbeat")
@@ -110,12 +111,10 @@ def setup_hub(
         data = await request.get_json()
         for key, value in data.get("metrics", {}).items():
             if await tables.Metric.exists().where(
-                (tables.Metric.registration == job)
-                & (tables.Metric.name == key)
+                (tables.Metric.registration == job) & (tables.Metric.name == key)
             ):
                 await tables.Metric.update({tables.Metric.value: value}).where(
-                    (tables.Metric.registration == job)
-                    & (tables.Metric.name == key)
+                    (tables.Metric.registration == job) & (tables.Metric.name == key)
                 )
             else:
                 new_mtc = tables.Metric(registration=job, name=key, value=value)
@@ -132,9 +131,9 @@ def setup_hub(
         )
         data = []
         for job in jobs:
-            metrics = await tables.Metric.select(
-                tables.Metric.name, tables.Metric.value
-            ).where(tables.Metric.registration == job)
+            metrics = await tables.Metric.select(tables.Metric.name, tables.Metric.value).where(
+                tables.Metric.registration == job
+            )
             data.append({**job.to_dict(), "metrics": metrics})
         return data
 
@@ -143,9 +142,7 @@ def setup_hub(
     @lookup_job
     async def job_info(job):
         # Get all metrics
-        metrics = await tables.Metric.select().where(
-            tables.Metric.registration == job
-        )
+        metrics = await tables.Metric.select().where(tables.Metric.registration == job)
         # Return data
         return {"result": "success", "job": job.to_dict(), "metrics": metrics}
 
@@ -179,15 +176,15 @@ def setup_hub(
     async def job_layer(job, hierarchy: str = ""):
         # If this is a tier, resolve the hierarchy
         if job.layer == "tier":
-            logging.info(f"Resolving tier: {job.id} -> {hierarchy}")
+            logging.info(f"Resolving tier: {job.ident} -> {hierarchy}")
             hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
             async with WebsocketClient(job.server_url) as ws:
                 return await ws.resolve(path=hierarchy)
         # Otherwise, it's a wrapper so just return the top job
         else:
-            logging.info(f"Returning wrapper: {job.id}")
+            logging.info(f"Returning wrapper: {job.ident}")
             return {
-                "id": job.id,
+                "ident": job.ident,
                 "path": [],
                 "children": [],
             }

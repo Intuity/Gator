@@ -58,9 +58,7 @@ class TestWebsocketRouter:
         h_sync.route_a.return_value = {"word": "goodbye"}
         h_sync.route_b.return_value = {"word": "orange"}
         # Synchronous route A
-        await router.route(
-            ws, {"action": "sync_a", "payload": {"word": "hello"}}
-        )
+        await router.route(ws, {"action": "sync_a", "payload": {"word": "hello"}})
         h_sync.route_a.assert_called_with(ws=ws, word="hello")
         h_sync.route_a.reset_mock()
         assert not h_sync.route_b.called
@@ -98,9 +96,7 @@ class TestWebsocketRouter:
         h_async.route_a.return_value = {"word": "goodbye"}
         h_async.route_b.return_value = {"word": "orange"}
         # Synchronous route A
-        await router.route(
-            ws, {"action": "async_a", "payload": {"word": "hello"}}
-        )
+        await router.route(ws, {"action": "async_a", "payload": {"word": "hello"}})
         h_async.route_a.assert_called_with(ws=ws, word="hello")
         h_async.route_a.reset_mock()
         assert not h_async.route_b.called
@@ -159,9 +155,7 @@ class TestWebsocketRouter:
         h_sync.handler.reset_mock()
         ws.send.reset_mock()
         # Check async route
-        await router.route(
-            ws, {"action": "async", "payload": {"word": "apple"}}
-        )
+        await router.route(ws, {"action": "async", "payload": {"word": "apple"}})
         h_async.handler.assert_called_with(ws=ws, word="apple")
         ws.send.assert_called_with(
             json.dumps(
@@ -178,9 +172,7 @@ class TestWebsocketRouter:
         h_async.handler.reset_mock()
         ws.send.reset_mock()
         # Check fallback
-        await router.route(
-            ws, data := {"action": "other", "payload": {"word": "ostrich"}}
-        )
+        await router.route(ws, data := {"action": "other", "payload": {"word": "ostrich"}})
         fallback.route.assert_called_with(ws, data)
         assert not h_sync.handler.called
         assert not h_async.handler.called
@@ -253,9 +245,7 @@ class TestWebsocketRouter:
         h_async.handler.side_effect = _async
         # Posted request should not incur a response
         for action in ("sync", "async"):
-            await router.route(
-                ws, {"action": action, "req_id": 3, "posted": True}
-            )
+            await router.route(ws, {"action": action, "req_id": 3, "posted": True})
             mk_print.assert_called_with(
                 f"Caught Exception on route {action}: This is {action} error",
                 file=mk_sys.stderr,
@@ -264,9 +254,7 @@ class TestWebsocketRouter:
             mk_print.reset_mock()
         # Non-posted request should have a response
         for action in ("sync", "async"):
-            await router.route(
-                ws, {"action": action, "req_id": 3, "posted": False}
-            )
+            await router.route(ws, {"action": action, "req_id": 3, "posted": False})
             mk_print.assert_called_with(
                 f"Caught Exception on route {action}: This is {action} error",
                 file=mk_sys.stderr,

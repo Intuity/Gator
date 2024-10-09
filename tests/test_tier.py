@@ -14,7 +14,7 @@
 
 import asyncio
 from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -30,9 +30,7 @@ class TestTier:
     @pytest_asyncio.fixture(autouse=True)
     async def setup_teardown(self, mocker) -> None:
         # Patch database
-        self.mk_db_cls = mocker.patch(
-            "gator.common.layer.Database", new=MagicMock()
-        )
+        self.mk_db_cls = mocker.patch("gator.common.layer.Database", new=MagicMock())
         self.mk_db = MagicMock()
         self.mk_db_cls.return_value = self.mk_db
         self.mk_db.start = AsyncMock()
@@ -49,9 +47,7 @@ class TestTier:
         self.mk_db.update_metric = AsyncMock()
         # Patch wrapper timestamping
         self.mk_wrp_dt = mocker.patch("gator.wrapper.datetime")
-        self.mk_wrp_dt.now.side_effect = [
-            datetime.fromtimestamp(x) for x in (123, 234, 345, 456)
-        ]
+        self.mk_wrp_dt.now.side_effect = [datetime.fromtimestamp(x) for x in (123, 234, 345, 456)]
         # Create websocket client
         self.client = WebsocketClient()
         self.client.ws_event.set()
@@ -76,9 +72,7 @@ class TestTier:
         grp = JobGroup("group", jobs=[job])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(
-            spec=grp, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        tier = Tier(spec=grp, client=self.client, tracking=trk_dir, logger=self.logger)
         # Check tier
         assert tier.spec is grp
         assert tier.client is self.client
@@ -162,9 +156,7 @@ class TestTier:
         array = JobArray("arr", repeats=5, jobs=[job_n])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(
-            spec=array, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        tier = Tier(spec=array, client=self.client, tracking=trk_dir, logger=self.logger)
         # Check state
         assert not tier.complete
         assert not tier.terminated
@@ -187,21 +179,13 @@ class TestTier:
         touch_d = tmp_path / "touch.d"
         # Define jobs
         job_a = Job("a", command="touch", args=[touch_a.as_posix()])
-        job_b = Job(
-            "b", command="touch", args=[touch_b.as_posix()], on_fail=["a"]
-        )
-        job_c = Job(
-            "c", command="touch", args=[touch_c.as_posix()], on_pass=["a"]
-        )
-        job_d = Job(
-            "d", command="touch", args=[touch_d.as_posix()], on_done=["a"]
-        )
+        job_b = Job("b", command="touch", args=[touch_b.as_posix()], on_fail=["a"])
+        job_c = Job("c", command="touch", args=[touch_c.as_posix()], on_pass=["a"])
+        job_d = Job("d", command="touch", args=[touch_d.as_posix()], on_done=["a"])
         group = JobGroup("grp", jobs=[job_a, job_b, job_c, job_d])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(
-            spec=group, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        tier = Tier(spec=group, client=self.client, tracking=trk_dir, logger=self.logger)
         # Check state
         assert not tier.complete
         assert not tier.terminated
@@ -224,15 +208,11 @@ class TestTier:
         # Define jobs
         job_a = Job("a", command="touch", args=[touch_a.as_posix()])
         job_s = Job("s", command="sleep", args=[60], on_pass=["a"])
-        job_b = Job(
-            "b", command="touch", args=[touch_b.as_posix()], on_pass=["s"]
-        )
+        job_b = Job("b", command="touch", args=[touch_b.as_posix()], on_pass=["s"])
         group = JobGroup("grp", jobs=[job_a, job_s, job_b])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(
-            spec=group, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        tier = Tier(spec=group, client=self.client, tracking=trk_dir, logger=self.logger)
         # Check state
         assert not tier.complete
         assert not tier.terminated
@@ -266,9 +246,7 @@ class TestTier:
         group = JobGroup("grp", jobs=[job_a, job_b, job_c])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(
-            spec=group, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        tier = Tier(spec=group, client=self.client, tracking=trk_dir, logger=self.logger)
         # Check state
         assert not tier.complete
         assert not tier.terminated
@@ -293,9 +271,7 @@ class TestTier:
         group = JobGroup("grp", jobs=[job_a, job_b, job_c])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(
-            spec=group, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        tier = Tier(spec=group, client=self.client, tracking=trk_dir, logger=self.logger)
         # Check state
         assert not tier.complete
         assert not tier.terminated
@@ -305,9 +281,7 @@ class TestTier:
         assert tier.complete
         assert tier.terminated
         # Check error logged
-        mk_log.assert_any_call(
-            "Cannot schedule job 'c' as it depends on itself"
-        )
+        mk_log.assert_any_call("Cannot schedule job 'c' as it depends on itself")
 
     async def test_tier_dependency_on_fail(self, tmp_path, mocker) -> None:
         """Check that the right job is run in the event of a failure"""
@@ -321,24 +295,14 @@ class TestTier:
         # Define jobs
         job_x = Job("x", command="exit", args=[1])
         job_y = Job("y", command="exit", args=[0])
-        job_a = Job(
-            "a", command="touch", args=[touch_a.as_posix()], on_pass=["x"]
-        )
-        job_b = Job(
-            "b", command="touch", args=[touch_b.as_posix()], on_fail=["x"]
-        )
-        job_c = Job(
-            "c", command="touch", args=[touch_c.as_posix()], on_pass=["y"]
-        )
-        job_d = Job(
-            "d", command="touch", args=[touch_d.as_posix()], on_fail=["y"]
-        )
+        job_a = Job("a", command="touch", args=[touch_a.as_posix()], on_pass=["x"])
+        job_b = Job("b", command="touch", args=[touch_b.as_posix()], on_fail=["x"])
+        job_c = Job("c", command="touch", args=[touch_c.as_posix()], on_pass=["y"])
+        job_d = Job("d", command="touch", args=[touch_d.as_posix()], on_fail=["y"])
         group = JobGroup("grp", jobs=[job_x, job_y, job_a, job_b, job_c, job_d])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(
-            spec=group, client=self.client, tracking=trk_dir, logger=self.logger
-        )
+        tier = Tier(spec=group, client=self.client, tracking=trk_dir, logger=self.logger)
         # Check state
         assert not tier.complete
         assert not tier.terminated
@@ -353,12 +317,8 @@ class TestTier:
         assert not any(x.exists() for x in (touch_a, touch_d))
         assert all(x.exists() for x in (touch_b, touch_c))
         # Check for warnings
-        mk_log.assert_any_call(
-            "Dependency 'x' failed so Job 'a' will be pruned"
-        )
-        mk_log.assert_any_call(
-            "Dependency 'y' passed so Job 'd' will be pruned"
-        )
+        mk_log.assert_any_call("Dependency 'x' failed so Job 'a' will be pruned")
+        mk_log.assert_any_call("Dependency 'y' passed so Job 'd' will be pruned")
 
     async def test_tier_get_tree(self, tmp_path) -> None:
         """Report the tree structure of a running tier"""

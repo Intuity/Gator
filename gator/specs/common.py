@@ -37,9 +37,7 @@ class SpecBase(yaml.YAMLObject):
     def from_yaml(cls, loader: Loader, node: yaml.Node) -> "SpecBase":
         fpath = Path(node.start_mark.name).absolute()
         if isinstance(node, yaml.nodes.MappingNode):
-            return cls(
-                **loader.construct_mapping(node, deep=True), yaml_path=fpath
-            )
+            return cls(**loader.construct_mapping(node, deep=True), yaml_path=fpath)
         else:
             return cls(*loader.construct_sequence(node), yaml_path=fpath)
 

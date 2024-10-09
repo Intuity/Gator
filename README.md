@@ -33,30 +33,30 @@ A simple specification may look like this:
 
 ```yaml
 !JobGroup
-  id  : top
+  ident  : top
   jobs:
   # Nested layer
   - !JobGroup
-      id  : inner
+      ident  : inner
       jobs:
       - !Job
-          id     : say_hi
+          ident     : say_hi
           command: echo
           args   : ["hi"]
   # Arrayed job - waits for 'say_hi' to complete
   - !JobArray
-      id     : counting
+      ident     : counting
       on_pass:
         - say_hi
       repeats: 4
       jobs   :
       - !Job
-          id     : echo_count
+          ident     : echo_count
           command: echo
           args   : ["$GATOR_ARRAY_INDEX"]
   # Directly attached to root - waits for 'counting' to complete
   - !Job
-      id     : say_bye
+      ident     : say_bye
       on_pass:
         - counting
       command: echo
@@ -79,10 +79,34 @@ $> python3 -m gator examples/job.yaml
 
 ## Hub
 
+To setup the hub:
+
+1. [Install postgress app](https://postgresapp.com/) and follow the instructions to initialise a new server with the following settings:
+  - Host: localhost
+  - Port: 5432
+  - User: postgres
+  - Database: postgres
+  - Password: dbpasswd123
+
+\* Different options can be used if supplied to the hub command manually.
+
+2. [Install npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) and install hub packages
+```bash
+$> cd gator-hub
+$> npm install
+```
+
 To run the hub:
 
 ```bash
 $> poe hub
+# OR
+$> poe hub_dev
+```
+
+Running the hub will output the hub url. This can be used in gator commands to register with the hub e.g.:
+```bash
+$> python3 -m gator examples/job.yaml --hub localhost:8080
 ```
 
 ## TODO

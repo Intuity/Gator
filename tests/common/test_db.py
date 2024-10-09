@@ -53,8 +53,8 @@ class TestDatabase:
             [],
         )
         # Check push and get methods have been created
-        assert getattr(database, "push_testobj")
-        assert getattr(database, "get_testobj")
+        assert database.push_testobj
+        assert database.get_testobj
         # Check the dataclass has been registered
         assert TestObj in database.registered
         # Check the table is known
@@ -117,7 +117,7 @@ class TestDatabase:
         for idx in range(100):
             await database.push(entry := TestObj(key_a=f"key_{idx}", key_b=idx))
             entries.append(entry)
-        assert len(set(x.db_uid for x in entries)) == 100
+        assert len({x.db_uid for x in entries}) == 100
         # Clean-up
         await database.stop()
 
@@ -161,9 +161,7 @@ class TestDatabase:
         await database.register(TestObj)
         # Perform a simple query
         await database.get(TestObj)
-        sqlite._execute.assert_any_call(
-            sqlite._conn.execute, "SELECT * FROM TestObj", {}
-        )
+        sqlite._execute.assert_any_call(sqlite._conn.execute, "SELECT * FROM TestObj", {})
         sqlite._execute.reset_mock()
         # Perform a count query
         await database.get(TestObj, sql_count=True)
@@ -263,16 +261,14 @@ class TestDatabase:
         await database.update(TestObj(db_uid=123))
         sqlite._execute.assert_any_call(
             sqlite._conn.execute,
-            "UPDATE TestObj SET key_a = :key_a, "
-            "key_b = :key_b WHERE db_uid = :db_uid",
+            "UPDATE TestObj SET key_a = :key_a, " "key_b = :key_b WHERE db_uid = :db_uid",
             {"db_uid": 123, "key_a": "", "key_b": 0},
         )
         # Update an object with values
         await database.update(TestObj(db_uid=123, key_a="hello", key_b=234))
         sqlite._execute.assert_any_call(
             sqlite._conn.execute,
-            "UPDATE TestObj SET key_a = :key_a, "
-            "key_b = :key_b WHERE db_uid = :db_uid",
+            "UPDATE TestObj SET key_a = :key_a, " "key_b = :key_b WHERE db_uid = :db_uid",
             {"db_uid": 123, "key_a": "hello", "key_b": 234},
         )
         # Clean-up
@@ -293,20 +289,16 @@ class TestDatabase:
         for idx in range(100):
             await database.push(entry := TestObj(key_a=f"key_{idx}", key_b=idx))
             entries.append(entry)
-        assert len(set(x.db_uid for x in entries)) == 100
+        assert len({x.db_uid for x in entries}) == 100
         # Retrieve entries
         entries = await database.get(TestObj)
         assert len(entries) == 100
-        assert set(x.key_a for x in entries) == set(
-            f"key_{x}" for x in range(100)
-        )
+        assert {x.key_a for x in entries} == {f"key_{x}" for x in range(100)}
         # Retrieve count
         count = await database.get(TestObj, sql_count=True)
         assert count == 100
         # Apply filter
-        count = await database.get(
-            TestObj, sql_count=True, key_b=Query(gte=10, lt=20)
-        )
+        count = await database.get(TestObj, sql_count=True, key_b=Query(gte=10, lt=20))
         assert count == 10
         # Clean-up
         await database.stop()
@@ -337,10 +329,8 @@ class TestDatabase:
         assert TestObj not in db_b.registered
         entries = await db_b.get(TestObj)
         assert len(entries) == 100
-        assert set(x.key_a for x in entries) == set(
-            f"key_{x}" for x in range(100)
-        )
-        assert set(x.key_b for x in entries) == set(range(100))
+        assert {x.key_a for x in entries} == {f"key_{x}" for x in range(100)}
+        assert {x.key_b for x in entries} == set(range(100))
         await db_b.stop()
 
     async def test_custom_transform(self, database, mocker):
@@ -420,12 +410,12 @@ class TestDatabase:
         assert set(srlz.keys()) == {"name", "value", "switch"}
         assert srlz["name"] == "fred"
         assert srlz["value"] == 2
-        assert srlz["switch"] == True
+        assert srlz["switch"] is True
         # Deserialize
         inst = Demo.deserialize(srlz)
         assert inst.name == "fred"
         assert inst.value == 2
-        assert inst.switch == True
+        assert inst.switch is True
         # Serialize to a list
         l_srlz = obj.serialize(as_list=True)
         assert l_srlz == ["fred", 2, True]
@@ -433,7 +423,7 @@ class TestDatabase:
         inst = Demo.deserialize(l_srlz)
         assert inst.name == "fred"
         assert inst.value == 2
-        assert inst.switch == True
+        assert inst.switch is True
         # Omit a value
         o_srlz = obj.serialize(omit=["value"])
         assert o_srlz == {"name": "fred", "switch": True}
@@ -443,8 +433,8 @@ class TestDatabase:
         inst = Demo.deserialize(o_srlz, omit=["value"])
         assert inst.name == "fred"
         assert inst.value == 0
-        assert inst.switch == True
+        assert inst.switch is True
         inst = Demo.deserialize(ol_srlz, omit=["value"])
         assert inst.name == "fred"
         assert inst.value == 0
-        assert inst.switch == True
+        assert inst.switch is True

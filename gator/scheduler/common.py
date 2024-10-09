@@ -14,6 +14,7 @@
 
 import abc
 import functools
+import itertools
 from typing import Any, List, Optional, Type
 
 from ..common.child import Child
@@ -41,24 +42,18 @@ class BaseScheduler:
         self.quiet = quiet
         self.logger = logger
         self.limits = limits or MessageLimits()
-        self.options = {
-            k.strip().lower(): v for k, v in (options or {}).items()
-        }
+        self.options = {k.strip().lower(): v for k, v in (options or {}).items()}
         self.babysit = self.options.get("babysit", False)
 
-    def get_option(
-        self, name: str, default: Any = None, as_type: Type | None = None
-    ) -> Any:
+    def get_option(self, name: str, default: Any = None, as_type: Type | None = None) -> Any:
         value = self.options.get(name, default)
         return value if as_type is None else as_type(value)
 
-    @property
-    @functools.lru_cache()
+    @functools.cached_property
     def scheduler_id(self) -> str:
         return type(self).__name__.lower().replace("scheduler", "")
 
-    @property
-    @functools.lru_cache()
+    @functools.cached_property
     def base_command(self) -> List[str]:
         cmd = []
         if self.babysit:
@@ -81,9 +76,7 @@ class BaseScheduler:
         ]
         return cmd
 
-    def create_command(
-        self, child: Child, options: Optional[dict[str, str]] = None
-    ) -> str:
+    def create_command(self, child: Child, options: Optional[dict[str, str]] = None) -> str:
         """
         Build a command for launching a job on the compute infrastructure using
         details from the child object.
@@ -94,11 +87,12 @@ class BaseScheduler:
         """
         full_opts = self.options.copy()
         full_opts.update(options or {})
+
         return " ".join(
-            self.base_command
-            + ["--id", child.id, "--tracking", child.tracking.as_posix()]
-            + sum(
-                [["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()], []
+            itertools.chain(
+                self.base_command,
+                ["--id", child.ident, "--tracking", child.tracking.as_posix()],
+                *(["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()),
             )
         )
 

@@ -6,34 +6,44 @@ import DataTable from 'datatables.net-bs5'
 import 'datatables.net-scroller-bs5'
 
 import 'react-complex-tree/lib/style-modern.css'
-import { UncontrolledTreeEnvironment,
-         Tree,
-         TreeDataProvider,
-         TreeItemIndex,
-         TreeItem,
-         InteractionMode} from 'react-complex-tree'
+import {
+    UncontrolledTreeEnvironment,
+    Tree,
+    TreeDataProvider,
+    TreeItemIndex,
+    TreeItem,
+    InteractionMode
+} from 'react-complex-tree'
 
 import mascot from "./assets/mascot_white.svg?url"
 
-interface ApiCompletion { uid       ?: number,
-                          db_file   ?: string,
-                          timestamp ?: number }
+interface ApiCompletion {
+    uid?: number,
+    db_file?: string,
+    timestamp?: number
+}
 
-interface ApiMetric { name : string,
-                      value: number }
+interface ApiMetric {
+    name: string,
+    value: number
+}
 
-interface ApiJob { uid       : number,
-                   id        : string,
-                   server_url: string,
-                   owner     : string,
-                   timestamp : number,
-                   completion: ApiCompletion,
-                   metrics   : ApiMetric[] }
+interface ApiJob {
+    uid: number,
+    ident: string,
+    server_url: string,
+    owner: string,
+    timestamp: number,
+    completion: ApiCompletion,
+    metrics: ApiMetric[]
+}
 
-interface Dimensions { height : number,
-                       width  : number };
+interface Dimensions {
+    height: number,
+    width: number
+};
 
-const Severity : { [key: number]: string } = {
+const Severity: { [key: number]: string } = {
     10: "DEBUG",
     20: "INFO",
     30: "WARNING",
@@ -41,14 +51,14 @@ const Severity : { [key: number]: string } = {
     50: "CRITICAL"
 };
 
-const Intervals : { [key: string]: number } = {
-    REFRESH_JOBS  : 5000,
-    REFRESH_TREE  : 5000,
-    REFRESH_LOG   : 2000,
-    DT_FETCH_DELAY:  100
+const Intervals: { [key: string]: number } = {
+    REFRESH_JOBS: 5000,
+    REFRESH_TREE: 5000,
+    REFRESH_LOG: 2000,
+    DT_FETCH_DELAY: 100
 };
 
-function Breadcrumb ({ }) {
+function Breadcrumb({ }) {
     return (
         <nav aria-label="breadcrumb">
             <ol className="breadcrumb">
@@ -59,29 +69,29 @@ function Breadcrumb ({ }) {
     );
 }
 
-function Job ({ job, focus, setJobFocus } : { job : ApiJob, focus : ApiJob | undefined, setJobFocus : (focus : ApiJob) => void }) {
+function Job({ job, focus, setJobFocus }: { job: ApiJob, focus: ApiJob | undefined, setJobFocus: (focus: ApiJob) => void }) {
     let date = moment(job.timestamp * 1000);
     let mtc_wrn = 0;
     let mtc_err = 0;
     let mtc_crt = 0;
     job.metrics.forEach((metric) => {
-        if      (metric.name == "msg_warning" ) mtc_wrn = metric.value;
-        else if (metric.name == "msg_error"   ) mtc_err = metric.value;
+        if (metric.name == "msg_warning") mtc_wrn = metric.value;
+        else if (metric.name == "msg_error") mtc_err = metric.value;
         else if (metric.name == "msg_critical") mtc_crt = metric.value;
     })
     return (
         <tr onClick={() => { setJobFocus(job); }} className={(focus && focus.uid == job.uid) ? "active" : ""}>
             <td>
-                <strong>{job.uid}: {job.id}</strong>{job.completion.uid ? 'X' : 'O'}<br />
+                <strong>{job.uid}: {job.ident}</strong>{job.completion.uid ? 'X' : 'O'}<br />
                 <small>{job.owner} - {date.format("DD/MM/YY @ HH:mm")} - {mtc_wrn} | {mtc_err} | {mtc_crt}</small>
             </td>
         </tr>
     );
 }
 
-function fetchJobs (setJobs : CallableFunction) {
+function fetchJobs(setJobs: CallableFunction) {
     let inner = () => {
-        let all_jobs : ApiJob[] = [];
+        let all_jobs: ApiJob[] = [];
         fetch("/api/jobs")
             .then((response) => response.json())
             .then((data) => {
@@ -95,9 +105,9 @@ function fetchJobs (setJobs : CallableFunction) {
     inner();
 }
 
-function MessageViewer (
-    { job, path, dimensions } :
-    { job : ApiJob | undefined, path : string[], dimensions : Dimensions }
+function MessageViewer(
+    { job, path, dimensions }:
+        { job: ApiJob | undefined, path: string[], dimensions: Dimensions }
 ) {
     // If no job provided, return an empty pane
     if (job === undefined) return <div className="log"></div>;
@@ -106,39 +116,41 @@ function MessageViewer (
 
     useEffect(() => {
         const dt = new (DataTable as any)(ref.current!.children[0], {
-            columns       : [{ data: "timestamp" },
-                             { data: "severity"  },
-                             { data: "message"   }],
-            searching     : false,
-            ordering      : false,
-            deferRender   : true,
-            scrollY       : ref.current!.offsetHeight - 39,
+            columns: [{ data: "timestamp" },
+            { data: "severity" },
+            { data: "message" }],
+            searching: false,
+            ordering: false,
+            deferRender: true,
+            scrollY: ref.current!.offsetHeight - 39,
             scrollCollapse: true,
-            info          : false,
-            scroller      : { serverWait: Intervals.DT_FETCH_DELAY },
-            serverSide    : true,
-            ajax          : (request : any, callback : any) => {
+            info: false,
+            scroller: { serverWait: Intervals.DT_FETCH_DELAY },
+            serverSide: true,
+            ajax: (request: any, callback: any) => {
                 let start = request.start;
                 let limit = request.length;
                 if (limit < 0) limit = 100;
                 fetch(`/api/job/${job.uid}/messages/${path.join('/')}?after=${start}&limit=${limit}`)
                     .then((response) => response.json())
                     .then((data) => {
-                        callback({ draw: request.draw,
-                                   data: data.messages.map((msg : any) => {
-                                       msg.timestamp = moment(msg.timestamp * 1000).format("HH:mm:ss");
-                                       msg.severity  = Severity[msg.severity];
-                                       return msg;
-                                   }),
-                                   recordsTotal: data.total,
-                                   recordsFiltered: data.total });
+                        callback({
+                            draw: request.draw,
+                            data: data.messages.map((msg: any) => {
+                                msg.timestamp = moment(msg.timestamp * 1000).format("HH:mm:ss");
+                                msg.severity = Severity[msg.severity];
+                                return msg;
+                            }),
+                            recordsTotal: data.total,
+                            recordsFiltered: data.total
+                        });
                     })
                     .catch((err) => console.error(err.message));
             }
         });
         let reload = setInterval(
             () => {
-                dt.ajax.reload((data : any) => {
+                dt.ajax.reload((data: any) => {
                     dt.scroller.toPosition(data.recordsTotal + 200);
                 }, false);
             },
@@ -171,14 +183,14 @@ class JobTreeItem implements TreeItem {
 
     public isFolder?: boolean | undefined
 
-    public constructor (public index    : TreeItemIndex,
-                        public data     : ApiJob | undefined,
-                        public children : TreeItemIndex[],
-                        public data_url : string | undefined) {
+    public constructor(public index: TreeItemIndex,
+        public data: ApiJob | undefined,
+        public children: TreeItemIndex[],
+        public data_url: string | undefined) {
         this.isFolder = children.length > 0;
     }
 
-    public refresh () {
+    public refresh() {
         if (this.data_url === undefined) return Promise.resolve(this);
         let job = this;
         return new Promise<JobTreeItem>((resolve) => {
@@ -188,7 +200,7 @@ class JobTreeItem implements TreeItem {
                     job.data = data;
                     if (data.children) {
                         job.isFolder = true;
-                        job.children = data.children.map((child : any) => [job.index, child].join("."));
+                        job.children = data.children.map((child: any) => [job.index, child].join("."));
                     }
                     resolve(job);
                 });
@@ -199,10 +211,10 @@ class JobTreeItem implements TreeItem {
 
 class JobTreeProvider implements TreeDataProvider {
 
-    public constructor (public job          : ApiJob,
-                        public addTreeItems : CallableFunction) {}
+    public constructor(public job: ApiJob,
+        public addTreeItems: CallableFunction) { }
 
-    public getTreeItem (itemId: TreeItemIndex) {
+    public getTreeItem(itemId: TreeItemIndex) {
         let tree = this;
         return new Promise<JobTreeItem>((resolve) => {
             tree.getTreeItems([itemId])
@@ -210,7 +222,7 @@ class JobTreeProvider implements TreeDataProvider {
         });
     }
 
-    public getTreeItems (itemIds : TreeItemIndex[]) {
+    public getTreeItems(itemIds: TreeItemIndex[]) {
         let tree = this;
         return new Promise<JobTreeItem[]>((resolve) => {
             let items = itemIds.map((itemId) => {
@@ -228,21 +240,21 @@ class JobTreeProvider implements TreeDataProvider {
             });
             // Perform initial refresh, then register all tree items
             Promise.all(items.map((item) => item.refresh()))
-                   .then((items) => {
-                        tree.addTreeItems(items);
-                        resolve(items);
-                   });
+                .then((items) => {
+                    tree.addTreeItems(items);
+                    resolve(items);
+                });
         });
     }
 
 }
 
-function TreeViewer ({ job, setJobPath } : { job : ApiJob | undefined, setJobPath : CallableFunction }) {
+function TreeViewer({ job, setJobPath }: { job: ApiJob | undefined, setJobPath: CallableFunction }) {
     if (job === undefined) return <></>;
 
     const [tree_items, setTreeItems] = useState<JobTreeItem[]>([]);
 
-    let addTreeItems = (items : JobTreeItem[]) => setTreeItems([...tree_items, ...items]);
+    let addTreeItems = (items: JobTreeItem[]) => setTreeItems([...tree_items, ...items]);
 
     useEffect(() => {
         let interval = setInterval(() => {
@@ -256,38 +268,38 @@ function TreeViewer ({ job, setJobPath } : { job : ApiJob | undefined, setJobPat
 
     return (
         <UncontrolledTreeEnvironment dataProvider={new JobTreeProvider(job, addTreeItems)}
-                                     getItemTitle={item => {
-                                        if (item.data !== undefined) {
-                                            let mtc : any = item.data.metrics;
-                                            if (mtc !== undefined) {
-                                                let id = item.data.id;
-                                                let warn = mtc.msg_warning;
-                                                let err = mtc.msg_error;
-                                                let crit = mtc.msg_critical;
-                                                return `${id} - ${warn} | ${err} | ${crit}`;
-                                            } else if (item.data.id !== undefined) {
-                                                return `${item.data.id} - ⏳`;
-                                            } else {
-                                                return "PENDING";
-                                            }
-                                        } else {
-                                            return "LOADING";
-                                        }
-                                     }}
-                                     viewState={{}}
-                                     defaultInteractionMode={InteractionMode.ClickArrowToExpand}
-                                     onSelectItems={(items : TreeItemIndex[]) => {
-                                        if (items.length == 0) return;
-                                        setJobPath((items[0] as string).split(".").slice(1));
-                                     }}>
-            <Tree treeId="jobtree" rootItem="root" treeLabel={job.id} />
+            getItemTitle={item => {
+                if (item.data !== undefined) {
+                    let mtc: any = item.data.metrics;
+                    if (mtc !== undefined) {
+                        let ident = item.data.ident;
+                        let warn = mtc.msg_warning;
+                        let err = mtc.msg_error;
+                        let crit = mtc.msg_critical;
+                        return `${ident} - ${warn} | ${err} | ${crit}`;
+                    } else if (item.data.ident !== undefined) {
+                        return `${item.data.ident} - ⏳`;
+                    } else {
+                        return "PENDING";
+                    }
+                } else {
+                    return "LOADING";
+                }
+            }}
+            viewState={{}}
+            defaultInteractionMode={InteractionMode.ClickArrowToExpand}
+            onSelectItems={(items: TreeItemIndex[]) => {
+                if (items.length == 0) return;
+                setJobPath((items[0] as string).split(".").slice(1));
+            }}>
+            <Tree treeId="jobtree" rootItem="root" treeLabel={job.ident} />
         </UncontrolledTreeEnvironment>
     );
 }
 
-function JobViewer (
-    { job, dimensions } :
-    { job : ApiJob | undefined, dimensions : Dimensions }
+function JobViewer(
+    { job, dimensions }:
+        { job: ApiJob | undefined, dimensions: Dimensions }
 ) {
     const [job_path, setJobPath] = useState<string[]>(
         (job !== undefined) ? [job!.uid.toString()] : []
@@ -305,18 +317,22 @@ function JobViewer (
 export default function App() {
     const [jobs, setJobs] = useState<ApiJob[]>([]);
     const [job_focus, setJobFocus] = useState<ApiJob | undefined>(undefined);
-    const [dimensions, setDimensions] = useState({ height: window.innerHeight,
-                                                   width : window.innerWidth });
+    const [dimensions, setDimensions] = useState({
+        height: window.innerHeight,
+        width: window.innerWidth
+    });
 
     useEffect(() => fetchJobs(setJobs), []);
     useEffect(() => {
         window.addEventListener("resize", () => {
-            setDimensions({ height: window.innerHeight,
-                            width : window.innerWidth });
+            setDimensions({
+                height: window.innerHeight,
+                width: window.innerWidth
+            });
         });
     }, []);
 
-    let job_elems : ReactElement[] = jobs.map((job) =>
+    let job_elems: ReactElement[] = jobs.map((job) =>
         <Job job={job} focus={job_focus} setJobFocus={setJobFocus} />
     );
 

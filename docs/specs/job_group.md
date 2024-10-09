@@ -4,27 +4,27 @@ and nested `!JobGroup` layers:
 
 ```yaml linenums="1"
 !JobGroup
-  id     : top
+  ident  : top
   cwd    : /path/to/working/directory
   env    :
     ENV_KEY_A: abcde
     ENV_KEY_B: 12345
   jobs   :
     - !Job
-        id     : job_a
+        ident  : job_a
         command: echo
         args   :
          - "This is job A"
     - !JobGroup
-        id  : inner
+        ident: inner
         jobs:
           - !Job
-            id     : job_b
+            ident  : job_b
             command: echo
             args   :
               - "This is job B"
           - !Job
-            id     : job_c
+            ident  : job_c
             command: echo
             args   :
               - "This is job C"
@@ -38,7 +38,7 @@ and nested `!JobGroup` layers:
 
 | Field       | Required         | Description                                                                       |
 |-------------|:----------------:|-----------------------------------------------------------------------------------|
-| `id`        | :material-check: | Identifier for the job array, used to navigate job hierarchy                      |
+| `ident`     | :material-check: | Identifier for the job array, used to navigate job hierarchy                      |
 | `cwd`       |                  | Working directory, if not specified then the launch shell's `$CWD` is used        |
 | `env`       |                  | Dictionary of environment variables to overlay                                    |
 | `jobs`      | :material-check: | [!Job](job.md), [!JobGroup](job_group.md), or `!JobArray` to run in this tier     |

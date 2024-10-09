@@ -16,10 +16,11 @@ import asyncio
 import atexit
 import dataclasses
 import io
+import typing
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 import click
 from rich.console import Console
@@ -40,7 +41,7 @@ class MessageLimits:
 
 
 class Logger:
-    FORMAT = {
+    FORMAT: typing.ClassVar[dict[LogSeverity, tuple[str, str]]] = {
         LogSeverity.DEBUG: ("[bold cyan]", "[/bold cyan]"),
         LogSeverity.INFO: ("[bold]", "[/bold]"),
         LogSeverity.WARNING: ("[bold yellow]", "[/bold yellow]"),
@@ -75,9 +76,7 @@ class Logger:
     async def set_database(self, database: Database) -> None:
         self.__database = database
         await self.__database.register(LogEntry)
-        self.__database.define_transform(
-            LogSeverity, "INTEGER", int, LogSeverity
-        )
+        self.__database.define_transform(LogSeverity, "INTEGER", int, LogSeverity)
 
     def get_count(self, *severity: List[LogSeverity]) -> int:
         return sum(self.__counts[x] for x in severity)
@@ -113,9 +112,7 @@ class Logger:
     def tee_to_file(self, path: Path) -> None:
         self.__close_log_file()
         self.__log_fh = path.open(mode="w", encoding="utf-8", buffering=1)
-        self.__log_fh.write(
-            f"Log started at {datetime.now().strftime(r'%Y-%m-%d %H:%M:%S')}\n"
-        )
+        self.__log_fh.write(f"Log started at {datetime.now().strftime(r'%Y-%m-%d %H:%M:%S')}\n")
         atexit.register(self.__close_log_file)
 
     async def log(
@@ -162,24 +159,18 @@ class Logger:
         # If a console is attached, log locally
         if self.__console and severity >= self.verbosity:
             prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
-            self.__console.log(
-                f"{prefix}[{severity.name:<7s}]{suffix} {escape(message)}"
-            )
+            self.__console.log(f"{prefix}[{severity.name:<7s}]{suffix} {escape(message)}")
         # Normally don't capture forwarded messages
         if not forwarded or self.capture_all:
             # Record to the database
             if self.__database is not None:
                 await self.__database.push_logentry(
-                    LogEntry(
-                        severity=severity, message=message, timestamp=timestamp
-                    )
+                    LogEntry(severity=severity, message=message, timestamp=timestamp)
                 )
             # Tee to file if configured
             if not forwarded and self.__log_fh is not None:
                 date = datetime.now().strftime(r"%H:%M:%S")
-                self.__log_fh.write(
-                    f"[{date}] [{severity.name:<7s}] {message}\n"
-                )
+                self.__log_fh.write(f"[{date}] [{severity.name:<7s}] {message}\n")
 
     async def debug(
         self,
@@ -188,9 +179,7 @@ class Logger:
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(
-            LogSeverity.DEBUG, message, forward, timestamp, forwarded
-        )
+        await self.log(LogSeverity.DEBUG, message, forward, timestamp, forwarded)
 
     async def info(
         self,
@@ -208,9 +197,7 @@ class Logger:
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(
-            LogSeverity.WARNING, message, forward, timestamp, forwarded
-        )
+        await self.log(LogSeverity.WARNING, message, forward, timestamp, forwarded)
 
     async def error(
         self,
@@ -219,9 +206,7 @@ class Logger:
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(
-            LogSeverity.ERROR, message, forward, timestamp, forwarded
-        )
+        await self.log(LogSeverity.ERROR, message, forward, timestamp, forwarded)
 
     async def critical(
         self,
@@ -230,15 +215,11 @@ class Logger:
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(
-            LogSeverity.CRITICAL, message, forward, timestamp, forwarded
-        )
+        await self.log(LogSeverity.CRITICAL, message, forward, timestamp, forwarded)
 
 
 @click.command()
-@click.option(
-    "-s", "--severity", type=str, default="INFO", help="Severity level"
-)
+@click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
 @click.argument("message")
 def logger(severity, message):
     asyncio.run(

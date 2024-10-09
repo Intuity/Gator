@@ -1,21 +1,21 @@
 !JobGroup
-  id  : top
+  ident: top
   env :
     TEST_A: hello
     TEST_B: goodbye
   jobs:
   # Nested layer
   - !JobGroup
-      id  : inner
+      ident: inner
       env :
         TEST_A: hello_inner
       jobs:
       - !Job
-          id     : delay_10
+          ident: delay_10
           command: sleep
           args   : [10]
       - !Job
-          id     : say_hi
+          ident: say_hi
           on_pass:
             - delay_10
           env    :
@@ -24,7 +24,7 @@
           args   : ["hi", "${TEST_A}", "$TEST_B", "${TEST_C}"]
   # Directly attached to root
   - !Job
-      id     : say_bye
+      ident: say_bye
       on_pass:
         - inner
       env    :
@@ -36,20 +36,20 @@
         - "exit 1"
   # Job array
   - !JobArray
-      id     : array
+      ident: array
       on_fail:
         - say_bye
       repeats: 4
       jobs   :
       - !Job
-          id     : say_count
+          ident: say_count
           command: echo
           args   : ["count", "${GATOR_ARRAY_INDEX}"]
       - !JobArray
-          id     : nested
+          ident: nested
           repeats: 3
           jobs   :
           - !Job
-              id     : nested_say_count
+              ident: nested_say_count
               command: echo
               args   : ["inner count $GATOR_ARRAY_INDEX"]

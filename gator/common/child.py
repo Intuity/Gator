@@ -15,13 +15,13 @@
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import auto, Enum
+from enum import Enum, auto
 from pathlib import Path
-from typing import Dict, Union, Optional
+from typing import Dict, Optional, Union
 
-from .ws_wrapper import WebsocketWrapper
 from ..specs import Job, JobArray, JobGroup
 from .types import Metric, Result
+from .ws_wrapper import WebsocketWrapper
 
 
 class ChildState(Enum):
@@ -34,7 +34,7 @@ class ChildState(Enum):
 @dataclass
 class Child:
     spec: Union[Job, JobArray, JobGroup]
-    id: str = "N/A"
+    ident: str = "N/A"
     tracking: Optional[Path] = None
     state: ChildState = ChildState.PENDING
     result: Result = Result.UNKNOWN
@@ -51,9 +51,7 @@ class Child:
     # Timestamping
     started: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
     updated: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
-    completed: datetime = field(
-        default_factory=lambda: datetime.fromtimestamp(0)
-    )
+    completed: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
     e_complete: asyncio.Event = field(default_factory=asyncio.Event)
     # Socket
     ws: Optional[WebsocketWrapper] = None

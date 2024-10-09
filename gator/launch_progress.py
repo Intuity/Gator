@@ -58,9 +58,7 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> dict:
             console.log(r_tree)
 
     # Launch
-    summary = await launch_base(
-        **kwargs, heartbeat_cb=_update, console=live.console
-    )
+    summary = await launch_base(**kwargs, heartbeat_cb=_update, console=live.console)
     # Wait a little so the final progress update happens
     await asyncio.sleep(1)
     # Stop the console

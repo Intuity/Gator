@@ -15,6 +15,7 @@
 import asyncio
 import math
 import signal
+from functools import partial
 from pathlib import Path
 from typing import Callable, Optional, Type, Union
 
@@ -24,18 +25,18 @@ from .common.logger import Logger, MessageLimits
 from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
 from .hub.api import HubAPI
-from .tier import Tier
 from .scheduler import LocalScheduler
 from .specs import Job, JobArray, JobGroup, Spec
+from .tier import Tier
 from .wrapper import Wrapper
 
 
 async def launch(
-    id: Optional[str] = None,
+    ident: Optional[str] = None,
     hub: Optional[str] = None,
     parent: Optional[str] = None,
     spec: Optional[Union[Spec, Path]] = None,
-    tracking: Path = Path.cwd(),
+    tracking: Optional[Path] = None,
     interval: int = 5,
     quiet: bool = False,
     all_msg: bool = False,
@@ -51,6 +52,8 @@ async def launch(
     del glyph
     # Set the hub URL
     HubAPI.url = hub
+    # Set the default tracking path
+    tracking = Path.cwd() if tracking is None else tracking
     # If a console isn't given, create one
     if not console:
         console = Console(log_path=False)
@@ -67,8 +70,8 @@ async def launch(
     logger.set_console(console)
     # Work out where the spec is coming from
     # - From server (nested call)
-    if spec is None and client.linked and id:
-        raw_spec = await client.spec(id=id)
+    if spec is None and client.linked and ident:
+        raw_spec = await client.spec(ident=ident)
         spec = Spec.parse_str(raw_spec.get("spec", ""))
     # - Passed in directly (when used as a library
     elif spec is not None and isinstance(spec, (Job, JobArray, JobGroup)):
@@ -78,12 +81,10 @@ async def launch(
         spec = Spec.parse(Path(spec))
     # - Unknown
     else:
-        raise Exception(
-            "No specification file provided and no parent server to query"
-        )
-    # If an ID has been provided, override whatever the spec gives
-    if id is not None:
-        spec.id = id
+        raise Exception("No specification file provided and no parent server to query")
+    # If an ident has been provided, override whatever the spec gives
+    if ident is not None:
+        spec.ident = ident
     # Check the spec object
     spec.check()
     # If a JobArray or JobGroup is provided, launch a tier
@@ -113,20 +114,16 @@ async def launch(
         )
     # Unsupported forms
     else:
-        raise Exception(
-            f"Unsupported specification object of type {type(spec).__name__}"
-        )
+        raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
 
     # Setup signal handler to capture CTRL+C events
-    def _handler(
-        sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]
-    ):
+    def _handler(sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]):
         if top.is_root:
             evt_loop.create_task(top.stop())
 
     evt_loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        evt_loop.add_signal_handler(sig, lambda: _handler(sig, evt_loop, top))
+        evt_loop.add_signal_handler(sig, partial(_handler, sig, evt_loop, top))
     # Wait for the executor to complete
     await top.launch()
     # Calculate final summary

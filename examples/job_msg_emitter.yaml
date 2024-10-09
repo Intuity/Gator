@@ -1,11 +1,11 @@
 !JobGroup
-id  : top
+ident: top
 jobs:
 - !JobGroup
-  id  : path_a
+  ident: path_a
   jobs:
   - !Job
-      id: msg_emitter
+      ident: msg_emitter
       command: python3
       args:
         - emitter.py
@@ -15,10 +15,10 @@ jobs:
         - !Cores [1]
         - !Memory [30, MB]
 - !JobGroup
-  id  : path_b
+  ident: path_b
   jobs:
   - !Job
-      id: msg_emitter
+      ident: msg_emitter
       command: python3
       args:
         - emitter.py
