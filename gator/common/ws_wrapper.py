@@ -138,6 +138,6 @@ class WebsocketWrapper(WebsocketRouter):
                 # Return response
                 return pending.response.get("payload", {})
 
-        # Cache the shim result as a attribute on the wrapped class
-        setattr(super(), key, _shim)
+        # Cache the shim result as a attribute
+        setattr(self, key, _shim)
         return _shim
