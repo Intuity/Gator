@@ -102,12 +102,12 @@ class Job(SpecBase):
                     "resources",
                     f"More than one entry for license '{name}'",
                 )
-        for field in ("on_done", "on_fail", "on_pass"):
-            value = getattr(self, field)
-            if not isinstance(value, list):
-                raise SpecError(self, field, f"The {field} dependencies must be a list")
+        for condition in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, condition)
+            if not isinstance(value, condition):
+                raise SpecError(self, condition, f"The {condition} dependencies must be a list")
             if set(map(type, value)).difference({str}):
-                raise SpecError(self, field, f"The {field} entries must be strings")
+                raise SpecError(self, condition, f"The {condition} entries must be strings")
 
 
 @dataclass
@@ -163,12 +163,12 @@ class JobArray(SpecBase):
             raise SpecError(self, "env", "Environment values must be strings or integers")
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
-        for field in ("on_done", "on_fail", "on_pass"):
-            value = getattr(self, field)
+        for condition in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, condition)
             if not isinstance(value, list):
-                raise SpecError(self, field, f"The {field} dependencies must be a list")
+                raise SpecError(self, condition, f"The {condition} dependencies must be a list")
             if set(map(type, value)).difference({str}):
-                raise SpecError(self, field, f"The {field} entries must be strings")
+                raise SpecError(self, condition, f"The {condition} entries must be strings")
         # Recurse
         for job in self.jobs:
             job.check()
@@ -224,12 +224,12 @@ class JobGroup(SpecBase):
             raise SpecError(self, "env", "Environment values must be strings or integers")
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
-        for field in ("on_done", "on_fail", "on_pass"):
-            value = getattr(self, field)
+        for condition in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, condition)
             if not isinstance(value, list):
-                raise SpecError(self, field, f"The {field} dependencies must be a list")
+                raise SpecError(self, condition, f"The {condition} dependencies must be a list")
             if set(map(type, value)).difference({str}):
-                raise SpecError(self, field, f"The {field} entries must be strings")
+                raise SpecError(self, condition, f"The {condition} entries must be strings")
         # Recurse
         for job in self.jobs:
             job.check()

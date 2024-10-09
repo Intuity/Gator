@@ -96,9 +96,7 @@ def main(
 ) -> None:
     # Determine a tracking directory
     tracking = (
-        Path(tracking)
-        if tracking
-        else (Path.cwd() / "tracking" / datetime.now().isoformat())
+        Path(tracking) if tracking else (Path.cwd() / "tracking" / datetime.now().isoformat())
     )
     tracking.mkdir(parents=True, exist_ok=True)
     # Select the right scheduler
