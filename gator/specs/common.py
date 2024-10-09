@@ -25,7 +25,7 @@ except ImportError:
     from yaml import Dumper, Loader
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SpecBase(yaml.YAMLObject):
     yaml_tag = "!unset"
     yaml_loader = Loader
