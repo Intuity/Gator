@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import yaml
 
@@ -24,14 +25,11 @@ except ImportError:
     from yaml import Dumper, Loader
 
 
+@dataclass
 class SpecBase(yaml.YAMLObject):
     yaml_tag = "!unset"
     yaml_loader = Loader
     yaml_dumper = Dumper
-
-    def __init__(self, yaml_path: Optional[Path] = None) -> None:
-        super().__init__()
-        self.yaml_path = yaml_path
 
     @classmethod
     def from_yaml(cls, loader: Loader, node: yaml.Node) -> "SpecBase":
@@ -42,9 +40,11 @@ class SpecBase(yaml.YAMLObject):
             return cls(*loader.construct_sequence(node), yaml_path=fpath)
 
     def __getstate__(self) -> Dict[str, Any]:
-        state = self.__dict__.copy()
-        if "yaml_path" in state:
-            del state["yaml_path"]
+        state = {}
+        for field in fields(self):
+            if field.name == "yaml_path":
+                continue
+            state[field.name] = getattr(self, field.name)
         return state
 
     def check(self) -> None:

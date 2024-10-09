@@ -14,6 +14,7 @@
 
 import functools
 from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -21,32 +22,23 @@ from .common import SpecBase, SpecError
 from .resource import Cores, License, Memory
 
 
+@dataclass
 class Job(SpecBase):
     yaml_tag = "!Job"
 
-    def __init__(
-        self,
-        ident: Optional[str] = None,
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        command: Optional[str] = None,
-        args: Optional[List[str]] = None,
-        resources: Optional[List[Union[Cores, License, Memory]]] = None,
-        on_done: Optional[List[str]] = None,
-        on_fail: Optional[List[str]] = None,
-        on_pass: Optional[List[str]] = None,
-        yaml_path: Optional[Path] = None,
-    ) -> None:
-        super().__init__(yaml_path)
-        self.ident = ident
-        self.env = env or {}
-        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
-        self.command = command
-        self.args = args or []
-        self.resources = resources or []
-        self.on_done = on_done or []
-        self.on_fail = on_fail or []
-        self.on_pass = on_pass or []
+    ident: Optional[str] = None
+    env: Optional[Dict[str, str]] = field(default_factory=dict)
+    cwd: Optional[str] = None
+    command: Optional[str] = None
+    args: Optional[List[str]] = None
+    resources: Optional[List[Union[Cores, License, Memory]]] = field(default_factory=list)
+    on_done: Optional[List[str]] = field(default_factory=list)
+    on_fail: Optional[List[str]] = field(default_factory=list)
+    on_pass: Optional[List[str]] = field(default_factory=list)
+    yaml_path: Optional[Path] = None
+
+    def __post_init__(self):
+        self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
 
     @functools.cached_property
     def requested_cores(self) -> int:
@@ -79,9 +71,7 @@ class Job(SpecBase):
         if set(map(type, self.env.keys())).difference({str}):
             raise SpecError(self, "env", "Environment keys must be strings")
         if set(map(type, self.env.values())).difference({str, int}):
-            raise SpecError(
-                self, "env", "Environment values must be strings or integers"
-            )
+            raise SpecError(self, "env", "Environment values must be strings or integers")
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
         if self.command is not None and not isinstance(self.command, str):
@@ -104,9 +94,7 @@ class Job(SpecBase):
         if type_count[Memory] > 1:
             raise SpecError(self, "resources", "More than one !Memory resource request")
         # NOTE: Any number of licenses may be specified
-        lic_name_count = Counter(
-            x.name for x in self.resources if isinstance(x, License)
-        )
+        lic_name_count = Counter(x.name for x in self.resources if isinstance(x, License))
         for name, count in lic_name_count.items():
             if count > 1:
                 raise SpecError(
@@ -122,38 +110,28 @@ class Job(SpecBase):
                 raise SpecError(self, field, f"The {field} entries must be strings")
 
 
+@dataclass
 class JobArray(SpecBase):
     yaml_tag = "!JobArray"
 
-    def __init__(
-        self,
-        ident: Optional[str] = None,
-        repeats: Optional[int] = None,
-        jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = None,
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        on_fail: Optional[List[str]] = None,
-        on_pass: Optional[List[str]] = None,
-        on_done: Optional[List[str]] = None,
-        yaml_path: Optional[Path] = None,
-    ) -> None:
-        super().__init__(yaml_path)
-        self.ident = ident
-        self.repeats = 1 if (repeats is None) else repeats
-        self.jobs = jobs or []
-        self.env = env or {}
-        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
-        self.on_fail = on_fail or []
-        self.on_pass = on_pass or []
-        self.on_done = on_done or []
+    ident: Optional[str] = None
+    repeats: Optional[int] = 1
+    jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    env: Optional[Dict[str, str]] = field(default_factory=dict)
+    cwd: Optional[str] = None
+    on_fail: Optional[List[str]] = field(default_factory=list)
+    on_pass: Optional[List[str]] = field(default_factory=list)
+    on_done: Optional[List[str]] = field(default_factory=list)
+    yaml_path: Optional[Path] = None
+
+    def __post_init__(self):
+        self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
 
     @functools.cached_property
     def expected_jobs(self) -> int:
         expected = 0
         for job in self.jobs:
-            expected += self.repeats * (
-                1 if isinstance(job, Job) else job.expected_jobs
-            )
+            expected += self.repeats * (1 if isinstance(job, Job) else job.expected_jobs)
         return expected
 
     def check(self) -> None:
@@ -182,9 +160,7 @@ class JobArray(SpecBase):
         if set(map(type, self.env.keys())).difference({str}):
             raise SpecError(self, "env", "Environment keys must be strings")
         if set(map(type, self.env.values())).difference({str, int}):
-            raise SpecError(
-                self, "env", "Environment values must be strings or integers"
-            )
+            raise SpecError(self, "env", "Environment values must be strings or integers")
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
         for field in ("on_done", "on_fail", "on_pass"):
@@ -198,28 +174,21 @@ class JobArray(SpecBase):
             job.check()
 
 
+@dataclass
 class JobGroup(SpecBase):
     yaml_tag = "!JobGroup"
 
-    def __init__(
-        self,
-        ident: Optional[str] = None,
-        jobs: Optional[List[Union[Job, "JobGroup", JobArray]]] = None,
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        on_fail: Optional[List[str]] = None,
-        on_pass: Optional[List[str]] = None,
-        on_done: Optional[List[str]] = None,
-        yaml_path: Optional[Path] = None,
-    ) -> None:
-        super().__init__(yaml_path)
-        self.ident = ident
-        self.jobs = jobs or []
-        self.env = env or {}
-        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
-        self.on_fail = on_fail or []
-        self.on_pass = on_pass or []
-        self.on_done = on_done or []
+    ident: Optional[str] = None
+    jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    env: Optional[Dict[str, str]] = field(default_factory=dict)
+    cwd: Optional[str] = None
+    on_fail: Optional[List[str]] = field(default_factory=list)
+    on_pass: Optional[List[str]] = field(default_factory=list)
+    on_done: Optional[List[str]] = field(default_factory=list)
+    yaml_path: Optional[Path] = None
+
+    def __post_init__(self):
+        self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
 
     @functools.cached_property
     def expected_jobs(self) -> int:
@@ -252,9 +221,7 @@ class JobGroup(SpecBase):
         if set(map(type, self.env.keys())).difference({str}):
             raise SpecError(self, "env", "Environment keys must be strings")
         if set(map(type, self.env.values())).difference({str, int}):
-            raise SpecError(
-                self, "env", "Environment values must be strings or integers"
-            )
+            raise SpecError(self, "env", "Environment values must be strings or integers")
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
         for field in ("on_done", "on_fail", "on_pass"):

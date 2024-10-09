@@ -333,7 +333,7 @@ class Tier(BaseLayer):
         by_id = {x.spec.ident: x.result for x in wait_for}
         # Check if pass/fail criteria is met
         all_ok = True
-        for spec in {x.spec for x in to_launch}:
+        for spec in (x.spec for x in to_launch):
             for result, dep_ids in (
                 (True, spec.on_pass),
                 (False, spec.on_fail),
