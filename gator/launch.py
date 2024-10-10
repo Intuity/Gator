@@ -22,6 +22,7 @@ from typing import Callable, Dict, Optional, Type, Union
 from rich.console import Console
 
 from .common.logger import Logger, MessageLimits
+from .common.summary import Summary
 from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
 from .hub.api import HubAPI
@@ -47,7 +48,7 @@ async def launch(
     sched_opts: Optional[Dict[str, str]] = None,
     glyph: Optional[str] = None,
     limits: Optional[MessageLimits] = None,
-) -> dict:
+) -> Summary:
     # Glyph only used when progress bar visible
     del glyph
     # Set the hub URL
@@ -129,7 +130,7 @@ async def launch(
     # Calculate final summary
     summary = await top.summarise()
     # Log out failures
-    if failed_ids := summary.get("failed_ids", []):
+    if failed_ids := summary["failed_ids"]:
         msg = f"In this hierarchy {len(failed_ids)} jobs failed: "
         for idx, f_id in enumerate(failed_ids):
             entry = f"[{idx:0{math.ceil(math.log(len(failed_ids)))}d}] {'.'.join(f_id)}"

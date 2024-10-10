@@ -17,10 +17,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 from ..specs import Job, JobArray, JobGroup
-from .types import Metric, Result
+from .summary import Summary, make_summary
+from .types import Result
 from .ws_wrapper import WebsocketWrapper
 
 
@@ -40,14 +41,10 @@ class Child:
     result: Result = Result.UNKNOWN
     server: str = ""
     exitcode: int = 0
-    # Metric tracking
-    metrics: Dict[str, Metric] = field(default_factory=dict)
-    # Tracking of the state of the child tree
-    sub_total: int = 0
-    sub_active: int = 0
-    sub_passed: int = 0
-    sub_failed: int = 0
-    failed_ids: List[List[str]] = field(default_factory=list)
+
+    # Tracking of the state of the child tree and metrics
+    summary: Summary = field(default_factory=make_summary)
+
     # Timestamping
     started: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
     updated: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))

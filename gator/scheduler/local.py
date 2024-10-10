@@ -42,7 +42,7 @@ class LocalScheduler(BaseScheduler):
         self.slots = {}
         self.concurrency = self.get_option("concurrency", 1, int)
         self.update = asyncio.Event()
-        if self.concurrency < 1:
+        if self.concurrency < 0:
             raise SchedulerError(f"Invalid concurrency of {self.concurrency}")
 
     async def __monitor(self, ident: str, proc: asyncio.subprocess.Process) -> None:

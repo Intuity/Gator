@@ -20,7 +20,7 @@ import typing
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import click
 from rich.console import Console
@@ -78,7 +78,7 @@ class Logger:
         await self.__database.register(LogEntry)
         self.__database.define_transform(LogSeverity, "INTEGER", int, LogSeverity)
 
-    def get_count(self, *severity: List[LogSeverity]) -> int:
+    def get_count(self, *severity: LogSeverity) -> int:
         return sum(self.__counts[x] for x in severity)
 
     async def check_limits(self, limits: MessageLimits) -> bool:

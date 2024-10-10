@@ -28,6 +28,7 @@ import psutil
 from tabulate import tabulate
 
 from .common.layer import BaseLayer
+from .common.summary import Summary
 from .common.types import Attribute, LogSeverity, Metric, ProcStat
 
 
@@ -75,7 +76,7 @@ class Wrapper(BaseLayer):
             except psutil.NoSuchProcess:
                 pass
 
-    async def summarise(self) -> Dict[str, int]:
+    async def summarise(self) -> Summary:
         summary = await super().summarise()
         msg_ok = await self.logger.check_limits(self.limits)
         passed = all((self.complete, (self.code == 0), msg_ok))
