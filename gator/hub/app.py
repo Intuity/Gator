@@ -24,7 +24,7 @@ from quart import (
 )
 
 from ..common.ws_client import WebsocketClient
-from .tables import setup_db
+from .tables import Completion, Metric, Registration, setup_db
 
 
 def setup_hub(
@@ -38,7 +38,7 @@ def setup_hub(
     db_pwd: str,
 ):
     # Setup database
-    db, tables = setup_db(db_host, db_port, db_name, db_user, db_pwd)
+    db = setup_db(db_host, db_port, db_name, db_user, db_pwd)
 
     # Create Quart application to host the interface and handle API requests
     hub = Quart(
@@ -51,9 +51,9 @@ def setup_hub(
     async def start_database():
         nonlocal db
         await db.start_connection_pool()
-        await tables.Completion.create_table(if_not_exists=True)
-        await tables.Registration.create_table(if_not_exists=True)
-        await tables.Metric.create_table(if_not_exists=True)
+        await Completion.create_table(if_not_exists=True)
+        await Registration.create_table(if_not_exists=True)
+        await Metric.create_table(if_not_exists=True)
 
     @hub.after_serving
     async def stop_database():
@@ -71,35 +71,36 @@ def setup_hub(
     @hub.post("/api/register")
     async def register():
         data = await request.get_json()
-        new_reg = tables.Registration(
-            ident=data["ident"],
-            layer=data["layer"],
-            server_url=data["url"],
-            owner=data["owner"],
-            timestamp=int(datetime.now().timestamp()),
+        new_reg = Registration(
+            {
+                Registration.ident: data["ident"],
+                Registration.layer: data["layer"],
+                Registration.server_url: data["url"],
+                Registration.owner: data["owner"],
+                Registration.timestamp: int(datetime.now().timestamp()),
+            }
         )
-        data = await tables.Registration.insert(new_reg).returning(tables.Registration.uid)
+        data = await Registration.insert(new_reg).returning(Registration.uid)
         return {"result": "success", "uid": data[0]["uid"]}
 
     @hub.post("/api/job/<int:job_id>/complete")
     async def complete(job_id: int):
         data = await request.get_json()
-        new_cmp = tables.Completion(
-            db_file=data["db_file"], timestamp=int(datetime.now().timestamp())
+        new_cmp = Completion(
+            {
+                Completion.db_file: data["db_file"],
+                Completion.timestamp: int(datetime.now().timestamp()),
+            }
         )
-        await tables.Completion.insert(new_cmp)
-        await tables.Registration.update({tables.Registration.completion: new_cmp}).where(
-            tables.Registration.uid == job_id
+        await Completion.insert(new_cmp)
+        await Registration.update({Registration.completion: new_cmp}).where(
+            Registration.uid == job_id
         )
         return {"result": "success"}
 
     def lookup_job(func: Callable) -> Callable:
         async def _inner(job_id: int, **kwargs) -> Dict[str, Union[str, int]]:
-            reg = (
-                await tables.Registration.objects()
-                .get(tables.Registration.uid == int(job_id))
-                .first()
-            )
+            reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
             return await func(reg, **kwargs)
 
         _inner.__name__ = func.__name__
@@ -107,32 +108,30 @@ def setup_hub(
 
     @hub.post("/api/job/<int:job_id>/heartbeat")
     @lookup_job
-    async def heartbeat(job: tables.Registration):
+    async def heartbeat(job: Registration):
         data = await request.get_json()
         for key, value in data.get("metrics", {}).items():
-            if await tables.Metric.exists().where(
-                (tables.Metric.registration == job) & (tables.Metric.name == key)
-            ):
-                await tables.Metric.update({tables.Metric.value: value}).where(
-                    (tables.Metric.registration == job) & (tables.Metric.name == key)
+            if await Metric.exists().where((Metric.registration == job) & (Metric.name == key)):
+                await Metric.update({Metric.value: value}).where(
+                    (Metric.registration == job) & (Metric.name == key)
                 )
             else:
-                new_mtc = tables.Metric(registration=job, name=key, value=value)
-                await tables.Metric.insert(new_mtc)
+                new_mtc = Metric({Metric.registration: job, Metric.name: key, Metric.value: value})
+                await Metric.insert(new_mtc)
         return {"result": "success"}
 
     @hub.get("/api/jobs")
     async def jobs():
         jobs = (
-            await tables.Registration.objects(tables.Registration.completion)
-            .order_by(tables.Registration.timestamp, ascending=False)
+            await Registration.objects(Registration.completion)
+            .order_by(Registration.timestamp, ascending=False)
             .output()
             .limit(10)
         )
         data = []
         for job in jobs:
-            metrics = await tables.Metric.select(tables.Metric.name, tables.Metric.value).where(
-                tables.Metric.registration == job
+            metrics = await Metric.select(Metric.name, Metric.value).where(
+                Metric.registration == job
             )
             data.append({**job.to_dict(), "metrics": metrics})
         return data
@@ -142,7 +141,7 @@ def setup_hub(
     @lookup_job
     async def job_info(job):
         # Get all metrics
-        metrics = await tables.Metric.select().where(tables.Metric.registration == job)
+        metrics = await Metric.select().where(Metric.registration == job)
         # Return data
         return {"result": "success", "job": job.to_dict(), "metrics": metrics}
 
