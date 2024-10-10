@@ -185,7 +185,7 @@ class Tier(BaseLayer):
         sub_active: int = 0,
         sub_passed: int = 0,
         sub_failed: int = 0,
-        failed_ids: Optional[list[list[str]]] = None,
+        failed_ids: Optional[List[List[str]]] = None,
         **_,
     ):
         """
@@ -247,7 +247,7 @@ class Tier(BaseLayer):
         sub_total: int = 0,
         sub_passed: int = 0,
         sub_failed: int = 0,
-        failed_ids: Optional[list[list[str]]] = None,
+        failed_ids: Optional[List[List[str]]] = None,
         **_,
     ):
         """

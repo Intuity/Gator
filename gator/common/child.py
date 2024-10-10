@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from ..specs import Job, JobArray, JobGroup
 from .types import Metric, Result
@@ -47,7 +47,7 @@ class Child:
     sub_active: int = 0
     sub_passed: int = 0
     sub_failed: int = 0
-    failed_ids: list[list[str]] = field(default_factory=list)
+    failed_ids: List[List[str]] = field(default_factory=list)
     # Timestamping
     started: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
     updated: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
