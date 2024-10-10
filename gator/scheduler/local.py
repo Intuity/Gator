@@ -31,7 +31,7 @@ class LocalScheduler(BaseScheduler):
         quiet: bool = True,
         logger: Optional[Logger] = None,
         options: Optional[dict[str, str]] = None,
-        limits: MessageLimits | None = None,
+        limits: Optional[MessageLimits] = None,
     ) -> None:
         super().__init__(parent, interval, quiet, logger, options, limits)
         self.launch_task = None

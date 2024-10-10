@@ -35,7 +35,7 @@ class BaseScheduler:
         quiet: bool = True,
         logger: Optional[Logger] = None,
         options: Optional[dict[str, str]] = None,
-        limits: MessageLimits | None = None,
+        limits: Optional[MessageLimits] = None,
     ) -> None:
         self.parent = parent
         self.interval = interval
@@ -45,7 +45,7 @@ class BaseScheduler:
         self.options = {k.strip().lower(): v for k, v in (options or {}).items()}
         self.babysit = self.options.get("babysit", False)
 
-    def get_option(self, name: str, default: Any = None, as_type: Type | None = None) -> Any:
+    def get_option(self, name: str, default: Any = None, as_type: Optional[Type] = None) -> Any:
         value = self.options.get(name, default)
         return value if as_type is None else as_type(value)
 

@@ -16,7 +16,7 @@ import asyncio
 from collections import defaultdict
 from copy import copy, deepcopy
 from datetime import datetime
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 
 from .common.child import Child, ChildState
 from .common.layer import BaseLayer
@@ -34,7 +34,7 @@ class Tier(BaseLayer):
         self,
         *args,
         scheduler: Type = LocalScheduler,
-        sched_opts: dict[str, str] | None = None,
+        sched_opts: Optional[dict[str, str]] = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -185,7 +185,7 @@ class Tier(BaseLayer):
         sub_active: int = 0,
         sub_passed: int = 0,
         sub_failed: int = 0,
-        failed_ids: list[list[str]] | None = None,
+        failed_ids: Optional[list[list[str]]] = None,
         **_,
     ):
         """
@@ -247,7 +247,7 @@ class Tier(BaseLayer):
         sub_total: int = 0,
         sub_passed: int = 0,
         sub_failed: int = 0,
-        failed_ids: list[list[str]] | None = None,
+        failed_ids: Optional[list[list[str]]] = None,
         **_,
     ):
         """

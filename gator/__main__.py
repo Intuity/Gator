@@ -17,6 +17,7 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import click
 from rich.console import Console
@@ -89,7 +90,7 @@ def main(
     progress: bool,
     scheduler: str,
     sched_arg: list[str],
-    limit_warning: int | None,
+    limit_warning: Optional[int],
     limit_error: int,
     limit_critical: int,
     spec: str,

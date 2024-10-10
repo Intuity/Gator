@@ -45,8 +45,8 @@ async def launch(
     console: Optional[Console] = None,
     scheduler: Type = LocalScheduler,
     sched_opts: Optional[dict[str, str]] = None,
-    glyph: str | None = None,
-    limits: MessageLimits | None = None,
+    glyph: Optional[str] = None,
+    limits: Optional[MessageLimits] = None,
 ) -> dict:
     # Glyph only used when progress bar visible
     del glyph

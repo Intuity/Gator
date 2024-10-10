@@ -35,9 +35,9 @@ from .ws_client import WebsocketClient
 class MessageLimits:
     """Define maximum tolerance for different verbosities (None means infinite)"""
 
-    warning: int | None = None
-    error: int | None = 0
-    critical: int | None = 0
+    warning: Optional[int] = None
+    error: Optional[int] = 0
+    critical: Optional[int] = 0
 
 
 class Logger:
