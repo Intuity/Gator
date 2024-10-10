@@ -17,7 +17,7 @@ import math
 import signal
 from functools import partial
 from pathlib import Path
-from typing import Callable, Optional, Type, Union
+from typing import Callable, Dict, Optional, Type, Union
 
 from rich.console import Console
 
@@ -44,7 +44,7 @@ async def launch(
     heartbeat_cb: Optional[Callable] = None,
     console: Optional[Console] = None,
     scheduler: Type = LocalScheduler,
-    sched_opts: Optional[dict[str, str]] = None,
+    sched_opts: Optional[Dict[str, str]] = None,
     glyph: Optional[str] = None,
     limits: Optional[MessageLimits] = None,
 ) -> dict:

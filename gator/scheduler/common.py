@@ -15,7 +15,7 @@
 import abc
 import functools
 import itertools
-from typing import Any, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 from ..common.child import Child
 from ..common.logger import Logger, MessageLimits
@@ -34,7 +34,7 @@ class BaseScheduler:
         interval: int = 5,
         quiet: bool = True,
         logger: Optional[Logger] = None,
-        options: Optional[dict[str, str]] = None,
+        options: Optional[Dict[str, str]] = None,
         limits: Optional[MessageLimits] = None,
     ) -> None:
         self.parent = parent
@@ -76,7 +76,7 @@ class BaseScheduler:
         ]
         return cmd
 
-    def create_command(self, child: Child, options: Optional[dict[str, str]] = None) -> str:
+    def create_command(self, child: Child, options: Optional[Dict[str, str]] = None) -> str:
         """
         Build a command for launching a job on the compute infrastructure using
         details from the child object.

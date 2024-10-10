@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import asyncio
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ..common.child import Child
 from ..common.logger import Logger, MessageLimits
@@ -30,7 +30,7 @@ class LocalScheduler(BaseScheduler):
         interval: int = 5,
         quiet: bool = True,
         logger: Optional[Logger] = None,
-        options: Optional[dict[str, str]] = None,
+        options: Optional[Dict[str, str]] = None,
         limits: Optional[MessageLimits] = None,
     ) -> None:
         super().__init__(parent, interval, quiet, logger, options, limits)

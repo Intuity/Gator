@@ -34,7 +34,7 @@ class Tier(BaseLayer):
         self,
         *args,
         scheduler: Type = LocalScheduler,
-        sched_opts: Optional[dict[str, str]] = None,
+        sched_opts: Optional[Dict[str, str]] = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)

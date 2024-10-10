@@ -20,7 +20,7 @@ import typing
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import click
 from rich.console import Console
@@ -41,7 +41,7 @@ class MessageLimits:
 
 
 class Logger:
-    FORMAT: typing.ClassVar[dict[LogSeverity, tuple[str, str]]] = {
+    FORMAT: typing.ClassVar[Dict[LogSeverity, Tuple[str, str]]] = {
         LogSeverity.DEBUG: ("[bold cyan]", "[/bold cyan]"),
         LogSeverity.INFO: ("[bold]", "[/bold]"),
         LogSeverity.WARNING: ("[bold yellow]", "[/bold yellow]"),
