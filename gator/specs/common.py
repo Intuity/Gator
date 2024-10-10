@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, ClassVar, Dict
 
 import yaml
 
@@ -25,20 +25,28 @@ except ImportError:
     from yaml import Dumper, Loader
 
 
-@dataclass(kw_only=True)
+@dataclass
 class SpecBase(yaml.YAMLObject):
     yaml_tag = "!unset"
     yaml_loader = Loader
     yaml_dumper = Dumper
-    yaml_path: Path | None = field(repr=False, default=None)
+    _current_yaml_path: ClassVar[Path | None] = None
+
+    yaml_path: Path | None = field(
+        default_factory=lambda: SpecBase._current_yaml_path,
+        init=False,
+        repr=False,
+    )
 
     @classmethod
     def from_yaml(cls, loader: Loader, node: yaml.Node) -> "SpecBase":
-        fpath = Path(node.start_mark.name).absolute()
+        cls._current_yaml_path = Path(node.start_mark.name).absolute()
         if isinstance(node, yaml.nodes.MappingNode):
-            return cls(**loader.construct_mapping(node, deep=True), yaml_path=fpath)
+            inst = cls(**loader.construct_mapping(node, deep=True))
         else:
-            return cls(*loader.construct_sequence(node), yaml_path=fpath)
+            inst = cls(*loader.construct_sequence(node))
+        cls._current_yaml_path = None
+        return inst
 
     def __getstate__(self) -> Dict[str, Any]:
         state = {}
