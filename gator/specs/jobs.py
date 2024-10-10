@@ -29,7 +29,7 @@ class Job(SpecBase):
     env: Optional[Dict[str, str]] = field(default_factory=dict)
     cwd: Optional[str] = None
     command: Optional[str] = None
-    args: Optional[List[str]] = None
+    args: Optional[List[str]] = field(default_factory=list)
     resources: Optional[List[Union[Cores, License, Memory]]] = field(default_factory=list)
     on_done: Optional[List[str]] = field(default_factory=list)
     on_fail: Optional[List[str]] = field(default_factory=list)

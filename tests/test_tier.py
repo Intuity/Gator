@@ -352,6 +352,8 @@ class TestTier:
             client=self.client,
             tracking=trk_dir,
             logger=self.logger,
+            # Need enough concurrency to start leaf jobs in parallel
+            sched_opts={"concurrency": 3},
         )
         # Let the tier start
         t_launch = asyncio.create_task(tier.launch())
