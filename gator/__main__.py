@@ -49,7 +49,7 @@ from .specs.common import SpecError
     count=True,
     help="Propagate all messages to the top level",
 )
-@click.option("--verbose", default=False, count=True, help="Show debug messages")
+@click.option("-v", "--verbose", default=False, count=True, help="Show debug messages")
 @click.option("--progress", default=False, count=True, help="Show progress bar")
 @click.option(
     "--scheduler",
