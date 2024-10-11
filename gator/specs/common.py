@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, ClassVar, Dict, Optional
 
 import yaml
 
@@ -24,27 +25,35 @@ except ImportError:
     from yaml import Dumper, Loader
 
 
+@dataclass
 class SpecBase(yaml.YAMLObject):
     yaml_tag = "!unset"
     yaml_loader = Loader
     yaml_dumper = Dumper
+    _current_yaml_path: ClassVar[Optional[Path]] = None
 
-    def __init__(self, yaml_path: Optional[Path] = None) -> None:
-        super().__init__()
-        self.yaml_path = yaml_path
+    yaml_path: Optional[Path] = field(
+        default_factory=lambda: SpecBase._current_yaml_path,
+        init=False,
+        repr=False,
+    )
 
     @classmethod
     def from_yaml(cls, loader: Loader, node: yaml.Node) -> "SpecBase":
-        fpath = Path(node.start_mark.name).absolute()
+        cls._current_yaml_path = Path(node.start_mark.name).absolute()
         if isinstance(node, yaml.nodes.MappingNode):
-            return cls(**loader.construct_mapping(node, deep=True), yaml_path=fpath)
+            inst = cls(**loader.construct_mapping(node, deep=True))
         else:
-            return cls(*loader.construct_sequence(node), yaml_path=fpath)
+            inst = cls(*loader.construct_sequence(node))
+        cls._current_yaml_path = None
+        return inst
 
     def __getstate__(self) -> Dict[str, Any]:
-        state = self.__dict__.copy()
-        if "yaml_path" in state:
-            del state["yaml_path"]
+        state = {}
+        for dc_field in fields(self):
+            if dc_field.name == "yaml_path":
+                continue
+            state[dc_field.name] = getattr(self, dc_field.name)
         return state
 
     def check(self) -> None:

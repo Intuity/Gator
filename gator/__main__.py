@@ -14,8 +14,10 @@
 
 import asyncio
 import sys
+import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import List, Optional
 
 import click
 from rich.console import Console
@@ -87,8 +89,8 @@ def main(
     verbose: bool,
     progress: bool,
     scheduler: str,
-    sched_arg: list[str],
-    limit_warning: int | None,
+    sched_arg: List[str],
+    limit_warning: Optional[int],
     limit_error: int,
     limit_critical: int,
     spec: str,
@@ -135,7 +137,8 @@ def main(
             )
         )
     except SpecError as e:
-        con = Console()
+        console_file = (Path(tracking) / "error.log").open("a") if parent else None
+        con = Console(file=console_file)
         con.log(
             f"[bold red][ERROR][/bold red] Issue in {type(e.obj).__name__} "
             f"specification field '{e.field}': {escape(str(e))}"
@@ -144,9 +147,10 @@ def main(
             e.obj.jobs = ["..."]
         con.log(Spec.dump([e.obj]))
         sys.exit(1)
-    except Exception as e:
-        con = Console()
-        con.log(f"[bold red][ERROR][/bold red] {escape(str(e))}")
+    except Exception:
+        console_file = (Path(tracking) / "error.log").open("a") if parent else None
+        con = Console(file=console_file)
+        con.log(traceback.format_exc())
         if verbose:
             con.print_exception(show_locals=True)
         sys.exit(1)

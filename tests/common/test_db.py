@@ -387,7 +387,7 @@ class TestDatabase:
         # Clean-up
         await database.stop()
 
-    def test_dataclass_serialize(self):
+    async def test_dataclass_serialize(self):
         """Use the serialize/deserialize functions of the base dataclass"""
 
         # Define a dataclass which inherits from the DB's base class

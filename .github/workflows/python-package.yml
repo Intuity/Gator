@@ -97,6 +97,10 @@ jobs:
       timeout-minutes: 5
       run: |
         poe test
+    - name: Run Examples
+      timeout-minutes: 5
+      run: |
+        poe example
     - name: Archive code coverage results
       uses: actions/upload-artifact@v3
       with:

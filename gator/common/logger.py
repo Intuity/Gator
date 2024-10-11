@@ -20,7 +20,7 @@ import typing
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import click
 from rich.console import Console
@@ -35,13 +35,13 @@ from .ws_client import WebsocketClient
 class MessageLimits:
     """Define maximum tolerance for different verbosities (None means infinite)"""
 
-    warning: int | None = None
-    error: int | None = 0
-    critical: int | None = 0
+    warning: Optional[int] = None
+    error: Optional[int] = 0
+    critical: Optional[int] = 0
 
 
 class Logger:
-    FORMAT: typing.ClassVar[dict[LogSeverity, tuple[str, str]]] = {
+    FORMAT: typing.ClassVar[Dict[LogSeverity, Tuple[str, str]]] = {
         LogSeverity.DEBUG: ("[bold cyan]", "[/bold cyan]"),
         LogSeverity.INFO: ("[bold]", "[/bold]"),
         LogSeverity.WARNING: ("[bold yellow]", "[/bold yellow]"),

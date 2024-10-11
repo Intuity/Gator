@@ -72,7 +72,9 @@ class TestTier:
         grp = JobGroup("group", jobs=[job])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(spec=grp, client=self.client, tracking=trk_dir, logger=self.logger)
+        tier = Tier(
+            spec=grp, client=self.client, sched_opts={}, tracking=trk_dir, logger=self.logger
+        )
         # Check tier
         assert tier.spec is grp
         assert tier.client is self.client
@@ -125,6 +127,7 @@ class TestTier:
         tier = Tier(
             spec=grp_top,
             client=self.client,
+            sched_opts={},
             tracking=trk_dir,
             logger=self.logger,
         )
@@ -156,7 +159,9 @@ class TestTier:
         array = JobArray("arr", repeats=5, jobs=[job_n])
         # Create a tier
         trk_dir = tmp_path / "tracking"
-        tier = Tier(spec=array, client=self.client, tracking=trk_dir, logger=self.logger)
+        tier = Tier(
+            spec=array, client=self.client, sched_opts={}, tracking=trk_dir, logger=self.logger
+        )
         # Check state
         assert not tier.complete
         assert not tier.terminated
@@ -293,8 +298,8 @@ class TestTier:
         touch_c = tmp_path / "touch.c"
         touch_d = tmp_path / "touch.d"
         # Define jobs
-        job_x = Job("x", command="exit", args=[1])
-        job_y = Job("y", command="exit", args=[0])
+        job_x = Job("x", command="fake", args=[])
+        job_y = Job("y", command="true", args=[])
         job_a = Job("a", command="touch", args=[touch_a.as_posix()], on_pass=["x"])
         job_b = Job("b", command="touch", args=[touch_b.as_posix()], on_fail=["x"])
         job_c = Job("c", command="touch", args=[touch_c.as_posix()], on_pass=["y"])
@@ -347,6 +352,8 @@ class TestTier:
             client=self.client,
             tracking=trk_dir,
             logger=self.logger,
+            # Need enough concurrency to start leaf jobs in parallel
+            sched_opts={"concurrency": 3},
         )
         # Let the tier start
         t_launch = asyncio.create_task(tier.launch())

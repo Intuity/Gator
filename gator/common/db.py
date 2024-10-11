@@ -209,7 +209,7 @@ class Database:
                 f"VALUES ({', '.join(['?' for _ in fnames])})"
             )
 
-            async def _push(item: descr) -> int | None:
+            async def _push(item: descr) -> Optional[int]:
                 nonlocal sql_put, transforms_put
                 assert isinstance(item, descr), "Wrong object type"
                 values = [x(y) for x, y in zip(transforms_put, dataclasses.astuple(item)[1:])]

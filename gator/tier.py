@@ -16,7 +16,7 @@ import asyncio
 from collections import defaultdict
 from copy import copy, deepcopy
 from datetime import datetime
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 
 from .common.child import Child, ChildState
 from .common.layer import BaseLayer
@@ -34,12 +34,12 @@ class Tier(BaseLayer):
         self,
         *args,
         scheduler: Type = LocalScheduler,
-        sched_opts: dict[str, str],
+        sched_opts: Optional[Dict[str, str]] = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.sched_cls = scheduler
-        self.sched_opts = sched_opts
+        self.sched_opts = sched_opts or {}
         self.scheduler = None
         self.lock = asyncio.Lock()
         # Tracking for jobs in different phases
@@ -185,7 +185,7 @@ class Tier(BaseLayer):
         sub_active: int = 0,
         sub_passed: int = 0,
         sub_failed: int = 0,
-        failed_ids: list[list[str]] | None = None,
+        failed_ids: Optional[List[List[str]]] = None,
         **_,
     ):
         """
@@ -247,7 +247,7 @@ class Tier(BaseLayer):
         sub_total: int = 0,
         sub_passed: int = 0,
         sub_failed: int = 0,
-        failed_ids: list[list[str]] | None = None,
+        failed_ids: Optional[List[List[str]]] = None,
         **_,
     ):
         """
@@ -319,7 +319,7 @@ class Tier(BaseLayer):
         by_id = {x.spec.ident: x.result for x in wait_for}
         # Check if pass/fail criteria is met
         all_ok = True
-        for spec in {x.spec for x in to_launch}:
+        for spec in (x.spec for x in to_launch):
             for result, dep_ids in (
                 (True, spec.on_pass),
                 (False, spec.on_fail),

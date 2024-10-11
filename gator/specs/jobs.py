@@ -14,39 +14,29 @@
 
 import functools
 from collections import Counter
-from pathlib import Path
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase, SpecError
 from .resource import Cores, License, Memory
 
 
+@dataclass
 class Job(SpecBase):
     yaml_tag = "!Job"
 
-    def __init__(
-        self,
-        ident: Optional[str] = None,
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        command: Optional[str] = None,
-        args: Optional[List[str]] = None,
-        resources: Optional[List[Union[Cores, License, Memory]]] = None,
-        on_done: Optional[List[str]] = None,
-        on_fail: Optional[List[str]] = None,
-        on_pass: Optional[List[str]] = None,
-        yaml_path: Optional[Path] = None,
-    ) -> None:
-        super().__init__(yaml_path)
-        self.ident = ident
-        self.env = env or {}
-        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
-        self.command = command
-        self.args = args or []
-        self.resources = resources or []
-        self.on_done = on_done or []
-        self.on_fail = on_fail or []
-        self.on_pass = on_pass or []
+    ident: Optional[str] = None
+    env: Optional[Dict[str, str]] = field(default_factory=dict)
+    cwd: Optional[str] = None
+    command: Optional[str] = None
+    args: Optional[List[str]] = field(default_factory=list)
+    resources: Optional[List[Union[Cores, License, Memory]]] = field(default_factory=list)
+    on_done: Optional[List[str]] = field(default_factory=list)
+    on_fail: Optional[List[str]] = field(default_factory=list)
+    on_pass: Optional[List[str]] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
 
     @functools.cached_property
     def requested_cores(self) -> int:
@@ -110,38 +100,29 @@ class Job(SpecBase):
                     "resources",
                     f"More than one entry for license '{name}'",
                 )
-        for field in ("on_done", "on_fail", "on_pass"):
-            value = getattr(self, field)
+        for condition in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, condition)
             if not isinstance(value, list):
-                raise SpecError(self, field, f"The {field} dependencies must be a list")
+                raise SpecError(self, condition, f"The {condition} dependencies must be a list")
             if set(map(type, value)).difference({str}):
-                raise SpecError(self, field, f"The {field} entries must be strings")
+                raise SpecError(self, condition, f"The {condition} entries must be strings")
 
 
+@dataclass
 class JobArray(SpecBase):
     yaml_tag = "!JobArray"
 
-    def __init__(
-        self,
-        ident: Optional[str] = None,
-        repeats: Optional[int] = None,
-        jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = None,
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        on_fail: Optional[List[str]] = None,
-        on_pass: Optional[List[str]] = None,
-        on_done: Optional[List[str]] = None,
-        yaml_path: Optional[Path] = None,
-    ) -> None:
-        super().__init__(yaml_path)
-        self.ident = ident
-        self.repeats = 1 if (repeats is None) else repeats
-        self.jobs = jobs or []
-        self.env = env or {}
-        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
-        self.on_fail = on_fail or []
-        self.on_pass = on_pass or []
-        self.on_done = on_done or []
+    ident: Optional[str] = None
+    repeats: Optional[int] = 1
+    jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    env: Optional[Dict[str, str]] = field(default_factory=dict)
+    cwd: Optional[str] = None
+    on_fail: Optional[List[str]] = field(default_factory=list)
+    on_pass: Optional[List[str]] = field(default_factory=list)
+    on_done: Optional[List[str]] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
 
     @functools.cached_property
     def expected_jobs(self) -> int:
@@ -179,39 +160,31 @@ class JobArray(SpecBase):
             raise SpecError(self, "env", "Environment values must be strings or integers")
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
-        for field in ("on_done", "on_fail", "on_pass"):
-            value = getattr(self, field)
+        for condition in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, condition)
             if not isinstance(value, list):
-                raise SpecError(self, field, f"The {field} dependencies must be a list")
+                raise SpecError(self, condition, f"The {condition} dependencies must be a list")
             if set(map(type, value)).difference({str}):
-                raise SpecError(self, field, f"The {field} entries must be strings")
+                raise SpecError(self, condition, f"The {condition} entries must be strings")
         # Recurse
         for job in self.jobs:
             job.check()
 
 
+@dataclass
 class JobGroup(SpecBase):
     yaml_tag = "!JobGroup"
 
-    def __init__(
-        self,
-        ident: Optional[str] = None,
-        jobs: Optional[List[Union[Job, "JobGroup", JobArray]]] = None,
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        on_fail: Optional[List[str]] = None,
-        on_pass: Optional[List[str]] = None,
-        on_done: Optional[List[str]] = None,
-        yaml_path: Optional[Path] = None,
-    ) -> None:
-        super().__init__(yaml_path)
-        self.ident = ident
-        self.jobs = jobs or []
-        self.env = env or {}
-        self.cwd = cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
-        self.on_fail = on_fail or []
-        self.on_pass = on_pass or []
-        self.on_done = on_done or []
+    ident: Optional[str] = None
+    jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    env: Optional[Dict[str, str]] = field(default_factory=dict)
+    cwd: Optional[str] = None
+    on_fail: Optional[List[str]] = field(default_factory=list)
+    on_pass: Optional[List[str]] = field(default_factory=list)
+    on_done: Optional[List[str]] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
 
     @functools.cached_property
     def expected_jobs(self) -> int:
@@ -247,12 +220,12 @@ class JobGroup(SpecBase):
             raise SpecError(self, "env", "Environment values must be strings or integers")
         if self.cwd is not None and not isinstance(self.cwd, str):
             raise SpecError(self, "cwd", "Working directory must be a string")
-        for field in ("on_done", "on_fail", "on_pass"):
-            value = getattr(self, field)
+        for condition in ("on_done", "on_fail", "on_pass"):
+            value = getattr(self, condition)
             if not isinstance(value, list):
-                raise SpecError(self, field, f"The {field} dependencies must be a list")
+                raise SpecError(self, condition, f"The {condition} dependencies must be a list")
             if set(map(type, value)).difference({str}):
-                raise SpecError(self, field, f"The {field} entries must be strings")
+                raise SpecError(self, condition, f"The {condition} entries must be strings")
         # Recurse
         for job in self.jobs:
             job.check()
