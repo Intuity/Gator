@@ -21,6 +21,7 @@ from ..hub.api import HubAPI
 from ..specs import Job, JobArray, JobGroup, Spec
 from .db import Database, Query
 from .logger import Logger, MessageLimits
+from .summary import Summary, make_summary
 from .types import LogEntry, LogSeverity, Metric, Result
 from .utility import get_username
 from .ws_client import WebsocketClient
@@ -121,7 +122,9 @@ class BaseLayer:
             result = Result.FAILURE
         # Tell the parent the job is complete
         summary = await self.summarise()
-        await self.client.complete(ident=self.ident, code=self.code, result=result.name, **summary)
+        await self.client.complete(
+            ident=self.ident, code=self.code, result=result.name, summary=summary
+        )
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
         msg_metrics = filter(lambda x: x.name in msg_keys, self.metrics.values())
@@ -166,7 +169,7 @@ class BaseLayer:
         except asyncio.exceptions.CancelledError:
             pass
 
-    async def heartbeat(self) -> Dict[str, int]:
+    async def heartbeat(self) -> Summary:
         # Update logging metrics
         for sev in LogSeverity:
             metric = self.metrics[f"msg_{sev.name.lower()}"]
@@ -175,7 +178,7 @@ class BaseLayer:
         # Summarise state
         summary = await self.summarise()
         # Report to parent
-        await self.client.update(ident=self.ident, **summary)
+        await self.client.update(ident=self.ident, summary=summary)
         # Return the summary
         return summary
 
@@ -215,5 +218,7 @@ class BaseLayer:
     def is_root(self) -> bool:
         return (self.client is None) or (not self.client.linked)
 
-    async def summarise(self) -> Dict[str, int]:
-        return {"metrics": {k: x.value for k, x in self.metrics.items()}}
+    async def summarise(self) -> Summary:
+        return make_summary(
+            metrics={k: x.value for k, x in self.metrics.items()},
+        )

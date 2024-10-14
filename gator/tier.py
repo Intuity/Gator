@@ -21,7 +21,8 @@ from typing import Any, Dict, List, Optional, Type
 from .common.child import Child, ChildState
 from .common.layer import BaseLayer
 from .common.logger import Logger
-from .common.types import Metric, Result
+from .common.summary import Summary, contextualise_summary, merge_summaries
+from .common.types import Result
 from .common.ws_wrapper import WebsocketWrapper
 from .scheduler import LocalScheduler, SchedulerError
 from .specs import Job, JobArray, JobGroup, Spec
@@ -44,7 +45,7 @@ class Tier(BaseLayer):
         self.lock = asyncio.Lock()
         # Tracking for jobs in different phases
         self.jobs_pending = {}
-        self.jobs_launched = {}
+        self.jobs_launched: Dict[str, Child] = {}
         self.jobs_completed = {}
         # Tasks for pending jobs
         self.job_tasks = []
@@ -57,7 +58,7 @@ class Tier(BaseLayer):
             **self.jobs_completed,
         }
 
-    async def launch(self, *args, **kwargs) -> None:
+    async def launch(self, *args, **kwargs) -> Summary:
         await self.setup(*args, **kwargs)
         # Register server handlers for the upwards calls
         self.server.add_route("children", self.__list_children)
@@ -85,13 +86,18 @@ class Tier(BaseLayer):
         await self.__launch()
         # Report
         summary = await self.summarise()
+        metrics = summary["metrics"]
         await self.logger.info(
-            f"Complete - W: {summary['warnings']}, E: {summary['errors']}, "
+            f"Complete - "
+            f"W: {metrics.get('msg_warning', 0)}, "
+            f"E: {metrics.get('msg_error', 0)}, "
+            f"C: {metrics.get('msg_critical', 0)}, "
             f"T: {summary['sub_total']}, A: {summary['sub_active']}, "
             f"P: {summary['sub_passed']}, F: {summary['sub_failed']}"
         )
         # Teardown
         await self.teardown(*args, **kwargs)
+        return summary
 
     async def stop(self, **kwargs) -> None:
         await super().stop(**kwargs)
@@ -127,8 +133,8 @@ class Tier(BaseLayer):
                         "state": child.state.name,
                         "result": child.result.name,
                         "server": child.server,
-                        "metrics": {x.name: x.value for x in child.metrics.values()},
                         "exitcode": child.exitcode,
+                        "summary": child.summary,
                         "started": int(child.started.timestamp()),
                         "updated": int(child.updated.timestamp()),
                         "completed": int(child.completed.timestamp()),
@@ -180,12 +186,7 @@ class Tier(BaseLayer):
     async def __child_updated(
         self,
         ident: str,
-        metrics: Dict[str, List[int]],
-        sub_total: int = 0,
-        sub_active: int = 0,
-        sub_passed: int = 0,
-        sub_failed: int = 0,
-        failed_ids: Optional[List[List[str]]] = None,
+        summary: Summary,
         **_,
     ):
         """
@@ -193,42 +194,38 @@ class Tier(BaseLayer):
         and how many have passed or failed. The child may also report arbitrary
         metrics, which are aggregated hierarchically.
 
-        Example: { "ident"        : "regression",
-                   "sub_total" : 10,
-                   "sub_active": 4,
-                   "sub_passed": 1,
-                   "sub_failed": 2,
-                   "failed_ids": [
-                       ["child_a", "grandchild_a"],
-                       ["child_a", "grandchild_c"],
-                       ["child_b", "grandchild_f"]
-                   ],
-                   "metrics"   : {
-                     "msg_debug"   : 3,
-                     "msg_info"    : 5,
-                     "msg_warning" : 2,
-                     "msg_error"   : 0,
-                     "msg_critical": 0
-                   } }
+        Example: {
+            "ident"        : "regression",
+            "summary"      : {
+                "sub_total" : 10,
+                "sub_active": 4,
+                "sub_passed": 1,
+                "sub_failed": 2,
+                "failed_ids": [
+                    ["child_a", "grandchild_a"],
+                    ["child_a", "grandchild_c"],
+                    ["child_b", "grandchild_f"]
+                ],
+                "metrics"   : {
+                    "msg_debug"   : 3,
+                    "msg_info"    : 5,
+                    "msg_warning" : 2,
+                    "msg_error"   : 0,
+                    "msg_critical": 0
+                }
+            }
+        }
         """
         async with self.lock:
             if ident in self.jobs_launched:
-                child = self.jobs_launched[ident]
+                child: Child = self.jobs_launched[ident]
                 if child.state is not ChildState.STARTED:
                     await self.logger.error(
                         f"Update received for child '{child.ident}' before start"
                     )
                 await self.logger.debug(f"Received update from child {ident} of {self.ident}")
                 child.updated = datetime.now()
-                for m_key, m_val in metrics.items():
-                    if m_key not in child.metrics:
-                        child.metrics[m_key] = Metric(name=m_key)
-                    child.metrics[m_key].value = m_val
-                child.sub_total = sub_total
-                child.sub_active = sub_active
-                child.sub_passed = sub_passed
-                child.sub_failed = sub_failed
-                child.failed_ids = [[self.spec.ident, *x] for x in failed_ids]
+                child.summary = contextualise_summary(self.spec.ident, summary)
             elif ident in self.jobs_completed:
                 await self.logger.error(
                     f"Child {ident} of {self.ident} sent update after completion"
@@ -243,36 +240,35 @@ class Tier(BaseLayer):
         ident: str,
         result: str,
         code: int,
-        metrics: Dict[str, List[int]],
-        sub_total: int = 0,
-        sub_passed: int = 0,
-        sub_failed: int = 0,
-        failed_ids: Optional[List[List[str]]] = None,
+        summary: Summary,
         **_,
     ):
         """
         Mark that a child process has completed.
 
-        Example: { "ident"        : "regression",
-                   "result"    : "SUCCESS",
-                   "code"      : 0,
-                   "sub_total" : 10,
-                   "sub_passed": 1,
-                   "sub_failed": 2,
-                   "failed_ids": [
-                       ["child_a", "grandchild_a"],
-                       ["child_a", "grandchild_c"],
-                       ["child_b", "grandchild_f"]
-                   ],
-                   "metrics"   : {
-                     "msg_debug"   : 3,
-                     "msg_info"    : 5,
-                     "msg_warning" : 2,
-                     "msg_error"   : 0,
-                     "msg_critical": 0
-                   } }
+        Example: {
+            "ident"     : "regression",
+            "result"    : "SUCCESS",
+            "code"      : 0,
+            "summary"   : {
+                "sub_total" : 10,
+                "sub_passed": 1,
+                "sub_failed": 2,
+                "failed_ids": [
+                    ["child_a", "grandchild_a"],
+                    ["child_a", "grandchild_c"],
+                    ["child_b", "grandchild_f"]
+                ],
+                "metrics"   : {
+                    "msg_debug"   : 3,
+                    "msg_info"    : 5,
+                    "msg_warning" : 2,
+                    "msg_error"   : 0,
+                    "msg_critical": 0
+                }
+            }
+        }
         """
-        failed_ids = failed_ids or []
         async with self.lock:
             if ident in self.jobs_launched:
                 await self.logger.debug(
@@ -284,16 +280,15 @@ class Tier(BaseLayer):
                 child.completed = datetime.now()
                 child.state = ChildState.COMPLETE
                 child.result = getattr(Result, result.strip().upper())
-                for m_key, m_val in metrics.items():
-                    if m_key not in child.metrics:
-                        child.metrics[m_key] = Metric(name=m_key)
-                    child.metrics[m_key].value = m_val
+
+                child.summary = contextualise_summary(self.spec.ident, summary)
+
+                if child.summary["sub_active"]:
+                    await self.logger.error(
+                        f"Child {ident} of {self.ident} reported active jobs on completion"
+                    )
+                    raise Exception("Child reported active jobs on completion")
                 child.exitcode = int(code)
-                child.sub_total = sub_total
-                child.sub_active = 0
-                child.sub_passed = sub_passed
-                child.sub_failed = sub_failed
-                child.failed_ids = [[self.spec.ident, *x] for x in failed_ids]
                 # Move to the completed store
                 self.jobs_completed[child.ident] = child
                 del self.jobs_launched[child.ident]
@@ -356,19 +351,12 @@ class Tier(BaseLayer):
                 del self.jobs_pending[child.ident]
             await self.scheduler.launch(to_launch)
 
-    async def summarise(self) -> Dict[str, int]:
-        data = defaultdict(lambda: 0)
-        data.update(await super().summarise())
-        data["failed_ids"] = []
+    async def summarise(self) -> Summary:
+        data = await super().summarise()
         async with self.lock:
             for child in list(self.jobs_launched.values()) + list(self.jobs_completed.values()):
-                for metric in child.metrics.values():
-                    data["metrics"][metric.name] += metric.value
-                data["sub_total"] += child.sub_total
-                data["sub_active"] += child.sub_active
-                data["sub_passed"] += child.sub_passed
-                data["sub_failed"] += child.sub_failed
-                data["failed_ids"] += child.failed_ids or []
+                merge_summaries(child.summary, base=data)
+
         # While jobs are still starting up, estimate the total number expected
         data["sub_total"] = max(data["sub_total"], self.spec.expected_jobs)
         return data

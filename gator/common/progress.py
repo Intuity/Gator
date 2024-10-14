@@ -20,6 +20,8 @@ from rich.live import Live
 from rich.measure import Measurement
 from rich.table import Table
 
+from .summary import Summary
+
 
 class PassFailBar(JupyterMixin):
     """
@@ -74,7 +76,7 @@ class PassFailBar(JupyterMixin):
         completed = min(100, max(0.0, completed))
         return completed
 
-    def update(self, total: int, active: int, passed: int, failed: int) -> None:
+    def update(self, summary: Summary) -> None:
         """Update progress with new values.
 
         Args:
@@ -82,10 +84,10 @@ class PassFailBar(JupyterMixin):
             total (float, optional): Total number of steps, or ``None`` to not change.
             Defaults to None.
         """
-        self.total = total
-        self.active = active
-        self.passed = passed
-        self.failed = failed
+        self.total = summary["sub_total"]
+        self.active = summary["sub_active"]
+        self.passed = summary["sub_passed"]
+        self.failed = summary["sub_failed"]
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         # Ensure space for the title text

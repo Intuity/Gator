@@ -8,7 +8,7 @@ jobs:
       ident: msg_emitter
       command: python3
       args:
-        - emitter.py
+        - examples/emitter.py
         - --count=10000
         - --exclude_errors
         - --prefix=A
@@ -22,7 +22,7 @@ jobs:
       ident: msg_emitter
       command: python3
       args:
-        - emitter.py
+        - examples/emitter.py
         - --count=10000
         - --exclude_errors
         - --prefix=B
