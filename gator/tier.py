@@ -16,10 +16,10 @@ import asyncio
 from collections import defaultdict
 from copy import copy, deepcopy
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Type
+from typing import Dict, List, Optional, Type
 
 from .common.child import Child, ChildState
-from .common.layer import BaseLayer
+from .common.layer import BaseLayer, ChildrenResponse, GetTreeResponse, SpecResponse
 from .common.logger import Logger
 from .common.summary import Summary, contextualise_summary, merge_summaries
 from .common.types import Result
@@ -107,7 +107,7 @@ class Tier(BaseLayer):
                 if child.ws:
                     await child.ws.stop(posted=True)
 
-    async def get_tree(self, **_) -> Dict[str, Any]:
+    async def get_tree(self, **_) -> GetTreeResponse:
         tree = {}
         async with self.lock:
             all_launched = list(self.jobs_launched.values())
@@ -118,7 +118,7 @@ class Tier(BaseLayer):
                 tree[child.ident] = await child.ws.get_tree()
         return tree
 
-    async def __list_children(self, **_):
+    async def __list_children(self, **_) -> ChildrenResponse:
         """List all of the children of this layer"""
         state = {}
         async with self.lock:
@@ -153,7 +153,7 @@ class Tier(BaseLayer):
             data["children"] = [x.ident for x in self.all_children.values()]
             return data
 
-    async def __child_query(self, ident: str, **_):
+    async def __child_query(self, ident: str, **_) -> SpecResponse:
         """Return the specification for a launched process"""
         async with self.lock:
             if ident in self.jobs_launched:

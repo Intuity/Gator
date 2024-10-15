@@ -89,8 +89,10 @@ class TestWrapper:
         assert not wrp.complete
         assert not wrp.terminated
         assert wrp.code == 0
-        assert wrp.db is None
-        assert wrp.server is None
+        with pytest.raises(AttributeError):
+            assert wrp.db is None
+        with pytest.raises(AttributeError):
+            assert wrp.server is None
         # Launch the job and wait for completion
         await wrp.launch()
         # Check state after job has run
