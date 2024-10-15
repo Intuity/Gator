@@ -15,14 +15,14 @@ import {
     FloatButton,
 } from "antd";
 import { BgColorsOutlined } from "@ant-design/icons";
-import Tree, { TreeKey, TreeNode } from "./lib/tree";
+import Tree, { TreeKey, TreeNode, View } from "./lib/tree";
 
 import Sider from "./components/Sider";
 import { antTheme, view } from "./theme";
 import { useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { LayoutOutlined } from "@ant-design/icons";
-import { PointGrid, PointSummaryGrid } from "./lib/coveragegrid";
+import { EventDataNode } from "antd/lib/tree";
 const { Header, Content } = Layout;
 
 const ColorModeToggleButton = (props: FloatButtonProps) => {
@@ -139,12 +139,19 @@ function getBreadCrumbItems({
     return breadCrumbItems;
 }
 
-export type DashboardProps = {
-    tree: Tree
+type DashView = View & {
+    factory(): React.ReactNode
 }
 
-export default function Dashboard({ tree }: DashboardProps) {
-    const [selectedTreeKeys, setSelectedTreeKeys] = useState<TreeKey[]>([]);
+export type DashboardProps = {
+    tree: Tree,
+    selectedTreeKeys: TreeKey[],
+    setSelectedTreeKeys: (keys: TreeKey[]) => void;
+    onLoadData: (treeNode: EventDataNode<TreeNode>) => Promise<void>;
+    getViewsByKey: (key: TreeKey) => DashView[];
+}
+
+export default function Dashboard({ tree, onLoadData, selectedTreeKeys, setSelectedTreeKeys, getViewsByKey }: DashboardProps) {
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
@@ -171,7 +178,7 @@ export default function Dashboard({ tree }: DashboardProps) {
     });
 
     const viewKey = selectedTreeKeys[0] ?? Tree.ROOT;
-    const contentViews = tree.getViewsByKey(viewKey);
+    const contentViews = getViewsByKey(viewKey);
     const defaultView = contentViews[0];
     const currentContentKey = treeKeyContentKey[viewKey] ?? defaultView.value;
 
@@ -183,15 +190,11 @@ export default function Dashboard({ tree }: DashboardProps) {
     };
 
     const selectedViewContent = useMemo(() => {
-        switch (currentContentKey) {
-            case "Pivot":
-                return <LayoutOutlined />
-            case "Summary":
-                return <PointSummaryGrid tree={tree} node={tree.getNodeByKey(viewKey)} setSelectedTreeKeys={onSelect} />
-            case "Point":
-                return <PointGrid node={tree.getNodeByKey(viewKey)} />
-            default:
-                throw new Error("Invalid view!?")
+        const contentView = contentViews.find(cv => cv.value == currentContentKey);
+        if (contentView) {
+            return contentView.factory()
+        } else {
+            throw new Error("Invalid view!?")
         }
     }, [viewKey, currentContentKey]);
 
@@ -205,7 +208,9 @@ export default function Dashboard({ tree }: DashboardProps) {
                     expandedTreeKeys={expandedTreeKeys}
                     setExpandedTreeKeys={setExpandedTreeKeys}
                     autoExpandTreeParent={autoExpandTreeParent}
-                    setAutoExpandTreeParent={setAutoExpandTreeParent}></Sider>
+                    setAutoExpandTreeParent={setAutoExpandTreeParent}
+                    onLoadData={onLoadData}>
+                </Sider>
                 <Layout {...view.body.props}>
                     <Header {...view.body.header.props}>
                         <Flex {...view.body.header.flex.props}>

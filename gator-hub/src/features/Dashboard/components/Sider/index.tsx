@@ -7,6 +7,7 @@ import { Layout, Tree as AntTree, Input } from "antd";
 import { ReactNode, useMemo, useState } from "react";
 import { view } from "../../theme";
 import Tree, { TreeKey, TreeNode } from "../../lib/tree";
+import { EventDataNode } from "antd/lib/tree";
 
 /**
  * Processes a tree of nodes and applies a formatter to the tile of each.
@@ -65,6 +66,7 @@ export type SiderProps = {
     setAutoExpandTreeParent: (newValue: boolean) => void;
     setSelectedTreeKeys: (newSelectedKeys: TreeKey[]) => void;
     setExpandedTreeKeys: (newExpandedKeys: TreeKey[]) => void;
+    onLoadData: (treeNode: EventDataNode<TreeNode>) => Promise<void>
 };
 
 export default function Sider({
@@ -75,6 +77,7 @@ export default function Sider({
     setAutoExpandTreeParent,
     setSelectedTreeKeys,
     setExpandedTreeKeys,
+    onLoadData
 }: SiderProps) {
     const [searchValue, setSearchValue] = useState("");
 
@@ -119,6 +122,7 @@ export default function Sider({
                 expandedKeys={expandedTreeKeys}
                 autoExpandParent={autoExpandTreeParent}
                 treeData={formattedTreeData}
+                loadData={onLoadData}
             />
         </Layout.Sider>
     );

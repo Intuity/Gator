@@ -3,14 +3,14 @@
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
-import { TreeDataNode } from "antd";
+import { DataNode } from "antd/lib/tree";
 import type { SegmentedLabeledOption } from "antd/lib/segmented";
 
 export type TreeKey = string | number;
 
-export type TreeNode<T = any> = TreeDataNode & {
+export type TreeNode<T = any> = DataNode & {
     key: TreeKey;
-    children?: TreeNode[];
+    children?: TreeNode<T>[];
     data: T;
 };
 
