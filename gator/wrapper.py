@@ -20,14 +20,13 @@ import subprocess
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 
 import expandvars
 import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
-from .common.layer import BaseLayer
+from .common.layer import BaseLayer, MetricResponse
 from .common.summary import Summary
 from .common.types import Attribute, LogSeverity, Metric, ProcStat
 
@@ -91,7 +90,7 @@ class Wrapper(BaseLayer):
             summary["failed_ids"] = []
         return summary
 
-    async def __handle_metric(self, name: str, value: int, **_) -> Dict[str, str]:
+    async def __handle_metric(self, name: str, value: int, **_) -> MetricResponse:
         """
         Handle an arbitrary metric being reported from a child, the only names
         that cannot be used are those reserved for message statistics (e.g.

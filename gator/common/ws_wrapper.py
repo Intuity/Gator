@@ -17,11 +17,13 @@ import atexit
 import dataclasses
 import itertools
 import json
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, TypeVar, Union, cast
 
 import websockets
 
 from .ws_router import WebsocketRouter
+
+_TFn = TypeVar("_TFn", bound=Callable)
 
 
 @dataclasses.dataclass
@@ -98,7 +100,10 @@ class WebsocketWrapper(WebsocketRouter):
         except AttributeError:
             pass
 
-        async def _shim(
+        return self._make_shim(key)
+
+    def _make_shim(self, key):
+        async def _inner(
             posted: bool = False, **kwargs: Dict[str, Union[str, int]]
         ) -> Dict[str, Union[str, int]]:
             # Wait until server is available
@@ -139,5 +144,14 @@ class WebsocketWrapper(WebsocketRouter):
                 return pending.response.get("payload", {})
 
         # Cache the shim result as a attribute
-        setattr(self, key, _shim)
-        return _shim
+        setattr(self, key, _inner)
+        return _inner
+
+
+def abstract_route(fn: _TFn) -> _TFn:
+    "Mark method as an abstract route which will be filled in by an add_route call"
+
+    async def wrap(self: WebsocketWrapper, *args, **kwargs):
+        return await self._make_shim(fn.__name__)(*args, **kwargs)
+
+    return cast(_TFn, wrap)

@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
+from gator.common.layer import UpstreamClient
 from gator.common.logger import Logger
-from gator.common.ws_client import WebsocketClient
 from gator.specs import Job, JobArray, JobGroup
 from gator.tier import Tier
 
@@ -49,7 +49,7 @@ class TestTier:
         self.mk_wrp_dt = mocker.patch("gator.wrapper.datetime")
         self.mk_wrp_dt.now.side_effect = [datetime.fromtimestamp(x) for x in (123, 234, 345, 456)]
         # Create websocket client
-        self.client = WebsocketClient()
+        self.client = UpstreamClient()
         self.client.ws_event.set()
         # Create logger
         mk_console = MagicMock()
@@ -361,7 +361,7 @@ class TestTier:
         while not all(x.exists() for x in (touch_a, touch_b, touch_c)):
             await asyncio.sleep(1)
         # List immediate children
-        ws_cli = WebsocketClient(address=await tier.server.get_address())
+        ws_cli = UpstreamClient(address=await tier.server.get_address())
         await ws_cli.start()
         response = await ws_cli.children()
         assert set(response["launched"].keys()) == {"c", "mid"}

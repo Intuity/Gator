@@ -15,18 +15,152 @@
 import asyncio
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    TypedDict,
+    Union,
+)
 
 from ..hub.api import HubAPI
 from ..specs import Job, JobArray, JobGroup, Spec
 from .db import Database, Query
 from .logger import Logger, MessageLimits
 from .summary import Summary, make_summary
-from .types import LogEntry, LogSeverity, Metric, Result
+from .types import Attribute, LogEntry, LogSeverity, Metric, ProcStat, Result
 from .utility import get_username
 from .ws_client import WebsocketClient
 from .ws_server import WebsocketServer
-from .ws_wrapper import WebsocketWrapper
+from .ws_wrapper import WebsocketWrapper, abstract_route
+
+
+class ResolveResponse(TypedDict):
+    ident: str
+    server_url: str
+    metrics: Dict[str, int]
+    children: List[str]
+
+
+class Message(TypedDict):
+    uid: int
+    severity: int
+    message: str
+    timestamp: int
+
+
+class SpecResponse(TypedDict):
+    spec: str
+
+
+class GetMessagesResponse(TypedDict):
+    messages: List[Message]
+    total: int
+
+
+GetTreeResponse = Dict[str, Union[str, "GetTreeResponse"]]
+
+
+class MetricResponseSuccess(TypedDict):
+    result: Literal["success"]
+
+
+class MetricResponseError(TypedDict):
+    result: Literal["error"]
+    reason: str
+
+
+MetricResponse = Union[MetricResponseSuccess, MetricResponseError]
+
+
+class ChildResponseData(TypedDict):
+    state: str
+    result: str
+    server: str
+    exitcode: int
+    summary: Summary
+    started: int
+    updated: int
+    completed: int
+
+
+ChildrenResponse = List[ChildResponseData]
+
+
+class DownstreamClient(WebsocketClient):
+    @abstract_route
+    async def resolve(self, path: List[str]) -> ResolveResponse:
+        ...
+
+    @abstract_route
+    async def get_messages(self, after: int, limit: int) -> GetMessagesResponse:
+        ...
+
+    @abstract_route
+    async def get_tree(self) -> GetTreeResponse:
+        ...
+
+
+class UpstreamClient(WebsocketClient):
+    @abstract_route
+    async def resolve(self, path: List[str]) -> ResolveResponse:
+        ...
+
+    @abstract_route
+    async def spec(self, ident: str) -> SpecResponse:
+        ...
+
+    @abstract_route
+    async def register(self, ident: str, server: str):
+        ...
+
+    @abstract_route
+    async def update(self, ident: str, summary: Summary):
+        ...
+
+    @abstract_route
+    async def complete(self, ident: str, result: str, code: int, summary: Summary):
+        ...
+
+    @abstract_route
+    async def children(self) -> ChildrenResponse:
+        ...
+
+    @abstract_route
+    async def metric(self, name: str, value: int) -> MetricResponse:
+        ...
+
+
+class BaseDatabase(Database):
+    async def push_metric(self, metric: Metric):
+        ...
+
+    async def push_procstat(self, procstat: ProcStat):
+        ...
+
+    async def push_attribute(self, attribute: Attribute):
+        ...
+
+    async def push_logentry(self, logentry: LogEntry):
+        ...
+
+    async def get_metric(self, **_) -> Any:
+        ...
+
+    async def get_procstat(self, **_) -> Any:
+        ...
+
+    async def get_attribute(self, **_) -> Any:
+        ...
+
+    async def get_logentry(self, **_) -> Any:
+        ...
+
+    async def update_metric(self, metric: Metric):
+        ...
 
 
 class BaseLayer:
@@ -35,8 +169,8 @@ class BaseLayer:
     def __init__(
         self,
         spec: Union[Job, JobArray, JobGroup],
-        client: Optional[WebsocketClient] = None,
-        logger: Optional[Logger] = None,
+        logger: Logger,
+        client: Optional[DownstreamClient] = None,
         tracking: Optional[Path] = None,
         interval: int = 5,
         quiet: bool = False,
@@ -46,7 +180,8 @@ class BaseLayer:
     ) -> None:
         # Capture initialisation variables
         self.spec = spec
-        self.client = client
+        if client:
+            self.client = client
         self.logger = logger
         # Set the default tracking path
         self.tracking = (Path.cwd() / "tracking") if tracking is None else tracking
@@ -59,8 +194,6 @@ class BaseLayer:
         self.spec.check()
         # Create empty pointers in advance
         self.code = 0
-        self.db = None
-        self.server = None
         self.__hub_uid = None
         self.__hb_event = None
         self.__hb_task = None
@@ -68,6 +201,36 @@ class BaseLayer:
         self.complete = False
         self.terminated = False
         self.metrics = {}
+
+    @property
+    def server(self) -> WebsocketServer:
+        if (value := getattr(self, "__server", None)) is None:
+            raise AttributeError("Server not set yet!")
+        return value
+
+    @server.setter
+    def server(self, value: WebsocketServer):
+        setattr(self, "__server", value)
+
+    @property
+    def client(self) -> DownstreamClient:
+        if (value := getattr(self, "__client", None)) is None:
+            raise AttributeError("Client not set yet!")
+        return value
+
+    @client.setter
+    def client(self, value: DownstreamClient):
+        setattr(self, "__client", value)
+
+    @property
+    def db(self) -> BaseDatabase:
+        if (value := getattr(self, "__db", None)) is None:
+            raise AttributeError("db not set yet!")
+        return value
+
+    @db.setter
+    def db(self, value: Database):
+        setattr(self, "__db", value)
 
     async def setup(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
         # Ensure the tracking directory exists
@@ -91,6 +254,7 @@ class BaseLayer:
         self.server.add_route("get_messages", self.get_messages)
         self.server.add_route("resolve", self.resolve)
         # Add handlers for downwards calls
+        assert self.client is not None, "Client is not set?"
         self.client.add_route("stop", self.stop)
         self.client.add_route("resolve", self.resolve)
         # If linked, ping and then register with the parent
@@ -184,30 +348,31 @@ class BaseLayer:
 
     async def get_messages(
         self, ws: WebsocketWrapper, after: int = 0, limit: int = 10
-    ) -> List[Dict[str, Union[str, int]]]:
+    ) -> GetMessagesResponse:
         msgs: List[LogEntry] = await self.db.get_logentry(
             sql_order_by=("db_uid", True),
             sql_limit=limit,
             db_uid=Query(gte=after),
         )
         total: int = await self.db.get_logentry(sql_count=True)
-        messages = [
-            {
-                "uid": x.db_uid,
-                "severity": int(x.severity),
-                "message": x.message,
-                "timestamp": int(x.timestamp.timestamp()),
-            }
+        messages: list[Message] = [
+            Message(
+                uid=x.db_uid,
+                severity=int(x.severity),
+                message=x.message,
+                timestamp=int(x.timestamp.timestamp()),
+            )
             for x in msgs
         ]
         return {"messages": messages, "total": total}
 
-    async def resolve(self, path: List[str], **_) -> None:
+    async def resolve(self, path: List[str], **_) -> ResolveResponse:
         del path
         return {
             "ident": self.ident,
             "server_url": await self.server.get_address(),
             "metrics": (await self.summarise()).get("metrics", {}),
+            "children": [],
         }
 
     @property

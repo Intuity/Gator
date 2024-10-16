@@ -12,11 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from types import SimpleNamespace
 
 from piccolo.columns import ForeignKey, Integer, Serial, Varchar
 from piccolo.engine.postgres import PostgresEngine
 from piccolo.table import Table
+
+
+class Completion(Table):
+    uid = Serial(primary_key=True, unique=True, index=True)
+    db_file = Varchar(5000)
+    timestamp = Integer()
+
+
+# Define a registration table format
+class Registration(Table):
+    uid = Serial(primary_key=True, unique=True, index=True)
+    layer = Varchar(16)
+    ident = Varchar(250)
+    server_url = Varchar(250)
+    owner = Varchar(250)
+    timestamp = Integer()
+    completion = ForeignKey(references=Completion)
+
+
+# Define a metric table format
+class Metric(Table):
+    uid = Serial(primary_key=True, unique=True, index=True)
+    registration = ForeignKey(references=Registration)
+    name = Varchar(250)
+    value = Integer()
 
 
 def setup_db(host: str, port: str, name: str, user: str, password: str):
@@ -31,27 +55,7 @@ def setup_db(host: str, port: str, name: str, user: str, password: str):
         }
     )
 
-    # Define a completion table format
-    class Completion(Table, db=db):
-        uid = Serial(primary_key=True, unique=True, index=True)
-        db_file = Varchar(5000)
-        timestamp = Integer()
+    for table in (Completion, Registration, Metric):
+        table._meta.db = db
 
-    # Define a registration table format
-    class Registration(Table, db=db):
-        uid = Serial(primary_key=True, unique=True, index=True)
-        layer = Varchar(16)
-        ident = Varchar(250)
-        server_url = Varchar(250)
-        owner = Varchar(250)
-        timestamp = Integer()
-        completion = ForeignKey(references=Completion)
-
-    # Define a metric table format
-    class Metric(Table, db=db):
-        uid = Serial(primary_key=True, unique=True, index=True)
-        registration = ForeignKey(references=Registration)
-        name = Varchar(250)
-        value = Integer()
-
-    return db, SimpleNamespace(**{x.__name__: x for x in (Completion, Registration, Metric)})
+    return db
