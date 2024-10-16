@@ -15,7 +15,16 @@
 import asyncio
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional, TypedDict, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    TypedDict,
+    Union,
+)
 
 from ..hub.api import HubAPI
 from ..specs import Job, JobArray, JobGroup, Spec
@@ -26,13 +35,14 @@ from .types import Attribute, LogEntry, LogSeverity, Metric, ProcStat, Result
 from .utility import get_username
 from .ws_client import WebsocketClient
 from .ws_server import WebsocketServer
-from .ws_wrapper import WebsocketWrapper
+from .ws_wrapper import WebsocketWrapper, abstract_route
 
 
 class ResolveResponse(TypedDict):
     ident: str
     server_url: str
     metrics: Dict[str, int]
+    children: List[str]
 
 
 class Message(TypedDict):
@@ -80,51 +90,77 @@ class ChildResponseData(TypedDict):
 ChildrenResponse = List[ChildResponseData]
 
 
-def null(*args, **kwargs): ...
+class DownstreamClient(WebsocketClient):
+    @abstract_route
+    async def resolve(self, path: List[str]) -> ResolveResponse:
+        ...
+
+    @abstract_route
+    async def get_messages(self, after: int, limit: int) -> GetMessagesResponse:
+        ...
+
+    @abstract_route
+    async def get_tree(self) -> GetTreeResponse:
+        ...
 
 
-class _BaseServer(WebsocketServer):
-    async def get_messages(self, after: int, limit: int) -> GetMessagesResponse: ...
+class UpstreamClient(WebsocketClient):
+    @abstract_route
+    async def resolve(self, path: List[str]) -> ResolveResponse:
+        ...
 
-    async def resolve(self, path: List[str]) -> ResolveResponse: ...
+    @abstract_route
+    async def spec(self, ident: str) -> SpecResponse:
+        ...
 
-    async def metric(self, name: str, value: int) -> MetricResponse: ...
+    @abstract_route
+    async def register(self, ident: str, server: str):
+        ...
+
+    @abstract_route
+    async def update(self, ident: str, summary: Summary):
+        ...
+
+    @abstract_route
+    async def complete(self, ident: str, result: str, code: int, summary: Summary):
+        ...
+
+    @abstract_route
+    async def children(self) -> ChildrenResponse:
+        ...
+
+    @abstract_route
+    async def metric(self, name: str, value: int) -> MetricResponse:
+        ...
 
 
-class _BaseClient(WebsocketClient):
-    async def stop(self): ...
+class BaseDatabase(Database):
+    async def push_metric(self, metric: Metric):
+        ...
 
-    async def resolve(self, path: List[str]) -> ResolveResponse: ...
+    async def push_procstat(self, procstat: ProcStat):
+        ...
 
-    async def update(self, ident: str, summary: Summary): ...
+    async def push_attribute(self, attribute: Attribute):
+        ...
 
-    async def complete(self, ident: str, result: str, code: int, summary: Summary): ...
+    async def push_logentry(self, logentry: LogEntry):
+        ...
 
-    async def children(self) -> ChildrenResponse: ...
+    async def get_metric(self, **_) -> Any:
+        ...
 
-    async def spec(self, ident: str) -> SpecResponse: ...
+    async def get_procstat(self, **_) -> Any:
+        ...
 
-    async def get_tree(self) -> GetTreeResponse: ...
+    async def get_attribute(self, **_) -> Any:
+        ...
 
+    async def get_logentry(self, **_) -> Any:
+        ...
 
-class _BaseDatabase(Database):
-    async def push_metric(self, metric: Metric): ...
-
-    async def push_procstat(self, procstat: ProcStat): ...
-
-    async def push_attribute(self, attribute: Attribute): ...
-
-    async def push_logentry(self, logentry: LogEntry): ...
-
-    async def get_metric(self, **_) -> Any: ...
-
-    async def get_procstat(self, **_) -> Any: ...
-
-    async def get_attribute(self, **_) -> Any: ...
-
-    async def get_logentry(self, **_) -> Any: ...
-
-    async def update_metric(self, metric: Metric): ...
+    async def update_metric(self, metric: Metric):
+        ...
 
 
 class BaseLayer:
@@ -134,7 +170,7 @@ class BaseLayer:
         self,
         spec: Union[Job, JobArray, JobGroup],
         logger: Logger,
-        client: Optional[WebsocketClient] = None,
+        client: Optional[DownstreamClient] = None,
         tracking: Optional[Path] = None,
         interval: int = 5,
         quiet: bool = False,
@@ -167,7 +203,7 @@ class BaseLayer:
         self.metrics = {}
 
     @property
-    def server(self) -> _BaseServer:
+    def server(self) -> WebsocketServer:
         if (value := getattr(self, "__server", None)) is None:
             raise AttributeError("Server not set yet!")
         return value
@@ -177,17 +213,17 @@ class BaseLayer:
         setattr(self, "__server", value)
 
     @property
-    def client(self) -> _BaseClient:
+    def client(self) -> DownstreamClient:
         if (value := getattr(self, "__client", None)) is None:
             raise AttributeError("Client not set yet!")
         return value
 
     @client.setter
-    def client(self, value: WebsocketClient):
+    def client(self, value: DownstreamClient):
         setattr(self, "__client", value)
 
     @property
-    def db(self) -> _BaseDatabase:
+    def db(self) -> BaseDatabase:
         if (value := getattr(self, "__db", None)) is None:
             raise AttributeError("db not set yet!")
         return value
@@ -336,6 +372,7 @@ class BaseLayer:
             "ident": self.ident,
             "server_url": await self.server.get_address(),
             "metrics": (await self.summarise()).get("metrics", {}),
+            "children": [],
         }
 
     @property

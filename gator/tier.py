@@ -19,7 +19,13 @@ from datetime import datetime
 from typing import Dict, List, Optional, Type
 
 from .common.child import Child, ChildState
-from .common.layer import BaseLayer, ChildrenResponse, GetTreeResponse, SpecResponse
+from .common.layer import (
+    BaseLayer,
+    ChildrenResponse,
+    GetTreeResponse,
+    ResolveResponse,
+    SpecResponse,
+)
 from .common.logger import Logger
 from .common.summary import Summary, contextualise_summary, merge_summaries
 from .common.types import Result
@@ -44,14 +50,14 @@ class Tier(BaseLayer):
         self.scheduler = None
         self.lock = asyncio.Lock()
         # Tracking for jobs in different phases
-        self.jobs_pending = {}
+        self.jobs_pending: Dict[str, Child] = {}
         self.jobs_launched: Dict[str, Child] = {}
-        self.jobs_completed = {}
+        self.jobs_completed: Dict[str, Child] = {}
         # Tasks for pending jobs
         self.job_tasks = []
 
     @property
-    def all_children(self) -> Dict[str, Spec]:
+    def all_children(self) -> Dict[str, Child]:
         return {
             **self.jobs_pending,
             **self.jobs_launched,
@@ -141,7 +147,7 @@ class Tier(BaseLayer):
                     }
         return state
 
-    async def resolve(self, path: List[str], **_) -> None:
+    async def resolve(self, path: List[str], **_) -> ResolveResponse:
         if path:
             child = self.all_children[path[0]]
             if child.ws:

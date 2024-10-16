@@ -20,9 +20,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
+from gator.common.layer import UpstreamClient
 from gator.common.logger import Logger
 from gator.common.types import Attribute, LogSeverity, ProcStat
-from gator.common.ws_client import WebsocketClient
 from gator.specs import Cores, Job, License, Memory
 from gator.wrapper import Wrapper
 
@@ -51,7 +51,7 @@ class TestWrapper:
         self.mk_wrp_dt = mocker.patch("gator.wrapper.datetime")
         self.mk_wrp_dt.now.side_effect = [datetime.fromtimestamp(x) for x in (123, 234, 345, 456)]
         # Create websocket client and logger
-        self.client = WebsocketClient()
+        self.client = UpstreamClient()
         self.client.ws_event.set()
         self.logger = Logger(self.client)
         # Allow test to run
@@ -338,7 +338,7 @@ class TestWrapper:
         while wrp.proc is None:
             await asyncio.sleep(0.1)
         # Attach a client as if it's the job
-        sub_cli = WebsocketClient(await wrp.server.get_address())
+        sub_cli = UpstreamClient(await wrp.server.get_address())
         await sub_cli.start()
         # Push up some metrics
         await sub_cli.metric(name="widgets", value=123)

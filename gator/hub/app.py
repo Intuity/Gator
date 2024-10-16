@@ -23,7 +23,7 @@ from quart import (
     request,
 )
 
-from ..common.ws_client import WebsocketClient
+from ..common.layer import DownstreamClient
 from .tables import Completion, Metric, Registration, setup_db
 
 
@@ -139,7 +139,7 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>")
     @hub.get("/api/job/<int:job_id>/")
     @lookup_job
-    async def job_info(job):
+    async def job_info(job: Registration):
         # Get all metrics
         metrics = await Metric.select().where(Metric.registration == job)
         # Return data
@@ -149,21 +149,21 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/messages/")
     @hub.get("/api/job/<int:job_id>/messages/<path:hierarchy>")
     @lookup_job
-    async def job_messages(job, hierarchy: str = ""):
+    async def job_messages(job: Registration, hierarchy: str = ""):
         # Get query parameters
         after_uid = int(request.args.get("after", 0))
         limit_num = int(request.args.get("limit", 10))
         hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
         # If necessary, dig down through the hierarchy to find the job
         if hierarchy:
-            async with WebsocketClient(job.server_url) as ws:
+            async with DownstreamClient(job.server_url) as ws:
                 data = await ws.resolve(path=hierarchy)
                 server_url = data["server_url"]
         # If no hierarchy, we're using the top-level job
         else:
             server_url = job.server_url
         # Query messages via the job's websocket
-        async with WebsocketClient(server_url) as ws:
+        async with DownstreamClient(server_url) as ws:
             data = await ws.get_messages(after=after_uid, limit=limit_num)
         # Return data
         return data
@@ -172,12 +172,12 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/layer/")
     @hub.get("/api/job/<int:job_id>/layer/<path:hierarchy>")
     @lookup_job
-    async def job_layer(job, hierarchy: str = ""):
+    async def job_layer(job: Registration, hierarchy: str = ""):
         # If this is a tier, resolve the hierarchy
         if job.layer == "tier":
             logging.info(f"Resolving tier: {job.ident} -> {hierarchy}")
             hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
-            async with WebsocketClient(job.server_url) as ws:
+            async with DownstreamClient(job.server_url) as ws:
                 return await ws.resolve(path=hierarchy)
         # Otherwise, it's a wrapper so just return the top job
         else:
