@@ -100,7 +100,7 @@ const body = {
             style: {
                 margin: 0,
                 minHeight: 280,
-                overflow: 'scroll'
+                overflow: 'auto'
             },
         } as ComponentPropsWithoutRef<"div">,
         table: {
@@ -184,7 +184,8 @@ export const antTheme: ThemeConfig = (() => {
                 rowHoverBg: cl.secondarybg.toString(),
                 headerSortHoverBg: cl.secondarybg.toString(),
                 headerSortActiveBg: cl.primarybg.toString(),
-                bodySortBg: cl.tertiarybg.toString()
+                bodySortBg: cl.tertiarybg.toString(),
+                footerBg: cl.primarybg.toString(),
             },
         },
     };

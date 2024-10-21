@@ -66,7 +66,8 @@ export type SiderProps = {
     setAutoExpandTreeParent: (newValue: boolean) => void;
     setSelectedTreeKeys: (newSelectedKeys: TreeKey[]) => void;
     setExpandedTreeKeys: (newExpandedKeys: TreeKey[]) => void;
-    onLoadData: (treeNode: EventDataNode<TreeNode>) => Promise<void>
+    onLoadData: (treeNode: EventDataNode<TreeNode>) => Promise<void>;
+    loadedTreeKeys: TreeKey[];
 };
 
 export default function Sider({
@@ -77,7 +78,8 @@ export default function Sider({
     setAutoExpandTreeParent,
     setSelectedTreeKeys,
     setExpandedTreeKeys,
-    onLoadData
+    onLoadData,
+    loadedTreeKeys
 }: SiderProps) {
     const [searchValue, setSearchValue] = useState("");
 
@@ -123,6 +125,7 @@ export default function Sider({
                 autoExpandParent={autoExpandTreeParent}
                 treeData={formattedTreeData}
                 loadData={onLoadData}
+                loadedKeys={loadedTreeKeys}
             />
         </Layout.Sider>
     );

@@ -148,10 +148,11 @@ export type DashboardProps = {
     selectedTreeKeys: TreeKey[],
     setSelectedTreeKeys: (keys: TreeKey[]) => void;
     onLoadData: (treeNode: EventDataNode<TreeNode>) => Promise<void>;
+    loadedTreeKeys: TreeKey[];
     getViewsByKey: (key: TreeKey) => DashView[];
 }
 
-export default function Dashboard({ tree, onLoadData, selectedTreeKeys, setSelectedTreeKeys, getViewsByKey }: DashboardProps) {
+export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTreeKeys, setSelectedTreeKeys, getViewsByKey }: DashboardProps) {
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
@@ -196,7 +197,7 @@ export default function Dashboard({ tree, onLoadData, selectedTreeKeys, setSelec
         } else {
             throw new Error("Invalid view!?")
         }
-    }, [viewKey, currentContentKey]);
+    }, [viewKey, currentContentKey, getViewsByKey]);
 
     return (
         <ConfigProvider theme={antTheme}>
@@ -209,7 +210,8 @@ export default function Dashboard({ tree, onLoadData, selectedTreeKeys, setSelec
                     setExpandedTreeKeys={setExpandedTreeKeys}
                     autoExpandTreeParent={autoExpandTreeParent}
                     setAutoExpandTreeParent={setAutoExpandTreeParent}
-                    onLoadData={onLoadData}>
+                    onLoadData={onLoadData}
+                    loadedTreeKeys={loadedTreeKeys}>
                 </Sider>
                 <Layout {...view.body.props}>
                     <Header {...view.body.header.props}>
