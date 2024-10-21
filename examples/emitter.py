@@ -6,8 +6,7 @@ from random import choice
 import click
 
 from gator.common.logger import Logger, LogSeverity
-
-from ..gator.common.ws_client import WebsocketClient
+from gator.common.ws_client import WebsocketClient
 
 
 def coro_command(f):

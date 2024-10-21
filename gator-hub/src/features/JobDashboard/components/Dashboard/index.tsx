@@ -21,7 +21,6 @@ import Sider from "./components/Sider";
 import { antTheme, view } from "./theme";
 import { useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
-import { LayoutOutlined } from "@ant-design/icons";
 import { EventDataNode } from "antd/lib/tree";
 const { Header, Content } = Layout;
 

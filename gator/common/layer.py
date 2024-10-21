@@ -31,18 +31,37 @@ from ..specs import Job, JobArray, JobGroup, Spec
 from .db import Database, Query
 from .logger import Logger, MessageLimits
 from .summary import Summary, make_summary
-from .types import Attribute, LogEntry, LogSeverity, Metric, ProcStat, Result
+from .types import Attribute, ChildEntry, LogEntry, LogSeverity, Metric, ProcStat, Result
 from .utility import get_username
 from .ws_client import WebsocketClient
 from .ws_server import WebsocketServer
 from .ws_wrapper import WebsocketWrapper, abstract_route
 
 
-class ResolveResponse(TypedDict):
+class _ResolveResponseChild(TypedDict):
+    db_file: str
+    server_url: str
+
+
+class LiveResolveResponse(TypedDict):
     ident: str
     server_url: str
+    db_file: str | None
     metrics: Dict[str, int]
-    children: List[str]
+    children: Dict[str, _ResolveResponseChild]
+    live: Literal[True]
+
+
+class DeadResolveResponse(TypedDict):
+    ident: str
+    server_url: str | None
+    db_file: str
+    metrics: Dict[str, int]
+    children: Dict[str, _ResolveResponseChild]
+    live: Literal[False]
+
+
+ResolveResponse = Union[LiveResolveResponse, DeadResolveResponse]
 
 
 class Message(TypedDict):
@@ -59,6 +78,7 @@ class SpecResponse(TypedDict):
 class GetMessagesResponse(TypedDict):
     messages: List[Message]
     total: int
+    live: bool
 
 
 GetTreeResponse = Dict[str, Union[str, "GetTreeResponse"]]
@@ -88,20 +108,6 @@ class ChildResponseData(TypedDict):
 
 
 ChildrenResponse = List[ChildResponseData]
-
-
-class DownstreamClient(WebsocketClient):
-    @abstract_route
-    async def resolve(self, path: List[str]) -> ResolveResponse:
-        ...
-
-    @abstract_route
-    async def get_messages(self, after: int, limit: int) -> GetMessagesResponse:
-        ...
-
-    @abstract_route
-    async def get_tree(self) -> GetTreeResponse:
-        ...
 
 
 class UpstreamClient(WebsocketClient):
@@ -138,6 +144,9 @@ class BaseDatabase(Database):
     async def push_metric(self, metric: Metric):
         ...
 
+    async def push_childentry(self, childid: ChildEntry):
+        ...
+
     async def push_procstat(self, procstat: ProcStat):
         ...
 
@@ -148,6 +157,9 @@ class BaseDatabase(Database):
         ...
 
     async def get_metric(self, **_) -> Any:
+        ...
+
+    async def get_childentry(self, **_) -> Any:
         ...
 
     async def get_procstat(self, **_) -> Any:
@@ -170,7 +182,7 @@ class BaseLayer:
         self,
         spec: Union[Job, JobArray, JobGroup],
         logger: Logger,
-        client: Optional[DownstreamClient] = None,
+        client: Optional[WebsocketClient] = None,
         tracking: Optional[Path] = None,
         interval: int = 5,
         quiet: bool = False,
@@ -213,13 +225,13 @@ class BaseLayer:
         setattr(self, "__server", value)
 
     @property
-    def client(self) -> DownstreamClient:
+    def client(self) -> WebsocketClient:
         if (value := getattr(self, "__client", None)) is None:
             raise AttributeError("Client not set yet!")
         return value
 
     @client.setter
-    def client(self, value: DownstreamClient):
+    def client(self, value: WebsocketClient):
         setattr(self, "__client", value)
 
     @property
@@ -241,6 +253,9 @@ class BaseLayer:
         self.db = Database(self.tracking / "db.sqlite")
         await self.db.start()
         await self.db.register(Metric)
+        await self.db.register(Attribute)
+        # Setup basic job info
+        await self.db.push_attribute(Attribute(name="ident", value=self.ident))
         # Setup base metrics
         for sev in LogSeverity:
             await self.db.push_metric(metric := Metric(name=f"msg_{sev.name.lower()}", value=0))
@@ -349,10 +364,11 @@ class BaseLayer:
     async def get_messages(
         self, ws: WebsocketWrapper, after: int = 0, limit: int = 10
     ) -> GetMessagesResponse:
+        print("LAYER GET_MESSAGES")
         msgs: List[LogEntry] = await self.db.get_logentry(
             sql_order_by=("db_uid", True),
             sql_limit=limit,
-            db_uid=Query(gte=after),
+            db_uid=Query(gt=after),
         )
         total: int = await self.db.get_logentry(sql_count=True)
         messages: list[Message] = [
@@ -364,16 +380,18 @@ class BaseLayer:
             )
             for x in msgs
         ]
-        return {"messages": messages, "total": total}
+        return {"messages": messages, "total": total, "live": True}
 
     async def resolve(self, path: List[str], **_) -> ResolveResponse:
         del path
-        return {
-            "ident": self.ident,
-            "server_url": await self.server.get_address(),
-            "metrics": (await self.summarise()).get("metrics", {}),
-            "children": [],
-        }
+        return LiveResolveResponse(
+            ident=self.ident,
+            server_url=await self.server.get_address(),
+            metrics=(await self.summarise()).get("metrics", {}),
+            db_file=None,
+            children={},
+            live=True,
+        )
 
     @property
     def ident(self) -> str:

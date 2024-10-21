@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Type
 
 from .common.child import Child, ChildState
+from .common.db_client import database_client
 from .common.layer import (
     BaseLayer,
     ChildrenResponse,
@@ -28,7 +29,7 @@ from .common.layer import (
 )
 from .common.logger import Logger
 from .common.summary import Summary, contextualise_summary, merge_summaries
-from .common.types import Result
+from .common.types import ChildEntry, Result
 from .common.ws_wrapper import WebsocketWrapper
 from .scheduler import LocalScheduler, SchedulerError
 from .specs import Job, JobArray, JobGroup, Spec
@@ -72,6 +73,7 @@ class Tier(BaseLayer):
         self.server.add_route("register", self.__child_started)
         self.server.add_route("update", self.__child_updated)
         self.server.add_route("complete", self.__child_completed)
+        await self.db.register(ChildEntry)
         # Register client handlers for downwards calls
         self.client.add_route("get_tree", self.get_tree)
         # Create a scheduler
@@ -150,14 +152,24 @@ class Tier(BaseLayer):
     async def resolve(self, path: List[str], **_) -> ResolveResponse:
         if path:
             child = self.all_children[path[0]]
+            if child.state == ChildState.COMPLETE:
+                db_file = child.tracking / "db.sqlite"
+                async with database_client(db_file) as db:
+                    return await db.resolve(path=path[1:])
             if child.ws:
                 return await child.ws.resolve(path=path[1:])
-            else:
-                return {}
-        else:
-            data = await super().resolve(path)
-            data["children"] = [x.ident for x in self.all_children.values()]
-            return data
+            return {}
+        data = await super().resolve(path=path)
+        data["children"] = {
+            child.ident: {
+                "server_url": child.server,
+                "db_file": (child.tracking / "db.sqlite").as_posix()
+                if child.state == ChildState.COMPLETE
+                else None,
+            }
+            for child in self.all_children.values()
+        }
+        return data
 
     async def __child_query(self, ident: str, **_) -> SpecResponse:
         """Return the specification for a launched process"""
@@ -177,6 +189,8 @@ class Tier(BaseLayer):
         async with self.lock:
             if ident in self.jobs_launched:
                 child = self.jobs_launched[ident]
+                child.entry = ChildEntry(ident=ident, db_file=None)
+                await self.db.push_childentry(child.entry)
                 if child.state is not ChildState.LAUNCHED:
                     await self.logger.error(f"Duplicate start detected for child '{child.ident}'")
                 await self.logger.debug(f"Child {ident} of {self.ident} has started")
@@ -288,6 +302,8 @@ class Tier(BaseLayer):
                 child.result = getattr(Result, result.strip().upper())
 
                 child.summary = contextualise_summary(self.spec.ident, summary)
+                child.entry.db_file = (child.tracking / "db.sqlite").as_posix()
+                await self.db.update_childentry(child.entry)
 
                 if child.summary["sub_active"]:
                     await self.logger.error(

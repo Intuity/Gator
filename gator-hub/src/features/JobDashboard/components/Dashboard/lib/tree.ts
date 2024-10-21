@@ -87,6 +87,4 @@ export default abstract class Tree<T = any> {
             }
         }
     }
-
-    abstract getViewsByKey(key: TreeKey): View[];
 }

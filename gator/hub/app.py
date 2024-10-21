@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, Union
@@ -23,8 +23,34 @@ from quart import (
     request,
 )
 
-from ..common.layer import DownstreamClient
+from ..common.db_client import resolve_client
 from .tables import Completion, Metric, Registration, setup_db
+
+# @dataclass
+# class ApiJob:
+#     root: int
+#     uid: str
+#     ident: str
+#     server_url: Optional[str]
+#     db_path: Optional[str]
+#     owner: Optional[str]
+#     start: int
+#     stop: Optional[str]
+#     metrics: Dict[str, int]
+#     live: bool
+#     path: list[str]
+#     children: list[str]
+
+
+@asynccontextmanager
+async def job_client(job: Registration):
+    completion = await job.get_related(Registration.completion)
+    db_file = completion.db_file if completion else None
+    try:
+        async with resolve_client(job.server_url, db_file) as cli:
+            yield cli
+    finally:
+        pass
 
 
 def setup_hub(
@@ -134,6 +160,7 @@ def setup_hub(
                 Metric.registration == job
             )
             data.append({**job.to_dict(), "metrics": metrics})
+
         return data
 
     @hub.get("/api/job/<int:job_id>")
@@ -153,18 +180,18 @@ def setup_hub(
         # Get query parameters
         after_uid = int(request.args.get("after", 0))
         limit_num = int(request.args.get("limit", 10))
-        hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
+        path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
+
         # If necessary, dig down through the hierarchy to find the job
-        if hierarchy:
-            async with DownstreamClient(job.server_url) as ws:
-                data = await ws.resolve(path=hierarchy)
-                server_url = data["server_url"]
-        # If no hierarchy, we're using the top-level job
-        else:
-            server_url = job.server_url
+        async with job_client(job) as cli:
+            resolve_data = await cli.resolve(path=path)
+            server_url = resolve_data["server_url"]
+            db_file = resolve_data["db_file"]
+
         # Query messages via the job's websocket
-        async with DownstreamClient(server_url) as ws:
-            data = await ws.get_messages(after=after_uid, limit=limit_num)
+        async with resolve_client(server_url, db_file) as cli:
+            data = await cli.get_messages(after=after_uid, limit=limit_num)
+
         # Return data
         return data
 
@@ -173,20 +200,10 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/layer/<path:hierarchy>")
     @lookup_job
     async def job_layer(job: Registration, hierarchy: str = ""):
-        # If this is a tier, resolve the hierarchy
-        if job.layer == "tier":
-            logging.info(f"Resolving tier: {job.ident} -> {hierarchy}")
-            hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
-            async with DownstreamClient(job.server_url) as ws:
-                return await ws.resolve(path=hierarchy)
-        # Otherwise, it's a wrapper so just return the top job
-        else:
-            logging.info(f"Returning wrapper: {job.ident}")
-            return {
-                "ident": job.ident,
-                "path": [],
-                "children": [],
-            }
+        path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
+
+        async with job_client(job) as cli:
+            return await cli.resolve(path=path)
 
     # Launch
     hub.run(host=host, port=port)

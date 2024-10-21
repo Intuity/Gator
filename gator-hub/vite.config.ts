@@ -11,4 +11,18 @@ import tsconfigPaths from "vite-tsconfig-paths";
 // https://vitejs.dev/config/
 export default defineConfig({
     plugins: [react(), tsconfigPaths()],
+    build: {
+        sourcemap: true,
+        rollupOptions: {
+            onwarn(warning, defaultHandler) {
+                if (warning.code === 'SOURCEMAP_ERROR' &&
+                    warning.loc.file?.includes("node_modules")) {
+                    // Silence errors when an external module doesn't provide
+                    // a sourcemap as we have no control over this.
+                    return
+                }
+                defaultHandler(warning)
+            },
+        },
+    }
 });

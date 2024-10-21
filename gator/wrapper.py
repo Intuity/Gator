@@ -246,6 +246,7 @@ class Wrapper(BaseLayer):
                 )
             )
         # Setup initial attributes
+        await self.db.push_attribute(Attribute(name="ident", value=self.ident))
         await self.db.push_attribute(Attribute(name="cmd", value=full_cmd))
         await self.db.push_attribute(Attribute(name="cwd", value=working_dir.as_posix()))
         await self.db.push_attribute(Attribute(name="host", value=socket.gethostname()))

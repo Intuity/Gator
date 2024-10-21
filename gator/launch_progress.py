@@ -20,6 +20,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from .common.progress import PassFailBar
+from .common.summary import Summary
 from .launch import launch as launch_base
 
 
@@ -39,10 +40,14 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> dict:
     def _update(_, tree=None, **kwds):
         # Update the progress bars
         bar.update(
-            kwds.get("sub_total", 0),
-            kwds.get("sub_active", 0),
-            kwds.get("sub_passed", 0),
-            kwds.get("sub_failed", 0),
+            Summary(
+                metrics={},
+                sub_total=kwds.get("sub_total", 0),
+                sub_active=kwds.get("sub_active", 0),
+                sub_passed=kwds.get("sub_passed", 0),
+                sub_failed=kwds.get("sub_failed", 0),
+                failed_ids=[],
+            )
         )
         # Display the tree
         if tree:

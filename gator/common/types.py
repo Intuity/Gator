@@ -72,3 +72,12 @@ class Metric(Base):
 
     name: str = ""
     value: int = 0
+
+
+@dataclasses.dataclass
+class ChildEntry(Base):
+    """General purpose attribute"""
+
+    ident: str = ""
+    server_url: str = ""
+    db_file: str | None = None

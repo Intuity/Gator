@@ -87,11 +87,11 @@ shell = "poetry run pytest"
 
 [tool.poe.tasks.example]
 shell = """
-    poetry run python3 -m gator examples/job.yaml
-    poetry run python3 -m gator examples/job_group.yaml
-    poetry run python3 -m gator examples/job_array.yaml
-    poetry run python3 -m gator examples/job_tree.yaml
-    poetry run python3 -m gator examples/job_msg_emitter_5.yaml
+    poetry run python3 -m gator examples/job.yaml --hub 0.0.0.0:8080
+    poetry run python3 -m gator examples/job_group.yaml --hub 0.0.0.0:8080
+    poetry run python3 -m gator examples/job_array.yaml --hub 0.0.0.0:8080
+    poetry run python3 -m gator examples/job_tree.yaml --hub 0.0.0.0:8080
+    poetry run python3 -m gator examples/job_msg_emitter_5.yaml --hub 0.0.0.0:8080
 """
 
 [tool.poe.tasks.docs]
