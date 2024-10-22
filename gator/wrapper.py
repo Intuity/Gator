@@ -28,7 +28,7 @@ from tabulate import tabulate
 
 from .common.layer import BaseLayer, MetricResponse
 from .common.summary import Summary
-from .common.types import Attribute, LogSeverity, Metric, ProcStat
+from .common.types import Attribute, LogSeverity, ProcStat
 
 
 class Wrapper(BaseLayer):
@@ -56,7 +56,6 @@ class Wrapper(BaseLayer):
         # Register additional data types
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
-        # Launch
         await self.__launch()
         # Report
         await self.__report()
@@ -79,14 +78,9 @@ class Wrapper(BaseLayer):
         summary = await super().summarise()
         msg_ok = await self.logger.check_limits(self.limits)
         passed = all((self.complete, (self.code == 0), msg_ok))
-        summary["sub_total"] = 1
-        summary["sub_active"] = [1, 0][self.complete]
-        summary["sub_passed"] = [0, 1][passed]
         if self.complete and not passed:
-            summary["sub_failed"] = 1
             summary["failed_ids"] = [[self.spec.ident]]
         else:
-            summary["sub_failed"] = 0
             summary["failed_ids"] = []
         return summary
 
@@ -98,20 +92,7 @@ class Wrapper(BaseLayer):
 
         Example: { "name": "lint_warnings", "value": 12 }
         """
-        # Check name doesn't clash
-        if name in (f"msg_{x.name.lower()}" for x in LogSeverity):
-            return {
-                "result": "error",
-                "reason": f"Reserved metric name '{name}'",
-            }
-        # Check if a metric already exists
-        if (metric := self.metrics.get(name, None)) is not None:
-            metric.value = value
-            await self.db.update_metric(metric)
-        # Otherwise create it
-        else:
-            self.metrics[name] = (metric := Metric(name=name, value=value))
-            await self.db.push_metric(metric)
+        self.metrics.set_own(name, value)
         # Return success
         return {"result": "success"}
 
@@ -210,11 +191,9 @@ class Wrapper(BaseLayer):
             except asyncio.exceptions.TimeoutError:
                 pass
 
-    async def __launch(self) -> int:
+    async def __launch(self) -> None:
         """
         Launch the process and pipe STDIN, STDOUT, and STDERR with line buffering
-
-        :returns:   The process ID of the launched task
         """
         # Overlay any custom variables on the environment
         env = {str(k): str(v) for k, v in (self.spec.env or os.environ).items()}
@@ -276,7 +255,6 @@ class Wrapper(BaseLayer):
             )
         except Exception as e:
             await self.logger.critical(f"Caught exception launching {self.ident}: {e}")
-            self.metrics["msg_critical"].value += 1
             self.complete = True
             await self.db.push_attribute(Attribute(name="pid", value="0"))
             await self.db.push_attribute(

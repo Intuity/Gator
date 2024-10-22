@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import (
     Any,
     Callable,
+    DefaultDict,
     Dict,
     List,
     Literal,
@@ -31,7 +32,16 @@ from ..specs import Job, JobArray, JobGroup, Spec
 from .db import Database, Query
 from .logger import Logger, MessageLimits
 from .summary import Summary, make_summary
-from .types import Attribute, ChildEntry, LogEntry, LogSeverity, Metric, ProcStat, Result
+from .types import (
+    Attribute,
+    ChildEntry,
+    LogEntry,
+    LogSeverity,
+    Metric,
+    MetricScope,
+    ProcStat,
+    Result,
+)
 from .utility import get_username
 from .ws_client import WebsocketClient
 from .ws_server import WebsocketServer
@@ -41,6 +51,7 @@ from .ws_wrapper import WebsocketWrapper, abstract_route
 class _ResolveResponseChild(TypedDict):
     db_file: str
     server_url: str
+    metrics: Dict[str, int]
 
 
 class LiveResolveResponse(TypedDict):
@@ -144,7 +155,7 @@ class BaseDatabase(Database):
     async def push_metric(self, metric: Metric):
         ...
 
-    async def push_childentry(self, childid: ChildEntry):
+    async def push_childentry(self, childentry: ChildEntry):
         ...
 
     async def push_procstat(self, procstat: ProcStat):
@@ -173,6 +184,65 @@ class BaseDatabase(Database):
 
     async def update_metric(self, metric: Metric):
         ...
+
+
+class Metrics:
+    """
+    Utility for setting and tracking metrics for different scopes.
+    """
+
+    def __init__(self):
+        self.raw_metrics: Dict[MetricScope, Dict[str, int]] = DefaultDict(dict)
+        self.metrics: Dict[MetricScope, Dict[str, Metric]] = DefaultDict(dict)
+
+    def set(self, scope: MetricScope, name: str, value: int):
+        """
+        Set metric for given scope
+        """
+        self.raw_metrics[scope][name] = value
+
+    def set_own(self, name: str, value: int):
+        """
+        Set metric for own scope
+        """
+        return self.set(Metric.Scope.OWN, name, value)
+
+    def set_group(self, name: str, value: int):
+        """
+        Set metric for group scope
+        """
+        return self.set(Metric.Scope.GROUP, name, value)
+
+    def dump(self, scope: MetricScope) -> Dict[str, int]:
+        """
+        Dump given scope to dict
+        """
+        return self.raw_metrics[scope].copy()
+
+    def dump_own(self) -> Dict[str, int]:
+        """
+        Dump own scope to dict
+        """
+        return self.dump(Metric.Scope.OWN)
+
+    def dump_group(self) -> Dict[str, int]:
+        """
+        Dump group scope to dict
+        """
+        return self.dump(Metric.Scope.GROUP)
+
+    async def sync(self, db: BaseDatabase):
+        """
+        Sync values to the provided database
+        """
+        for scope, name_values in self.raw_metrics.items():
+            for name, value in name_values.items():
+                if (metric := self.metrics[scope].get(name, None)) is not None:
+                    metric.value = value
+                    await db.update_metric(metric)
+                else:
+                    await db.push_metric(metric := Metric(scope=scope, name=name, value=value))
+                    self.metrics[scope][name] = metric
 
 
 class BaseLayer:
@@ -212,7 +282,7 @@ class BaseLayer:
         # State
         self.complete = False
         self.terminated = False
-        self.metrics = {}
+        self.metrics = Metrics()
 
     @property
     def server(self) -> WebsocketServer:
@@ -245,6 +315,11 @@ class BaseLayer:
         setattr(self, "__db", value)
 
     async def setup(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
+        # Set initial metrics
+        self.metrics.set_own("sub_total", 1)
+        self.metrics.set_own("sub_active", 1)
+        self.metrics.set_own("sub_passed", 0)
+        self.metrics.set_own("sub_failed", 0)
         # Ensure the tracking directory exists
         self.tracking.mkdir(exist_ok=True, parents=True)
         # Dump the spec into the tracking directory
@@ -256,10 +331,6 @@ class BaseLayer:
         await self.db.register(Attribute)
         # Setup basic job info
         await self.db.push_attribute(Attribute(name="ident", value=self.ident))
-        # Setup base metrics
-        for sev in LogSeverity:
-            await self.db.push_metric(metric := Metric(name=f"msg_{sev.name.lower()}", value=0))
-            self.metrics[metric.name] = metric
         # Setup logger
         await self.logger.set_database(self.db)
         self.logger.tee_to_file(self.tracking / "messages.log")
@@ -291,6 +362,12 @@ class BaseLayer:
         self.__hb_task = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
 
     async def teardown(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
+        # Set final metrics
+        msg_ok = await self.logger.check_limits(self.limits)
+        passed = all(((self.code == 0), msg_ok))
+        self.metrics.set_own("sub_active", 0)
+        self.metrics.set_own("sub_passed", [0, 1][passed])
+        self.metrics.set_own("sub_failed", [1, 0][passed])
         # Stop the heartbeat process
         self.__hb_event.set()
         await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
@@ -306,8 +383,10 @@ class BaseLayer:
         )
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
-        msg_metrics = filter(lambda x: x.name in msg_keys, self.metrics.values())
-        parts = [f"{x.value} {x.name.split('msg_')[1]}" for x in msg_metrics]
+        parts = []
+        for name, value in self.metrics.dump_own().items():
+            if name in msg_keys:
+                parts.append(f"{value} {name.split('msg_')[1]}")
         await self.logger.info("Recorded " + ", ".join(parts[:-1]) + f" and {parts[-1]} messages")
         # Shutdown the server
         await self.server.stop()
@@ -349,13 +428,16 @@ class BaseLayer:
             pass
 
     async def heartbeat(self) -> Summary:
-        # Update logging metrics
+        # Update own metrics
         for sev in LogSeverity:
-            metric = self.metrics[f"msg_{sev.name.lower()}"]
-            metric.value = self.logger.get_count(sev)
-            await self.db.update_metric(metric)
+            self.metrics.set_own(f"msg_{sev.name.lower()}", self.logger.get_count(sev))
         # Summarise state
         summary = await self.summarise()
+        # Update group metrics
+        for name, value in summary["metrics"].items():
+            self.metrics.set_group(name, value)
+        # Sync metrics to database
+        await self.metrics.sync(self.db)
         # Report to parent
         await self.client.update(ident=self.ident, summary=summary)
         # Return the summary
@@ -364,7 +446,6 @@ class BaseLayer:
     async def get_messages(
         self, ws: WebsocketWrapper, after: int = 0, limit: int = 10
     ) -> GetMessagesResponse:
-        print("LAYER GET_MESSAGES")
         msgs: List[LogEntry] = await self.db.get_logentry(
             sql_order_by=("db_uid", True),
             sql_limit=limit,
@@ -403,5 +484,5 @@ class BaseLayer:
 
     async def summarise(self) -> Summary:
         return make_summary(
-            metrics={k: x.value for k, x in self.metrics.items()},
+            metrics=self.metrics.dump_own(),
         )

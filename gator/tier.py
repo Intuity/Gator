@@ -100,8 +100,8 @@ class Tier(BaseLayer):
             f"W: {metrics.get('msg_warning', 0)}, "
             f"E: {metrics.get('msg_error', 0)}, "
             f"C: {metrics.get('msg_critical', 0)}, "
-            f"T: {summary['sub_total']}, A: {summary['sub_active']}, "
-            f"P: {summary['sub_passed']}, F: {summary['sub_failed']}"
+            f"T: {metrics.get('sub_total', 0)}, A: {metrics.get('sub_active', 0)}, "
+            f"P: {metrics.get('sub_passed', 0)}, F: {metrics.get('sub_failed', 0)}"
         )
         # Teardown
         await self.teardown(*args, **kwargs)
@@ -166,6 +166,7 @@ class Tier(BaseLayer):
                 "db_file": (child.tracking / "db.sqlite").as_posix()
                 if child.state == ChildState.COMPLETE
                 else None,
+                "metrics": self.metrics.dump(child.ident),
             }
             for child in self.all_children.values()
         }
@@ -217,16 +218,16 @@ class Tier(BaseLayer):
         Example: {
             "ident"        : "regression",
             "summary"      : {
-                "sub_total" : 10,
-                "sub_active": 4,
-                "sub_passed": 1,
-                "sub_failed": 2,
                 "failed_ids": [
                     ["child_a", "grandchild_a"],
                     ["child_a", "grandchild_c"],
                     ["child_b", "grandchild_f"]
                 ],
                 "metrics"   : {
+                    "sub_total" : 10,
+                    "sub_active": 4,
+                    "sub_passed": 1,
+                    "sub_failed": 2,
                     "msg_debug"   : 3,
                     "msg_info"    : 5,
                     "msg_warning" : 2,
@@ -271,15 +272,15 @@ class Tier(BaseLayer):
             "result"    : "SUCCESS",
             "code"      : 0,
             "summary"   : {
-                "sub_total" : 10,
-                "sub_passed": 1,
-                "sub_failed": 2,
                 "failed_ids": [
                     ["child_a", "grandchild_a"],
                     ["child_a", "grandchild_c"],
                     ["child_b", "grandchild_f"]
                 ],
                 "metrics"   : {
+                    "sub_total" : 10,
+                    "sub_passed": 1,
+                    "sub_failed": 2,
                     "msg_debug"   : 3,
                     "msg_info"    : 5,
                     "msg_warning" : 2,
@@ -305,7 +306,7 @@ class Tier(BaseLayer):
                 child.entry.db_file = (child.tracking / "db.sqlite").as_posix()
                 await self.db.update_childentry(child.entry)
 
-                if child.summary["sub_active"]:
+                if child.summary["metrics"].get("sub_active", 0):
                     await self.logger.error(
                         f"Child {ident} of {self.ident} reported active jobs on completion"
                     )
@@ -377,10 +378,15 @@ class Tier(BaseLayer):
         data = await super().summarise()
         async with self.lock:
             for child in list(self.jobs_launched.values()) + list(self.jobs_completed.values()):
-                merge_summaries(child.summary, base=data)
+                for name, value in child.summary["metrics"].items():
+                    self.metrics.set(child.ident, name, value)
+                data = merge_summaries(data, child.summary)
 
         # While jobs are still starting up, estimate the total number expected
-        data["sub_total"] = max(data["sub_total"], self.spec.expected_jobs)
+        data["metrics"]["sub_total"] = max(
+            data["metrics"].get("sub_total", 0),
+            self.spec.expected_jobs + 1,  # (+1 for self)
+        )
         return data
 
     async def __launch(self):

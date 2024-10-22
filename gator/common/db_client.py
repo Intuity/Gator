@@ -34,9 +34,22 @@ class _DBClient:
 
     async def resolve(self, path: List[str]) -> ResolveResponse:
         children = {
-            child.ident: {"server_url": child.server_url, "db_file": child.db_file}
+            child.ident: {
+                "server_url": child.server_url,
+                "db_file": child.db_file,
+                "metrics": {},
+            }
             for child in await self.db.get_childentry()
         }
+
+        metrics = {}
+        for metric in await self.db.get_metric():
+            if metric.scope == Metric.Scope.GROUP:
+                metrics[metric.name] = metric.value
+            elif metric.scope == Metric.Scope.OWN:
+                pass
+            else:
+                children[metric.scope]["metrics"][metric.name] = metric.value
 
         if path:
             child_ident = path[0]
@@ -45,8 +58,6 @@ class _DBClient:
                 return await db.resolve(path[1:])
 
         ident = (await self.db.get_attribute(name="ident"))[0].value
-
-        metrics = {metric.name: metric.value for metric in await self.db.get_metric()}
 
         return DeadResolveResponse(
             ident=ident,
@@ -95,9 +106,10 @@ class _WSClient:
 
 @asynccontextmanager
 async def database_client(path: str | Path):
-    if not Path(path).exists():
+    path = Path(path)
+    if not path.exists():
         raise RuntimeError("No Exist")
-    db = Database(Path(path))
+    db = Database(path)
     try:
         await db.start()
         await db.register(Metric)

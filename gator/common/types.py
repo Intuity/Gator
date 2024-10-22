@@ -15,7 +15,8 @@
 import dataclasses
 import logging
 from datetime import datetime
-from enum import IntEnum
+from enum import IntEnum, StrEnum
+from typing import Optional, Union
 
 from .db import Base
 
@@ -66,10 +67,21 @@ class ProcStat(Base):
     timestamp: datetime = dataclasses.field(default_factory=datetime.now)
 
 
+class _MetricScopeEnum(StrEnum):
+    OWN = "_OWN_"
+    GROUP = "_GROUP_"
+
+
+MetricScope = Union[_MetricScopeEnum, str]
+
+
 @dataclasses.dataclass
 class Metric(Base):
     """General purpose numeric (integer) metric"""
 
+    Scope = _MetricScopeEnum
+
+    scope: MetricScope = Scope.OWN
     name: str = ""
     value: int = 0
 
@@ -80,4 +92,4 @@ class ChildEntry(Base):
 
     ident: str = ""
     server_url: str = ""
-    db_file: str | None = None
+    db_file: Optional[str] = None
