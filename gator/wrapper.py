@@ -57,12 +57,12 @@ class Wrapper(BaseLayer):
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
         # Record stop time
-        self.started = datetime.now().timestamp()
+        self.started = self.updated = datetime.now().timestamp()
         await self.db.push_attribute(Attribute(name="started", value=str(self.started)))
         # Launch
         await self.__launch()
         # Record stop time
-        self.stopped = datetime.now().timestamp()
+        self.stopped = self.updated = datetime.now().timestamp()
         await self.db.push_attribute(Attribute(name="stopped", value=str(self.stopped)))
         # Report
         await self.__report()

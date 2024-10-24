@@ -14,13 +14,12 @@
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
 from ..specs import Job, JobArray, JobGroup
 from .summary import Summary, make_summary
-from .types import ChildEntry, JobState, Result
+from .types import ChildEntry, JobState
 from .ws_wrapper import WebsocketWrapper
 
 
@@ -31,17 +30,13 @@ class Child:
     entry: ChildEntry
     tracking: Optional[Path] = None
     state: JobState = JobState.PENDING
-    result: Result = Result.UNKNOWN
-    server: str = ""
     exitcode: int = 0
 
     # Tracking of the state of the child tree and metrics
     summary: Summary = field(default_factory=make_summary)
 
-    # Timestamping
-    started: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
-    updated: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
-    completed: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
+    # Complete Event
     e_complete: asyncio.Event = field(default_factory=asyncio.Event)
+
     # Socket
     ws: Optional[WebsocketWrapper] = None

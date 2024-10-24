@@ -14,6 +14,7 @@ from .types import (
     ApiResolvable,
     Attribute,
     ChildEntry,
+    JobResult,
     JobState,
     LayerResponse,
     LogEntry,
@@ -57,8 +58,10 @@ class _DBClient:
 
         started_attr = await self.db.get_attribute(name="started")
         stopped_attr = await self.db.get_attribute(name="stopped")
-        start = started_attr[0] if started_attr else None
-        stop = stopped_attr[0] if stopped_attr else None
+        result_attr = await self.db.get_attribute(name="result")
+        start = started_attr[0].value if started_attr else None
+        stop = stopped_attr[0].value if stopped_attr else None
+        result = JobResult(int(result_attr[0].value)) if result_attr else JobResult.UNKNOWN
 
         metrics: Dict[str, int] = {}
         child_metrics: Dict[str, Dict[str, int]] = DefaultDict(dict)
@@ -82,8 +85,10 @@ class _DBClient:
                     server_url=child.server_url,
                     db_file=child.db_file,
                     owner=None,
-                    start=child.start,
-                    stop=child.stop,
+                    result=child.result,
+                    started=child.started,
+                    updated=child.updated,
+                    stopped=child.stopped,
                 )
             )
 
@@ -94,9 +99,11 @@ class _DBClient:
             metrics=metrics,
             server_url="",
             db_file=self.db.path.as_posix(),
-            start=start,
-            stop=stop,
+            started=start,
+            updated=stop or start,
+            stopped=stop,
             owner=None,
+            result=result,
             jobs=jobs,
         )
 

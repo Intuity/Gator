@@ -24,7 +24,7 @@ from quart import (
 )
 
 from ..common.db_client import resolve_client
-from ..common.types import ApiJob, ApiResolvable, JobState
+from ..common.types import ApiJob, ApiResolvable, JobResult, JobState
 from .tables import Completion, Metric, Registration, setup_db
 
 
@@ -107,6 +107,7 @@ def setup_hub(
         new_cmp = Completion(
             {
                 Completion.db_file: data["db_file"],
+                Completion.result: data["result"],
                 Completion.timestamp: int(datetime.now().timestamp()),
             }
         )
@@ -152,16 +153,19 @@ def setup_hub(
                 Metric.registration == registration
             )
             metrics = {m["name"]: m["value"] for m in list_metrics}
+            start = registration.timestamp
 
             completion = cast(Optional[Completion], registration.completion)
             if completion:
                 db_file = completion.db_file
                 status = JobState.COMPLETE
                 stop = completion.timestamp
+                result = cast(JobResult, completion.result)
             else:
                 db_file = ""
                 status = JobState.STARTED
                 stop = None
+                result = JobResult.UNKNOWN
 
             jobs.append(
                 ApiJob(
@@ -172,8 +176,10 @@ def setup_hub(
                     metrics=metrics,
                     server_url=registration.server_url,
                     db_file=db_file,
-                    start=registration.timestamp,
-                    stop=stop,
+                    started=start,
+                    updated=stop or start,
+                    stopped=stop,
+                    result=result,
                 )
             )
 

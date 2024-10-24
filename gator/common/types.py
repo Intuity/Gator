@@ -31,8 +31,17 @@ class LogSeverity(IntEnum):
     DEBUG = logging.DEBUG
 
 
-class Result(IntEnum):
+class JobState(IntEnum):
     """Status of a job"""
+
+    PENDING = 0
+    LAUNCHED = 1
+    STARTED = 2
+    COMPLETE = 3
+
+
+class JobResult(IntEnum):
+    """Result of a job"""
 
     UNKNOWN = 0
     SUCCESS = 1
@@ -92,16 +101,11 @@ class ChildEntry(Base):
 
     ident: str = ""
     server_url: str = ""
-    db_file: Optional[str] = None
-    start: Optional[float] = None
-    stop: Optional[float] = None
-
-
-class JobState(StrEnum):
-    PENDING = "pending"
-    LAUNCHED = "launched"
-    STARTED = "started"
-    COMPLETE = "complete"
+    db_file: str = ""
+    started: Optional[float] = None
+    updated: Optional[float] = None
+    stopped: Optional[float] = None
+    result: JobResult = JobResult.UNKNOWN
 
 
 Metrics = Dict[str, int]
@@ -125,8 +129,10 @@ class ApiJob(TypedDict):
     server_url: str
     db_file: str
     owner: Optional[str]
-    start: Optional[float]
-    stop: Optional[float]
+    started: Optional[float]
+    updated: Optional[float]
+    stopped: Optional[float]
+    result: JobResult
 
 
 class ChildrenResponse(TypedDict):

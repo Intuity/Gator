@@ -14,6 +14,7 @@
 
 import asyncio
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
@@ -37,6 +38,8 @@ from .summary import Summary, make_summary
 from .types import (
     Attribute,
     ChildEntry,
+    ChildrenResponse,
+    JobResult,
     JobState,
     LayerResponse,
     LogEntry,
@@ -44,7 +47,6 @@ from .types import (
     Metric,
     MetricScope,
     ProcStat,
-    Result,
 )
 from .utility import get_username
 from .ws_client import WebsocketClient
@@ -84,20 +86,6 @@ class MetricResponseError(TypedDict):
 
 
 MetricResponse = Union[MetricResponseSuccess, MetricResponseError]
-
-
-class ChildResponseData(TypedDict):
-    state: str
-    result: str
-    server: str
-    exitcode: int
-    summary: Summary
-    started: int
-    updated: int
-    completed: int
-
-
-ChildrenResponse = List[ChildResponseData]
 
 
 class UpstreamClient(WebsocketClient):
@@ -162,6 +150,9 @@ class BaseDatabase(Database):
         ...
 
     async def update_metric(self, metric: Metric):
+        ...
+
+    async def update_childentry(self, childentry: ChildEntry):
         ...
 
 
@@ -284,6 +275,7 @@ class BaseLayer:
         self.terminated = False
         self.metrics = Metrics()
         self.started: Optional[float] = None
+        self.updated: Optional[float] = None
         self.stopped: Optional[float] = None
 
     @property
@@ -379,15 +371,15 @@ class BaseLayer:
         self.__hb_event.set()
         await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
         # Determine the result
-        result = Result.SUCCESS
+        result = JobResult.SUCCESS
         if not (await self.logger.check_limits(self.limits)):
             await self.logger.error("Job failed as it violated the message limit")
-            result = Result.FAILURE
+            result = JobResult.FAILURE
+        # Record in own db
+        await self.db.push_attribute(Attribute(name="result", value=str(result)))
         # Tell the parent the job is complete
         summary = await self.summarise()
-        await self.client.complete(
-            ident=self.ident, code=self.code, result=result.name, summary=summary
-        )
+        await self.client.complete(ident=self.ident, code=self.code, result=result, summary=summary)
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
         parts = []
@@ -401,7 +393,9 @@ class BaseLayer:
         await self.db.stop()
         # Notify the hub of completion
         if self.__hub_uid is not None:
-            await HubAPI.complete(uid=self.__hub_uid, db_file=self.db.path.as_posix())
+            await HubAPI.complete(
+                uid=self.__hub_uid, db_file=self.db.path.as_posix(), result=result
+            )
             await HubAPI.stop()
 
     async def stop(self, **kwargs) -> None:
@@ -438,6 +432,7 @@ class BaseLayer:
         # Update own metrics
         for sev in LogSeverity:
             self.metrics.set_own(f"msg_{sev.name.lower()}", self.logger.get_count(sev))
+        self.updated = datetime.now().timestamp()
         # Summarise state
         summary = await self.summarise()
         # Update group metrics
@@ -480,8 +475,10 @@ class BaseLayer:
             server_url=await self.server.get_address(),
             db_file=self.db.path.as_posix(),
             owner=None,
-            start=self.started,
-            stop=self.stopped,
+            started=self.started,
+            updated=self.updated,
+            stopped=self.stopped,
+            result=JobResult.UNKNOWN,
             jobs=[],
         )
 
