@@ -15,7 +15,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, Union
+from typing import Callable, Dict, Optional, Union, cast
 
 from quart import (
     Quart,
@@ -24,30 +24,22 @@ from quart import (
 )
 
 from ..common.db_client import resolve_client
+from ..common.types import ApiJob, ApiResolvable, JobState
 from .tables import Completion, Metric, Registration, setup_db
-
-# @dataclass
-# class ApiJob:
-#     root: int
-#     uid: str
-#     ident: str
-#     server_url: Optional[str]
-#     db_path: Optional[str]
-#     owner: Optional[str]
-#     start: int
-#     stop: Optional[str]
-#     metrics: Dict[str, int]
-#     live: bool
-#     path: list[str]
-#     children: list[str]
 
 
 @asynccontextmanager
-async def job_client(job: Registration):
-    completion = await job.get_related(Registration.completion)
-    db_file = completion.db_file if completion else None
+async def registration_client(registration: Registration):
+    completion = cast(Optional[Completion], await registration.get_related(Registration.completion))
+    db_file = completion.db_file if completion else ""
     try:
-        async with resolve_client(job.server_url, db_file) as cli:
+        async with resolve_client(
+            ApiResolvable(
+                server_url=registration.server_url,
+                db_file=db_file,
+                status=JobState.COMPLETE if completion else JobState.STARTED,
+            )
+        ) as cli:
             yield cli
     finally:
         pass
@@ -148,20 +140,44 @@ def setup_hub(
 
     @hub.get("/api/jobs")
     async def jobs():
-        jobs = (
+        registrations = (
             await Registration.objects(Registration.completion)
             .order_by(Registration.timestamp, ascending=False)
             .output()
             .limit(10)
         )
-        data = []
-        for job in jobs:
-            metrics = await Metric.select(Metric.name, Metric.value).where(
-                Metric.registration == job
+        jobs: list[ApiJob] = []
+        for registration in registrations:
+            list_metrics = await Metric.select(Metric.name, Metric.value).where(
+                Metric.registration == registration
             )
-            data.append({**job.to_dict(), "metrics": metrics})
+            metrics = {m["name"]: m["value"] for m in list_metrics}
 
-        return data
+            completion = cast(Optional[Completion], registration.completion)
+            if completion:
+                db_file = completion.db_file
+                status = JobState.COMPLETE
+                stop = completion.timestamp
+            else:
+                db_file = ""
+                status = JobState.STARTED
+                stop = None
+
+            jobs.append(
+                ApiJob(
+                    uidx=registration.uid,
+                    ident=registration.ident,
+                    owner=registration.owner,
+                    status=status,
+                    metrics=metrics,
+                    server_url=registration.server_url,
+                    db_file=db_file,
+                    start=registration.timestamp,
+                    stop=stop,
+                )
+            )
+
+        return jobs
 
     @hub.get("/api/job/<int:job_id>")
     @hub.get("/api/job/<int:job_id>/")
@@ -176,20 +192,17 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/messages/")
     @hub.get("/api/job/<int:job_id>/messages/<path:hierarchy>")
     @lookup_job
-    async def job_messages(job: Registration, hierarchy: str = ""):
+    async def job_messages(registration: Registration, hierarchy: str = ""):
         # Get query parameters
         after_uid = int(request.args.get("after", 0))
         limit_num = int(request.args.get("limit", 10))
         path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
 
         # If necessary, dig down through the hierarchy to find the job
-        async with job_client(job) as cli:
-            resolve_data = await cli.resolve(path=path)
-            server_url = resolve_data["server_url"]
-            db_file = resolve_data["db_file"]
-
+        async with registration_client(registration) as cli:
+            job = await cli.resolve(path=path)
         # Query messages via the job's websocket
-        async with resolve_client(server_url, db_file) as cli:
+        async with resolve_client(job) as cli:
             data = await cli.get_messages(after=after_uid, limit=limit_num)
 
         # Return data
@@ -202,7 +215,7 @@ def setup_hub(
     async def job_layer(job: Registration, hierarchy: str = ""):
         path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
 
-        async with job_client(job) as cli:
+        async with registration_client(job) as cli:
             return await cli.resolve(path=path)
 
     # Launch

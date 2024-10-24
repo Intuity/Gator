@@ -40,11 +40,14 @@ class TestTier:
         self.mk_db.push_logentry = AsyncMock()
         self.mk_db.push_procstat = AsyncMock()
         self.mk_db.push_metric = AsyncMock()
+        self.mk_db.push_childentry = AsyncMock()
         self.mk_db.get_attribute = AsyncMock()
         self.mk_db.get_logentry = AsyncMock()
         self.mk_db.get_procstat = AsyncMock()
         self.mk_db.get_metric = AsyncMock()
+        self.mk_db.get_childentry = AsyncMock()
         self.mk_db.update_metric = AsyncMock()
+        self.mk_db.update_childentry = AsyncMock()
         # Patch wrapper timestamping
         self.mk_wrp_dt = mocker.patch("gator.wrapper.datetime")
         self.mk_wrp_dt.now.side_effect = [datetime.fromtimestamp(x) for x in (123, 234, 345, 456)]

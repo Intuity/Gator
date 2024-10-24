@@ -68,7 +68,10 @@ class TestLocalScheduler:
         as_sub.side_effect = _create_proc
         # Launch some tasks
         await sched.launch(
-            [Child(spec=Job(), ident=f"T{x}", tracking=tmp_path / f"T{x}") for x in range(10)]
+            [
+                Child(spec=Job(), ident=f"T{x}", entry=MagicMock(), tracking=tmp_path / f"T{x}")
+                for x in range(10)
+            ]
         )
 
         # Wait for all to be launched

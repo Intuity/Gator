@@ -22,8 +22,10 @@ from typing import (
     Dict,
     List,
     Literal,
+    NoReturn,
     Optional,
     TypedDict,
+    TypeVar,
     Union,
 )
 
@@ -35,6 +37,8 @@ from .summary import Summary, make_summary
 from .types import (
     Attribute,
     ChildEntry,
+    JobState,
+    LayerResponse,
     LogEntry,
     LogSeverity,
     Metric,
@@ -47,32 +51,7 @@ from .ws_client import WebsocketClient
 from .ws_server import WebsocketServer
 from .ws_wrapper import WebsocketWrapper, abstract_route
 
-
-class _ResolveResponseChild(TypedDict):
-    db_file: str
-    server_url: str
-    metrics: Dict[str, int]
-
-
-class LiveResolveResponse(TypedDict):
-    ident: str
-    server_url: str
-    db_file: str | None
-    metrics: Dict[str, int]
-    children: Dict[str, _ResolveResponseChild]
-    live: Literal[True]
-
-
-class DeadResolveResponse(TypedDict):
-    ident: str
-    server_url: str | None
-    db_file: str
-    metrics: Dict[str, int]
-    children: Dict[str, _ResolveResponseChild]
-    live: Literal[False]
-
-
-ResolveResponse = Union[LiveResolveResponse, DeadResolveResponse]
+_TDefault = TypeVar("_TDefault")
 
 
 class Message(TypedDict):
@@ -123,7 +102,7 @@ ChildrenResponse = List[ChildResponseData]
 
 class UpstreamClient(WebsocketClient):
     @abstract_route
-    async def resolve(self, path: List[str]) -> ResolveResponse:
+    async def resolve(self, path: List[str]) -> LayerResponse:
         ...
 
     @abstract_route
@@ -213,6 +192,27 @@ class Metrics:
         """
         return self.set(Metric.Scope.GROUP, name, value)
 
+    def get(self, scope: MetricScope, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
+        """
+        Get metric for given scope
+        """
+        value = self.raw_metrics[scope].get(name, default)
+        if value is NoReturn:
+            raise KeyError(f"No metric named `{name}` in scope `{scope}`")
+        return value
+
+    def get_own(self, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
+        """
+        Get metric for own scope
+        """
+        return self.get(Metric.Scope.OWN, name, default=default)
+
+    def get_group(self, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
+        """
+        Get metric for group scope
+        """
+        return self.get(Metric.Scope.GROUP, name, default=default)
+
     def dump(self, scope: MetricScope) -> Dict[str, int]:
         """
         Dump given scope to dict
@@ -283,6 +283,8 @@ class BaseLayer:
         self.complete = False
         self.terminated = False
         self.metrics = Metrics()
+        self.started: Optional[float] = None
+        self.stopped: Optional[float] = None
 
     @property
     def server(self) -> WebsocketServer:
@@ -329,8 +331,6 @@ class BaseLayer:
         await self.db.start()
         await self.db.register(Metric)
         await self.db.register(Attribute)
-        # Setup basic job info
-        await self.db.push_attribute(Attribute(name="ident", value=self.ident))
         # Setup logger
         await self.logger.set_database(self.db)
         self.logger.tee_to_file(self.tracking / "messages.log")
@@ -346,7 +346,8 @@ class BaseLayer:
         # If linked, ping and then register with the parent
         if self.client.linked:
             await self.client.measure_latency()
-            await self.client.register(ident=self.ident, server=server_address)
+            result = await self.client.register(ident=self.ident, server=server_address)
+            self.uidx = int(result["uidx"] or 0)
         # Otherwise, register with the parent
         else:
             self.__hub_uid = await HubAPI.register(
@@ -356,7 +357,13 @@ class BaseLayer:
                 owner=get_username(),
             )
             if self.__hub_uid is not None:
+                self.uidx = int(self.__hub_uid)
                 await self.logger.info(f"Registered with hub with ID {self.__hub_uid}")
+            else:
+                self.uidx = 0
+        # Setup basic job info
+        await self.db.push_attribute(Attribute(name="ident", value=self.ident))
+        await self.db.push_attribute(Attribute(name="uidx", value=str(self.uidx)))
         # Schedule the heartbeat
         self.__hb_event = asyncio.Event()
         self.__hb_task = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
@@ -463,15 +470,19 @@ class BaseLayer:
         ]
         return {"messages": messages, "total": total, "live": True}
 
-    async def resolve(self, path: List[str], **_) -> ResolveResponse:
+    async def resolve(self, path: List[str], **_) -> LayerResponse:
         del path
-        return LiveResolveResponse(
+        return LayerResponse(
+            uidx=self.uidx,
             ident=self.ident,
+            status=JobState.STARTED,
+            metrics=self.metrics.dump_group(),
             server_url=await self.server.get_address(),
-            metrics=(await self.summarise()).get("metrics", {}),
-            db_file=None,
-            children={},
-            live=True,
+            db_file=self.db.path.as_posix(),
+            owner=None,
+            start=self.started,
+            stop=self.stopped,
+            jobs=[],
         )
 
     @property

@@ -1,29 +1,39 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List, cast
+from typing import DefaultDict, Dict, List, cast
 
 from .db import Database, Query
 from .layer import (
     BaseDatabase,
-    DeadResolveResponse,
     GetMessagesResponse,
     GetTreeResponse,
     Message,
-    ResolveResponse,
 )
-from .types import Attribute, ChildEntry, LogEntry, Metric
+from .types import (
+    ApiJob,
+    ApiResolvable,
+    Attribute,
+    ChildEntry,
+    JobState,
+    LayerResponse,
+    LogEntry,
+    Metric,
+)
 from .ws_client import WebsocketClient
+from .ws_wrapper import WebsocketWrapper
 
 
 @asynccontextmanager
-async def resolve_client(server_url: str, db_file: str | None):
+async def resolve_client(job: ApiResolvable):
     try:
-        if db_file is None:
-            async with downstream_client(server_url) as ws:
+        if job["status"] == JobState.STARTED:
+            async with downstream_client(job["server_url"]) as ws:
+                yield ws
+        elif job["status"] == JobState.COMPLETE:
+            async with database_client(job["db_file"]) as ws:
                 yield ws
         else:
-            async with database_client(db_file) as ws:
-                yield ws
+            raise RuntimeError(f"Can't resolve job {job}")
     finally:
         pass
 
@@ -32,40 +42,62 @@ class _DBClient:
     def __init__(self, db: BaseDatabase):
         self.db = db
 
-    async def resolve(self, path: List[str]) -> ResolveResponse:
-        children = {
-            child.ident: {
-                "server_url": child.server_url,
-                "db_file": child.db_file,
-                "metrics": {},
-            }
-            for child in await self.db.get_childentry()
-        }
+    async def resolve(self, path: List[str]) -> LayerResponse:
+        if path:
+            resolve_ident = path[0]
+            for child in await self.db.get_childentry():
+                if child.ident == resolve_ident:
+                    async with database_client(child.db_file) as db:
+                        return await db.resolve(path[1:])
+            else:
+                raise RuntimeError(f"Couldn't find child with ident `{resolve_ident}`")
 
-        metrics = {}
+        ident = (await self.db.get_attribute(name="ident"))[0].value
+        uidx = (await self.db.get_attribute(name="uidx"))[0].value
+
+        started_attr = await self.db.get_attribute(name="started")
+        stopped_attr = await self.db.get_attribute(name="stopped")
+        start = started_attr[0] if started_attr else None
+        stop = stopped_attr[0] if stopped_attr else None
+
+        metrics: Dict[str, int] = {}
+        child_metrics: Dict[str, Dict[str, int]] = DefaultDict(dict)
         for metric in await self.db.get_metric():
             if metric.scope == Metric.Scope.GROUP:
                 metrics[metric.name] = metric.value
             elif metric.scope == Metric.Scope.OWN:
                 pass
             else:
-                children[metric.scope]["metrics"][metric.name] = metric.value
+                child_metrics[metric.scope][metric.name] = metric.value
 
-        if path:
-            child_ident = path[0]
-            db_file = children[child_ident]["db_file"]
-            async with database_client(db_file) as db:
-                return await db.resolve(path[1:])
+        jobs: List[ApiJob] = []
+        child: ChildEntry
+        for child in await self.db.get_childentry():
+            jobs.append(
+                ApiJob(
+                    uidx=child.db_uid,
+                    ident=child.ident,
+                    status=JobState.COMPLETE,
+                    metrics=child_metrics[child.ident],
+                    server_url=child.server_url,
+                    db_file=child.db_file,
+                    owner=None,
+                    start=child.start,
+                    stop=child.stop,
+                )
+            )
 
-        ident = (await self.db.get_attribute(name="ident"))[0].value
-
-        return DeadResolveResponse(
+        return LayerResponse(
+            uidx=uidx,
             ident=ident,
-            server_url=None,
-            db_file=self.db.path.as_posix(),
-            children=children,
+            status=JobState.COMPLETE,
             metrics=metrics,
-            live=False,
+            server_url="",
+            db_file=self.db.path.as_posix(),
+            start=start,
+            stop=stop,
+            owner=None,
+            jobs=jobs,
         )
 
     async def get_messages(self, after: int = 0, limit: int = 10) -> GetMessagesResponse:
@@ -91,10 +123,10 @@ class _DBClient:
 
 
 class _WSClient:
-    def __init__(self, ws: WebsocketClient):
+    def __init__(self, ws: WebsocketClient | WebsocketWrapper):
         self.ws = ws
 
-    async def resolve(self, path: List[str]) -> ResolveResponse:
+    async def resolve(self, path: List[str]) -> LayerResponse:
         return await self.ws.resolve(path=path)
 
     async def get_messages(self, after: int = 0, limit: int = 10) -> GetMessagesResponse:
@@ -126,5 +158,13 @@ async def downstream_client(server_url: str):
     try:
         async with WebsocketClient(server_url) as ws:
             yield _WSClient(ws)
+    finally:
+        pass
+
+
+@asynccontextmanager
+async def websocket_client(websocket: WebsocketWrapper):
+    try:
+        yield _WSClient(websocket)
     finally:
         pass

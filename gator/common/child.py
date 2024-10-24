@@ -15,29 +15,22 @@
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, auto
 from pathlib import Path
 from typing import Optional, Union
 
 from ..specs import Job, JobArray, JobGroup
 from .summary import Summary, make_summary
-from .types import Result
+from .types import ChildEntry, JobState, Result
 from .ws_wrapper import WebsocketWrapper
-
-
-class ChildState(Enum):
-    PENDING = auto()
-    LAUNCHED = auto()
-    STARTED = auto()
-    COMPLETE = auto()
 
 
 @dataclass
 class Child:
     spec: Union[Job, JobArray, JobGroup]
-    ident: str = "N/A"
+    ident: str
+    entry: ChildEntry
     tracking: Optional[Path] = None
-    state: ChildState = ChildState.PENDING
+    state: JobState = JobState.PENDING
     result: Result = Result.UNKNOWN
     server: str = ""
     exitcode: int = 0

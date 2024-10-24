@@ -56,7 +56,14 @@ class Wrapper(BaseLayer):
         # Register additional data types
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
+        # Record stop time
+        self.started = datetime.now().timestamp()
+        await self.db.push_attribute(Attribute(name="started", value=str(self.started)))
+        # Launch
         await self.__launch()
+        # Record stop time
+        self.stopped = datetime.now().timestamp()
+        await self.db.push_attribute(Attribute(name="stopped", value=str(self.stopped)))
         # Report
         await self.__report()
         # Teardown
@@ -225,13 +232,9 @@ class Wrapper(BaseLayer):
                 )
             )
         # Setup initial attributes
-        await self.db.push_attribute(Attribute(name="ident", value=self.ident))
         await self.db.push_attribute(Attribute(name="cmd", value=full_cmd))
         await self.db.push_attribute(Attribute(name="cwd", value=working_dir.as_posix()))
         await self.db.push_attribute(Attribute(name="host", value=socket.gethostname()))
-        await self.db.push_attribute(
-            Attribute(name="started", value=str(datetime.now().timestamp()))
-        )
         await self.db.push_attribute(Attribute(name="req_cores", value=str(cpu_cores)))
         await self.db.push_attribute(Attribute(name="req_memory", value=str(memory_mb)))
         await self.db.push_attribute(
@@ -257,9 +260,6 @@ class Wrapper(BaseLayer):
             await self.logger.critical(f"Caught exception launching {self.ident}: {e}")
             self.complete = True
             await self.db.push_attribute(Attribute(name="pid", value="0"))
-            await self.db.push_attribute(
-                Attribute(name="stopped", value=str(datetime.now().timestamp()))
-            )
             await self.db.push_attribute(Attribute(name="exit", value=255))
             return
         # Monitor process usage
@@ -281,9 +281,6 @@ class Wrapper(BaseLayer):
         await self.logger.info(f"Task completed with return code {self.code}")
         # Insert final attributes
         await self.db.push_attribute(Attribute(name="pid", value=str(self.proc.pid)))
-        await self.db.push_attribute(
-            Attribute(name="stopped", value=str(datetime.now().timestamp()))
-        )
         await self.db.push_attribute(Attribute(name="exit", value=str(self.code)))
         # Mark complete
         self.complete = True
@@ -292,10 +289,8 @@ class Wrapper(BaseLayer):
         # Pull data back from resource tracking
         data = await self.db.get_procstat(sql_order_by=("timestamp", True))
         pid = await self.db.get_attribute(name="pid")
-        ts_started = await self.db.get_attribute(name="started")
-        ts_stopped = await self.db.get_attribute(name="stopped")
-        started_at = datetime.fromtimestamp(float(ts_started[0].value))
-        stopped_at = datetime.fromtimestamp(float(ts_stopped[0].value))
+        started_at = datetime.fromtimestamp(self.started)
+        stopped_at = datetime.fromtimestamp(self.stopped)
         # If plotting enabled, draw the plot
         if self.plotting:
             dates = []

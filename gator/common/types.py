@@ -16,7 +16,7 @@ import dataclasses
 import logging
 from datetime import datetime
 from enum import IntEnum, StrEnum
-from typing import Optional, Union
+from typing import Dict, Optional, Sequence, TypedDict, Union
 
 from .db import Base
 
@@ -93,3 +93,50 @@ class ChildEntry(Base):
     ident: str = ""
     server_url: str = ""
     db_file: Optional[str] = None
+    start: Optional[float] = None
+    stop: Optional[float] = None
+
+
+class JobState(StrEnum):
+    PENDING = "pending"
+    LAUNCHED = "launched"
+    STARTED = "started"
+    COMPLETE = "complete"
+
+
+Metrics = Dict[str, int]
+
+
+class ApiResolvable(TypedDict):
+    "Minimal data required to resolve a job either via websocket or database"
+
+    status: JobState
+    server_url: str
+    db_file: str
+
+
+class ApiJob(TypedDict):
+    "Resolved job API response"
+
+    uidx: int
+    ident: str
+    status: JobState
+    metrics: Metrics
+    server_url: str
+    db_file: str
+    owner: Optional[str]
+    start: Optional[float]
+    stop: Optional[float]
+
+
+class ChildrenResponse(TypedDict):
+    "Resolved children API response"
+
+    status: JobState
+    jobs: Sequence[ApiJob]
+
+
+class LayerResponse(ApiJob, ChildrenResponse):
+    "Resolved layer (job + children) API response"
+
+    ...
