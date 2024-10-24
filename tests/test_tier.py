@@ -21,6 +21,7 @@ import pytest_asyncio
 
 from gator.common.layer import UpstreamClient
 from gator.common.logger import Logger
+from gator.common.types import JobState
 from gator.specs import Job, JobArray, JobGroup
 from gator.tier import Tier
 
@@ -367,7 +368,12 @@ class TestTier:
         ws_cli = UpstreamClient(address=await tier.server.get_address())
         await ws_cli.start()
         response = await ws_cli.children()
-        assert set(response["launched"].keys()) == {"c", "mid"}
+        launched = {
+            j["ident"]
+            for j in response["jobs"]
+            if j["status"] in [JobState.LAUNCHED, JobState.STARTED]
+        }
+        assert launched == {"c", "mid"}
         # Report the tree structure
         tree = await tier.get_tree()
         assert tree == {

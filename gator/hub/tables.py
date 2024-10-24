@@ -22,6 +22,7 @@ class Completion(Table):
     uid = Serial(primary_key=True, unique=True, index=True)
     db_file = Varchar(5000)
     timestamp = Integer()
+    result = Integer()
 
 
 # Define a registration table format

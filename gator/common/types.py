@@ -16,7 +16,7 @@ import dataclasses
 import logging
 from datetime import datetime
 from enum import IntEnum, StrEnum
-from typing import Dict, Optional, Sequence, TypedDict, Union
+from typing import Dict, List, Optional, Sequence, TypedDict, Union
 
 from .db import Base
 
@@ -31,8 +31,17 @@ class LogSeverity(IntEnum):
     DEBUG = logging.DEBUG
 
 
-class Result(IntEnum):
+class JobState(IntEnum):
     """Status of a job"""
+
+    PENDING = 0
+    LAUNCHED = 1
+    STARTED = 2
+    COMPLETE = 3
+
+
+class JobResult(IntEnum):
+    """Result of a job"""
 
     UNKNOWN = 0
     SUCCESS = 1
@@ -92,16 +101,11 @@ class ChildEntry(Base):
 
     ident: str = ""
     server_url: str = ""
-    db_file: Optional[str] = None
-    start: Optional[float] = None
-    stop: Optional[float] = None
-
-
-class JobState(StrEnum):
-    PENDING = "pending"
-    LAUNCHED = "launched"
-    STARTED = "started"
-    COMPLETE = "complete"
+    db_file: str = ""
+    started: Optional[float] = None
+    updated: Optional[float] = None
+    stopped: Optional[float] = None
+    result: JobResult = JobResult.UNKNOWN
 
 
 Metrics = Dict[str, int]
@@ -115,6 +119,23 @@ class ApiResolvable(TypedDict):
     db_file: str
 
 
+class ApiMessage(TypedDict):
+    "Message API"
+
+    uid: int
+    severity: int
+    message: str
+    timestamp: int
+
+
+class ApiMessagesResponse(TypedDict):
+    "Root jobs API response"
+
+    messages: List[ApiMessage]
+    total: int
+    status: JobState
+
+
 class ApiJob(TypedDict):
     "Resolved job API response"
 
@@ -125,18 +146,27 @@ class ApiJob(TypedDict):
     server_url: str
     db_file: str
     owner: Optional[str]
-    start: Optional[float]
-    stop: Optional[float]
+    started: Optional[float]
+    updated: Optional[float]
+    stopped: Optional[float]
+    result: JobResult
 
 
-class ChildrenResponse(TypedDict):
+class ApiJobsResponse(TypedDict):
+    "Root jobs API response"
+
+    status: JobState
+    jobs: Sequence[ApiJob]
+
+
+class ApiChildrenResponse(TypedDict):
     "Resolved children API response"
 
     status: JobState
     jobs: Sequence[ApiJob]
 
 
-class LayerResponse(ApiJob, ChildrenResponse):
+class ApiLayerResponse(ApiJob, ApiChildrenResponse):
     "Resolved layer (job + children) API response"
 
     ...

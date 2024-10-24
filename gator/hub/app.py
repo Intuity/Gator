@@ -24,7 +24,15 @@ from quart import (
 )
 
 from ..common.db_client import resolve_client
-from ..common.types import ApiJob, ApiResolvable, JobState
+from ..common.types import (
+    ApiJob,
+    ApiJobsResponse,
+    ApiLayerResponse,
+    ApiMessagesResponse,
+    ApiResolvable,
+    JobResult,
+    JobState,
+)
 from .tables import Completion, Metric, Registration, setup_db
 
 
@@ -107,6 +115,7 @@ def setup_hub(
         new_cmp = Completion(
             {
                 Completion.db_file: data["db_file"],
+                Completion.result: data["result"],
                 Completion.timestamp: int(datetime.now().timestamp()),
             }
         )
@@ -139,12 +148,22 @@ def setup_hub(
         return {"result": "success"}
 
     @hub.get("/api/jobs")
-    async def jobs():
+    async def jobs() -> ApiJobsResponse:
+        before = int(request.args.get("before", 0))
+        after = int(request.args.get("after", 0))
+        limit = int(request.args.get("limit", 10))
+        print(before, after)
+        window_condition = (
+            ((Registration.uid > after) & (Registration.uid < before))
+            if after < before
+            else ((Registration.uid > after) | (Registration.uid < before))
+        )
         registrations = (
             await Registration.objects(Registration.completion)
-            .order_by(Registration.timestamp, ascending=False)
+            .where(window_condition)
+            .order_by(Registration.uid, ascending=False)
             .output()
-            .limit(10)
+            .limit(limit)
         )
         jobs: list[ApiJob] = []
         for registration in registrations:
@@ -152,16 +171,19 @@ def setup_hub(
                 Metric.registration == registration
             )
             metrics = {m["name"]: m["value"] for m in list_metrics}
+            start = registration.timestamp
 
             completion = cast(Optional[Completion], registration.completion)
             if completion:
                 db_file = completion.db_file
                 status = JobState.COMPLETE
                 stop = completion.timestamp
+                result = cast(JobResult, completion.result)
             else:
                 db_file = ""
                 status = JobState.STARTED
                 stop = None
+                result = JobResult.UNKNOWN
 
             jobs.append(
                 ApiJob(
@@ -172,12 +194,14 @@ def setup_hub(
                     metrics=metrics,
                     server_url=registration.server_url,
                     db_file=db_file,
-                    start=registration.timestamp,
-                    stop=stop,
+                    started=start,
+                    updated=stop or start,
+                    stopped=stop,
+                    result=result,
                 )
             )
 
-        return jobs
+        return {"jobs": jobs, "status": JobState.STARTED}
 
     @hub.get("/api/job/<int:job_id>")
     @hub.get("/api/job/<int:job_id>/")
@@ -192,7 +216,7 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/messages/")
     @hub.get("/api/job/<int:job_id>/messages/<path:hierarchy>")
     @lookup_job
-    async def job_messages(registration: Registration, hierarchy: str = ""):
+    async def job_messages(registration: Registration, hierarchy: str = "") -> ApiMessagesResponse:
         # Get query parameters
         after_uid = int(request.args.get("after", 0))
         limit_num = int(request.args.get("limit", 10))
@@ -212,7 +236,7 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/layer/")
     @hub.get("/api/job/<int:job_id>/layer/<path:hierarchy>")
     @lookup_job
-    async def job_layer(job: Registration, hierarchy: str = ""):
+    async def job_layer(job: Registration, hierarchy: str = "") -> ApiLayerResponse:
         path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
 
         async with registration_client(job) as cli:

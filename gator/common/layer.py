@@ -14,6 +14,7 @@
 
 import asyncio
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
@@ -35,16 +36,19 @@ from .db import Database, Query
 from .logger import Logger, MessageLimits
 from .summary import Summary, make_summary
 from .types import (
+    ApiChildrenResponse,
+    ApiLayerResponse,
+    ApiMessage,
+    ApiMessagesResponse,
     Attribute,
     ChildEntry,
+    JobResult,
     JobState,
-    LayerResponse,
     LogEntry,
     LogSeverity,
     Metric,
     MetricScope,
     ProcStat,
-    Result,
 )
 from .utility import get_username
 from .ws_client import WebsocketClient
@@ -54,21 +58,8 @@ from .ws_wrapper import WebsocketWrapper, abstract_route
 _TDefault = TypeVar("_TDefault")
 
 
-class Message(TypedDict):
-    uid: int
-    severity: int
-    message: str
-    timestamp: int
-
-
 class SpecResponse(TypedDict):
     spec: str
-
-
-class GetMessagesResponse(TypedDict):
-    messages: List[Message]
-    total: int
-    live: bool
 
 
 GetTreeResponse = Dict[str, Union[str, "GetTreeResponse"]]
@@ -86,23 +77,9 @@ class MetricResponseError(TypedDict):
 MetricResponse = Union[MetricResponseSuccess, MetricResponseError]
 
 
-class ChildResponseData(TypedDict):
-    state: str
-    result: str
-    server: str
-    exitcode: int
-    summary: Summary
-    started: int
-    updated: int
-    completed: int
-
-
-ChildrenResponse = List[ChildResponseData]
-
-
 class UpstreamClient(WebsocketClient):
     @abstract_route
-    async def resolve(self, path: List[str]) -> LayerResponse:
+    async def resolve(self, path: List[str]) -> ApiLayerResponse:
         ...
 
     @abstract_route
@@ -122,7 +99,7 @@ class UpstreamClient(WebsocketClient):
         ...
 
     @abstract_route
-    async def children(self) -> ChildrenResponse:
+    async def children(self) -> ApiChildrenResponse:
         ...
 
     @abstract_route
@@ -162,6 +139,9 @@ class BaseDatabase(Database):
         ...
 
     async def update_metric(self, metric: Metric):
+        ...
+
+    async def update_childentry(self, childentry: ChildEntry):
         ...
 
 
@@ -284,7 +264,9 @@ class BaseLayer:
         self.terminated = False
         self.metrics = Metrics()
         self.started: Optional[float] = None
+        self.updated: Optional[float] = None
         self.stopped: Optional[float] = None
+        self.result: JobResult = JobResult.UNKNOWN
 
     @property
     def server(self) -> WebsocketServer:
@@ -369,24 +351,32 @@ class BaseLayer:
         self.__hb_task = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
 
     async def teardown(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
-        # Set final metrics
+        # Get job status and set relevant attributes
         msg_ok = await self.logger.check_limits(self.limits)
-        passed = all(((self.code == 0), msg_ok))
+        code_ok = self.code == 0
+        if code_ok and msg_ok:
+            assert self.result != JobResult.FAILURE, "Went from a failing to passing state!?"
+            self.result = JobResult.SUCCESS
+            self.metrics.set_own("sub_passed", 1)
+            self.metrics.set_own("sub_failed", 0)
+        else:
+            self.result = JobResult.FAILURE
+            self.metrics.set_own("sub_passed", 0)
+            self.metrics.set_own("sub_failed", 1)
+            if not code_ok:
+                await self.logger.error("Job failed as it violated the message limit")
+            if not msg_ok:
+                await self.logger.error(f"Job failed with exit code {self.code}")
         self.metrics.set_own("sub_active", 0)
-        self.metrics.set_own("sub_passed", [0, 1][passed])
-        self.metrics.set_own("sub_failed", [1, 0][passed])
+        # Record result in own db
+        await self.db.push_attribute(Attribute(name="result", value=str(self.result)))
         # Stop the heartbeat process
         self.__hb_event.set()
         await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
-        # Determine the result
-        result = Result.SUCCESS
-        if not (await self.logger.check_limits(self.limits)):
-            await self.logger.error("Job failed as it violated the message limit")
-            result = Result.FAILURE
         # Tell the parent the job is complete
         summary = await self.summarise()
         await self.client.complete(
-            ident=self.ident, code=self.code, result=result.name, summary=summary
+            ident=self.ident, code=self.code, result=self.result, summary=summary
         )
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
@@ -401,7 +391,9 @@ class BaseLayer:
         await self.db.stop()
         # Notify the hub of completion
         if self.__hub_uid is not None:
-            await HubAPI.complete(uid=self.__hub_uid, db_file=self.db.path.as_posix())
+            await HubAPI.complete(
+                uid=self.__hub_uid, db_file=self.db.path.as_posix(), result=self.result
+            )
             await HubAPI.stop()
 
     async def stop(self, **kwargs) -> None:
@@ -438,6 +430,10 @@ class BaseLayer:
         # Update own metrics
         for sev in LogSeverity:
             self.metrics.set_own(f"msg_{sev.name.lower()}", self.logger.get_count(sev))
+        self.updated = datetime.now().timestamp()
+        msg_ok = await self.logger.check_limits(self.limits)
+        if not msg_ok:
+            self.result = JobResult.FAILURE
         # Summarise state
         summary = await self.summarise()
         # Update group metrics
@@ -446,21 +442,21 @@ class BaseLayer:
         # Sync metrics to database
         await self.metrics.sync(self.db)
         # Report to parent
-        await self.client.update(ident=self.ident, summary=summary)
+        await self.client.update(ident=self.ident, summary=summary, result=self.result)
         # Return the summary
         return summary
 
     async def get_messages(
         self, ws: WebsocketWrapper, after: int = 0, limit: int = 10
-    ) -> GetMessagesResponse:
+    ) -> ApiMessagesResponse:
         msgs: List[LogEntry] = await self.db.get_logentry(
             sql_order_by=("db_uid", True),
             sql_limit=limit,
             db_uid=Query(gt=after),
         )
         total: int = await self.db.get_logentry(sql_count=True)
-        messages: list[Message] = [
-            Message(
+        messages: list[ApiMessage] = [
+            ApiMessage(
                 uid=x.db_uid,
                 severity=int(x.severity),
                 message=x.message,
@@ -468,11 +464,11 @@ class BaseLayer:
             )
             for x in msgs
         ]
-        return {"messages": messages, "total": total, "live": True}
+        return {"messages": messages, "total": total, "status": JobState.STARTED}
 
-    async def resolve(self, path: List[str], **_) -> LayerResponse:
+    async def resolve(self, path: List[str], **_) -> ApiLayerResponse:
         del path
-        return LayerResponse(
+        return ApiLayerResponse(
             uidx=self.uidx,
             ident=self.ident,
             status=JobState.STARTED,
@@ -480,8 +476,10 @@ class BaseLayer:
             server_url=await self.server.get_address(),
             db_file=self.db.path.as_posix(),
             owner=None,
-            start=self.started,
-            stop=self.stopped,
+            started=self.started,
+            updated=self.updated,
+            stopped=self.stopped,
+            result=self.result,
             jobs=[],
         )
 

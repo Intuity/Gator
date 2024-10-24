@@ -21,14 +21,14 @@ from typing import Dict, List, Optional, Type
 from .common.child import Child
 from .common.db_client import database_client, websocket_client
 from .common.layer import (
+    ApiChildrenResponse,
     BaseLayer,
-    ChildrenResponse,
     GetTreeResponse,
     SpecResponse,
 )
 from .common.logger import Logger
 from .common.summary import Summary, contextualise_summary, merge_summaries
-from .common.types import ApiJob, Attribute, ChildEntry, JobState, LayerResponse, Result
+from .common.types import ApiJob, ApiLayerResponse, Attribute, ChildEntry, JobResult, JobState
 from .common.ws_wrapper import WebsocketWrapper
 from .scheduler import LocalScheduler, SchedulerError
 from .specs import Job, JobArray, JobGroup, Spec
@@ -90,13 +90,13 @@ class Tier(BaseLayer):
             return
 
         # Record start time
-        self.started = datetime.now().timestamp()
+        self.started = self.updated = datetime.now().timestamp()
         await self.db.push_attribute(Attribute(name="started", value=str(self.started)))
         # Launch jobs
         await self.logger.info(f"Layer '{self.ident}' launching sub-jobs")
         await self.__launch()
         # Record stop time
-        self.stopped = datetime.now().timestamp()
+        self.stopped = self.updated = datetime.now().timestamp()
         await self.db.push_attribute(Attribute(name="stopped", value=str(self.stopped)))
 
         # Report
@@ -133,30 +133,28 @@ class Tier(BaseLayer):
                 tree[child.ident] = await child.ws.get_tree()
         return tree
 
-    async def __list_children(self, **_) -> ChildrenResponse:
+    async def __list_children(self, **_) -> ApiChildrenResponse:
         """List all of the children of this layer"""
-        state = {}
-        async with self.lock:
-            for key, store in (
-                ("launched", self.jobs_launched),
-                ("pending", self.jobs_pending),
-                ("completed", self.jobs_completed),
-            ):
-                state[key] = {}
-                for child in store.values():
-                    state[key][child.ident] = {
-                        "state": child.state.name,
-                        "result": child.result.name,
-                        "server": child.server,
-                        "exitcode": child.exitcode,
-                        "summary": child.summary,
-                        "started": int(child.started.timestamp()),
-                        "updated": int(child.updated.timestamp()),
-                        "completed": int(child.completed.timestamp()),
-                    }
-        return state
+        jobs: List[ApiJob] = []
+        for child in self.all_children.values():
+            jobs.append(
+                ApiJob(
+                    uidx=child.entry.db_uid,
+                    ident=child.ident,
+                    status=child.state,
+                    metrics=self.metrics.dump(child.ident),
+                    server_url=child.entry.server_url,
+                    db_file=(child.tracking / "db.sqlite").as_posix(),
+                    started=child.entry.started,
+                    updated=child.entry.updated,
+                    stopped=child.entry.stopped,
+                    result=child.entry.result,
+                    owner=None,
+                )
+            )
+        return ApiChildrenResponse(jobs=jobs, status=JobState.STARTED)
 
-    async def resolve(self, path: List[str], **_) -> LayerResponse:
+    async def resolve(self, path: List[str], **_) -> ApiLayerResponse:
         if path:
             child = self.all_children[path[0]]
             match child.state:
@@ -173,23 +171,8 @@ class Tier(BaseLayer):
             raise RuntimeError(f"Can't resolve `{path}` as the job hasn't started yet!")
         data = await super().resolve(path=path)
 
-        # Need to return the state of children
-        jobs: List[ApiJob] = []
-        for child in self.all_children.values():
-            jobs.append(
-                ApiJob(
-                    uidx=child.entry.db_uid,
-                    ident=child.ident,
-                    status=child.state,
-                    metrics=self.metrics.dump(child.ident),
-                    server_url=child.server,
-                    db_file=(child.tracking / "db.sqlite").as_posix(),
-                    start=child.started.timestamp(),
-                    stop=child.completed.timestamp(),
-                    owner=None,
-                )
-            )
-        data["jobs"] = jobs
+        # Get state of children
+        data["jobs"] = (await self.__list_children())["jobs"]
         return data
 
     async def __child_query(self, ident: str, **_) -> SpecResponse:
@@ -213,10 +196,10 @@ class Tier(BaseLayer):
                 if child.state is not JobState.LAUNCHED:
                     await self.logger.error(f"Duplicate start detected for child '{child.ident}'")
                 await self.logger.debug(f"Child {ident} of {self.ident} has started")
-                child.server = server
                 child.state = JobState.STARTED
-                child.started = datetime.now()
-                child.updated = datetime.now()
+                child.entry.started = child.entry.updated = datetime.now().timestamp()
+                child.entry.server_url = server
+                await self.db.update_childentry(child.entry)
                 child.ws = ws
                 return {"uidx": child.entry.db_uid}
             else:
@@ -226,6 +209,7 @@ class Tier(BaseLayer):
     async def __child_updated(
         self,
         ident: str,
+        result: JobResult,
         summary: Summary,
         **_,
     ):
@@ -264,8 +248,10 @@ class Tier(BaseLayer):
                         f"Update received for child '{child.ident}' before start"
                     )
                 await self.logger.debug(f"Received update from child {ident} of {self.ident}")
-                child.updated = datetime.now()
+                child.entry.updated = datetime.now().timestamp()
+                child.entry.result = JobResult(result)
                 child.summary = contextualise_summary(self.spec.ident, summary)
+                await self.db.update_childentry(child.entry)
             elif ident in self.jobs_completed:
                 await self.logger.error(
                     f"Child {ident} of {self.ident} sent update after completion"
@@ -278,7 +264,7 @@ class Tier(BaseLayer):
     async def __child_completed(
         self,
         ident: str,
-        result: str,
+        result: JobResult,
         code: int,
         summary: Summary,
         **_,
@@ -316,13 +302,11 @@ class Tier(BaseLayer):
                 )
                 child = self.jobs_launched[ident]
                 # Apply updates
-                child.updated = datetime.now()
-                child.completed = datetime.now()
                 child.state = JobState.COMPLETE
-                child.result = getattr(Result, result.strip().upper())
-
                 child.summary = contextualise_summary(self.spec.ident, summary)
                 child.entry.db_file = (child.tracking / "db.sqlite").as_posix()
+                child.entry.stopped = child.entry.updated = datetime.now().timestamp()
+                child.entry.result = JobResult(result)
                 await self.db.update_childentry(child.entry)
 
                 if child.summary["metrics"].get("sub_active", 0):
@@ -353,7 +337,7 @@ class Tier(BaseLayer):
             return
         # Accumulate results for all dependencies
         await self.logger.info(f"Dependencies of {ident} complete, testing for launch")
-        by_id = {x.spec.ident: x.result for x in wait_for}
+        by_id = {x.spec.ident: x.entry.result for x in wait_for}
         # Check if pass/fail criteria is met
         all_ok = True
         for spec in (x.spec for x in to_launch):
@@ -362,7 +346,7 @@ class Tier(BaseLayer):
                 (False, spec.on_fail),
             ):
                 for ident in dep_ids:
-                    if result and by_id[ident] != Result.SUCCESS:
+                    if result and by_id[ident] != JobResult.SUCCESS:
                         await self.logger.warning(
                             f"Dependency '{ident}' failed so "
                             f"{type(spec).__name__} '{spec.ident}' "
@@ -370,7 +354,7 @@ class Tier(BaseLayer):
                         )
                         all_ok = False
                         break
-                    elif not result and by_id[ident] == Result.SUCCESS:
+                    elif not result and by_id[ident] == JobResult.SUCCESS:
                         await self.logger.warning(
                             f"Dependency '{ident}' passed so "
                             f"{type(spec).__name__} '{spec.ident}' "
@@ -439,7 +423,11 @@ class Tier(BaseLayer):
                 child_dir.mkdir(parents=True, exist_ok=True)
                 await self.db.push_childentry(
                     entry := ChildEntry(
-                        ident=child_id, server_url="", db_file=None, start=None, stop=None
+                        ident=child_id,
+                        server_url="",
+                        db_file=(child_dir / "db.sqlite").as_posix(),
+                        started=None,
+                        stopped=None,
                     )
                 )
                 grouped[job.ident].append(

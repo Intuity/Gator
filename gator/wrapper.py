@@ -28,7 +28,7 @@ from tabulate import tabulate
 
 from .common.layer import BaseLayer, MetricResponse
 from .common.summary import Summary
-from .common.types import Attribute, LogSeverity, ProcStat
+from .common.types import Attribute, JobResult, LogSeverity, ProcStat
 
 
 class Wrapper(BaseLayer):
@@ -57,12 +57,12 @@ class Wrapper(BaseLayer):
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
         # Record stop time
-        self.started = datetime.now().timestamp()
+        self.started = self.updated = datetime.now().timestamp()
         await self.db.push_attribute(Attribute(name="started", value=str(self.started)))
         # Launch
         await self.__launch()
         # Record stop time
-        self.stopped = datetime.now().timestamp()
+        self.stopped = self.updated = datetime.now().timestamp()
         await self.db.push_attribute(Attribute(name="stopped", value=str(self.stopped)))
         # Report
         await self.__report()
@@ -83,9 +83,7 @@ class Wrapper(BaseLayer):
 
     async def summarise(self) -> Summary:
         summary = await super().summarise()
-        msg_ok = await self.logger.check_limits(self.limits)
-        passed = all((self.complete, (self.code == 0), msg_ok))
-        if self.complete and not passed:
+        if self.result is JobResult.FAILURE:
             summary["failed_ids"] = [[self.spec.ident]]
         else:
             summary["failed_ids"] = []

@@ -5,17 +5,18 @@ from typing import DefaultDict, Dict, List, cast
 from .db import Database, Query
 from .layer import (
     BaseDatabase,
-    GetMessagesResponse,
     GetTreeResponse,
-    Message,
 )
 from .types import (
     ApiJob,
+    ApiLayerResponse,
+    ApiMessage,
+    ApiMessagesResponse,
     ApiResolvable,
     Attribute,
     ChildEntry,
+    JobResult,
     JobState,
-    LayerResponse,
     LogEntry,
     Metric,
 )
@@ -42,7 +43,7 @@ class _DBClient:
     def __init__(self, db: BaseDatabase):
         self.db = db
 
-    async def resolve(self, path: List[str]) -> LayerResponse:
+    async def resolve(self, path: List[str]) -> ApiLayerResponse:
         if path:
             resolve_ident = path[0]
             for child in await self.db.get_childentry():
@@ -57,8 +58,10 @@ class _DBClient:
 
         started_attr = await self.db.get_attribute(name="started")
         stopped_attr = await self.db.get_attribute(name="stopped")
-        start = started_attr[0] if started_attr else None
-        stop = stopped_attr[0] if stopped_attr else None
+        result_attr = await self.db.get_attribute(name="result")
+        start = started_attr[0].value if started_attr else None
+        stop = stopped_attr[0].value if stopped_attr else None
+        result = JobResult(int(result_attr[0].value)) if result_attr else JobResult.UNKNOWN
 
         metrics: Dict[str, int] = {}
         child_metrics: Dict[str, Dict[str, int]] = DefaultDict(dict)
@@ -82,33 +85,37 @@ class _DBClient:
                     server_url=child.server_url,
                     db_file=child.db_file,
                     owner=None,
-                    start=child.start,
-                    stop=child.stop,
+                    result=child.result,
+                    started=child.started,
+                    updated=child.updated,
+                    stopped=child.stopped,
                 )
             )
 
-        return LayerResponse(
+        return ApiLayerResponse(
             uidx=uidx,
             ident=ident,
             status=JobState.COMPLETE,
             metrics=metrics,
             server_url="",
             db_file=self.db.path.as_posix(),
-            start=start,
-            stop=stop,
+            started=start,
+            updated=stop or start,
+            stopped=stop,
             owner=None,
+            result=result,
             jobs=jobs,
         )
 
-    async def get_messages(self, after: int = 0, limit: int = 10) -> GetMessagesResponse:
+    async def get_messages(self, after: int = 0, limit: int = 10) -> ApiMessagesResponse:
         msgs: List[LogEntry] = await self.db.get_logentry(
             sql_order_by=("db_uid", True),
             sql_limit=limit,
             db_uid=Query(gt=after),
         )
         total: int = await self.db.get_logentry(sql_count=True)
-        messages: list[Message] = [
-            Message(
+        messages: list[ApiMessage] = [
+            ApiMessage(
                 uid=cast(int, x.db_uid),
                 severity=int(x.severity),
                 message=x.message,
@@ -116,7 +123,7 @@ class _DBClient:
             )
             for x in msgs
         ]
-        return {"messages": messages, "total": total, "live": False}
+        return {"messages": messages, "total": total, "status": JobState.COMPLETE}
 
     async def get_tree(self) -> GetTreeResponse:
         raise NotImplementedError("get_tree")
@@ -126,10 +133,10 @@ class _WSClient:
     def __init__(self, ws: WebsocketClient | WebsocketWrapper):
         self.ws = ws
 
-    async def resolve(self, path: List[str]) -> LayerResponse:
+    async def resolve(self, path: List[str]) -> ApiLayerResponse:
         return await self.ws.resolve(path=path)
 
-    async def get_messages(self, after: int = 0, limit: int = 10) -> GetMessagesResponse:
+    async def get_messages(self, after: int = 0, limit: int = 10) -> ApiMessagesResponse:
         return await self.ws.get_messages(after=after, limit=limit)
 
     async def get_tree(self) -> GetTreeResponse:
