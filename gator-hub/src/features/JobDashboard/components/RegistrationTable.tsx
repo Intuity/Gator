@@ -3,6 +3,8 @@ import { Alert, Spin, Table, TableProps } from "antd";
 import moment from "moment";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TreeKey } from "./Dashboard/lib/tree";
+import { Job } from "@/types/job";
+import { Reader } from "../lib/readers";
 
 enum Severity {
     CRITICAL = 50,
@@ -18,6 +20,7 @@ enum Severity {
 enum Status {
     ERROR,
     LOADING,
+    LIVE,
     NONE
 }
 
@@ -27,19 +30,20 @@ type TableStatus = {
 }
 
 export type JobNode = {
-    data: ApiJob;
+    key: number,
+    data: Job;
 }
 
 const columns: TableProps<JobNode>['columns'] = [
     {
         title: "Uid",
-        dataIndex: ["data", "uid"],
+        dataIndex: ["data", "uidx"],
         width: 100
     },
     {
         title: "Timestamp",
-        dataIndex: ["data", "details", "start"],
-        render: text => { console.log(text); return moment(text * 1000).format("HH:mm:ss") },
+        dataIndex: ["data", "started"],
+        render: text => moment(text * 1000).format("HH:mm:ss"),
         width: 100
     },
     {
@@ -53,75 +57,72 @@ const columns: TableProps<JobNode>['columns'] = [
     },
 ]
 
+type JobFetchProps = {
+    interval: number;
+    reader: Reader;
+    jobs: JobNode[]
+    setJobs: (newJobs: JobNode[]) => void;
+    status: TableStatus;
+    setStatus: (status: TableStatus) => void;
+}
 
-class ResponseError extends Error { };
-class ProcessingError extends Error { };
+function jobFetchEffect({ interval, reader, jobs, setJobs, status, setStatus }: JobFetchProps) {
+    const task = async () => {
+        const before = jobs[jobs.length - 1]?.key ?? 0;
+        const after = jobs[0]?.key ?? 0;
+        const limit = 1000;
+        const response = await reader.readJobs({ before, after, limit }).catch(e => {
+            setStatus({
+                status: Status.ERROR,
+                detail: String(e)
+            });
+            return null;
+        });
+        if (!response) return;
+        if (response.jobs.length) {
+            const responseJobs: JobNode[] = response.jobs.map(job => ({
+                key: job.uidx,
+                data: {
+                    ...job,
+                    path: [],
+                    root: job.uidx
+                }
+            }))
+            const byKey = responseJobs.reduce((acc, job) => {
+                acc[job.key] = job; return acc;
+            }, {} as { [key: string]: JobNode })
+
+            // Add new jobs, replacing any existing jobs with newer copies
+            const newJobs = jobs.filter(j => !(j.key in byKey))
+                .concat(responseJobs)
+                .sort((a, b) => b.key - a.key);
+            setJobs(newJobs);
+            setStatus({
+                status: Status.LIVE, detail: `Loaded: ${newJobs.length} / ${newJobs[0].key}`
+            })
+        }
+    }
+    if (status.status == Status.LOADING) {
+        task();
+    }
+    const timeout = setInterval(task, interval);
+    return () => clearInterval(timeout);
+}
 
 export type RegistrationTableProps = {
     key: TreeKey;
     selectedRowKeys: TreeKey[];
-    setSelectedRows: (rows: ApiJob[]) => void
+    setSelectedRows: (rows: Job[]) => void,
+    reader: Reader
 };
 
-export default function RegistrationTable({ selectedRowKeys, setSelectedRows }: RegistrationTableProps) {
+export default function RegistrationTable({ selectedRowKeys, setSelectedRows, reader }: RegistrationTableProps) {
 
     const [status, setStatus] = useState<TableStatus>({ status: Status.LOADING, detail: "" });
-    const [rows, setRows] = useState<JobNode[]>([]);
+    const [jobs, setJobs] = useState<JobNode[]>([]);
     const [tableHeight, setTableHeight] = useState(600);
 
-    const getData = async () => {
-        try {
-            const response = await fetch(`/api/jobs`);
-            if (response.ok) {
-                try {
-                    const registrations: ApiRegistration[] = await response.json();
-                    if (registrations.length) {
-                        setRows(registrations.map(reg => ({
-                            key: String(reg.uid),
-                            data: {
-                                root: reg.uid,
-                                uid: String(reg.uid),
-                                ident: reg.ident,
-                                path: [],
-                                owner: reg.owner,
-                                details: {
-                                    server_url: reg.server_url,
-                                    db_file: reg.completion?.db_file,
-                                    start: reg.timestamp,
-                                    stop: reg.completion?.timestamp,
-                                    metrics: reg.metrics,
-                                    live: reg.completion !== undefined,
-                                }
-                            }
-                        })));
-                    }
-                    setStatus({
-                        status: Status.NONE, detail: `Loaded: "Some Registrations"`
-                    })
-                } catch (e) {
-                    throw new ProcessingError();
-                }
-            } else {
-                throw new ResponseError();
-            }
-        } catch (e) {
-            let detail = "Unknown Error";
-            if (e instanceof ResponseError) {
-                // Could connect to server, but didn't get a good response
-                detail = "Server response error";
-            } else if (e instanceof ProcessingError) {
-                // Got a "good" response, but couldn't process it
-                detail = "Response processing error";
-            }
-            setStatus({
-                status: Status.ERROR,
-                detail
-            });
-        }
-
-    }
-
-    useEffect(() => { getData() }, []);
+    useEffect(() => jobFetchEffect({ interval: 5000, reader, jobs, setJobs, status, setStatus }), [reader, jobs, status]);
 
     function getFooter(status: TableStatus) {
         return () => {
@@ -149,7 +150,7 @@ export default function RegistrationTable({ selectedRowKeys, setSelectedRows }: 
         <Table<JobNode>
             virtual
             columns={columns}
-            dataSource={rows}
+            dataSource={jobs}
             pagination={false}
             size={"small"}
             scroll={{ y: tableHeight }}

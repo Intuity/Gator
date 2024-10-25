@@ -9,7 +9,7 @@ jobs:
       command: python3
       args:
         - examples/emitter.py
-        - --count=5
+        - --count=30
         - --exclude_errors
         - --prefix=A
       resources:
@@ -23,9 +23,11 @@ jobs:
       command: python3
       args:
         - examples/emitter.py
-        - --count=5
+        - --count=30
         - --exclude_errors
         - --prefix=B
       resources:
         - !Cores [1]
         - !Memory [30, MB]
+  on_done:
+    - path_a

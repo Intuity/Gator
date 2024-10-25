@@ -9,10 +9,16 @@ export type Metrics = {
 }
 
 export enum JobState {
-    PENDING = "pending",
-    LAUNCHED = "launched",
-    STARTED = "started",
-    COMPLETE = "complete"
+    PENDING = 0,
+    LAUNCHED = 1,
+    STARTED = 2,
+    COMPLETE = 3
+}
+
+export enum JobResult {
+    UNKNOWN = 0,
+    SUCCESS = 1,
+    FAILURE = 2
 }
 
 type ApiBaseJob<State extends JobState> = {
@@ -23,32 +29,47 @@ type ApiBaseJob<State extends JobState> = {
     metrics: Metrics;
     server_url: string;
     db_file: string;
-    start: number | null;
-    stop: number | null;
+    started: number | null;
+    updated: number | null;
+    stopped: number | null;
+    result: JobResult | null;
 }
 
 type ApiPendingJob = ApiBaseJob<JobState.PENDING> & {
-    start: null;
-    stop: null;
+    started: null;
+    updated: null;
+    stopped: null;
+    result: null
 }
 
 type ApiLaunchedJob = ApiBaseJob<JobState.LAUNCHED> & {
-    start: null;
-    stop: null;
+    started: null;
+    updated: null;
+    stopped: null;
+    result: null
 }
 
 type ApiStartedJob = ApiBaseJob<JobState.STARTED> & {
-    start: number;
-    stop: null;
+    started: number;
+    updated: number;
+    stopped: null;
+    result: null
 }
 
 
 type ApiCompleteJob = ApiBaseJob<JobState.COMPLETE> & {
-    start: number;
-    stop: number;
+    started: number;
+    updated: number;
+    stopped: number;
+    result: JobResult;
 }
 
 export type ApiJob = ApiPendingJob | ApiLaunchedJob | ApiStartedJob | ApiCompleteJob;
+
+export type ApiJobsResponse = {
+    status: JobState
+    jobs: ApiJob[]
+}
 
 export type ApiChildrenResponse = {
     status: JobState
@@ -69,7 +90,7 @@ export type ApiMessage = {
     message: string;
 }
 
-export type ApiMessages = {
+export type ApiMessagesResponse = {
     total: number;
     messages: ApiMessage[];
     status: JobState;

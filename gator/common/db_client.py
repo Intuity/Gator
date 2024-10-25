@@ -46,6 +46,10 @@ class _DBClient:
     async def resolve(self, path: List[str]) -> ApiLayerResponse:
         if path:
             resolve_ident = path[0]
+            if not self.db.has_table(ChildEntry):
+                raise RuntimeError(
+                    f"Tried to resolve `{resolve_ident}` in db without child entries"
+                )
             for child in await self.db.get_childentry():
                 if child.ident == resolve_ident:
                     async with database_client(child.db_file) as db:
@@ -75,22 +79,23 @@ class _DBClient:
 
         jobs: List[ApiJob] = []
         child: ChildEntry
-        for child in await self.db.get_childentry():
-            jobs.append(
-                ApiJob(
-                    uidx=child.db_uid,
-                    ident=child.ident,
-                    status=JobState.COMPLETE,
-                    metrics=child_metrics[child.ident],
-                    server_url=child.server_url,
-                    db_file=child.db_file,
-                    owner=None,
-                    result=child.result,
-                    started=child.started,
-                    updated=child.updated,
-                    stopped=child.stopped,
+        if self.db.has_table(ChildEntry):
+            for child in await self.db.get_childentry():
+                jobs.append(
+                    ApiJob(
+                        uidx=child.db_uid,
+                        ident=child.ident,
+                        status=JobState.COMPLETE,
+                        metrics=child_metrics[child.ident],
+                        server_url=child.server_url,
+                        db_file=child.db_file,
+                        owner=None,
+                        result=child.result,
+                        started=child.started,
+                        updated=child.updated,
+                        stopped=child.stopped,
+                    )
                 )
-            )
 
         return ApiLayerResponse(
             uidx=uidx,
@@ -148,7 +153,7 @@ async def database_client(path: str | Path):
     path = Path(path)
     if not path.exists():
         raise RuntimeError("No Exist")
-    db = Database(path)
+    db = Database(path, readonly=True)
     try:
         await db.start()
         await db.register(Metric)

@@ -1,7 +1,9 @@
 
+import { ApiMessage, Job, JobState } from "@/types/job";
 import { Alert, Spin, Table, TableProps } from "antd";
 import moment from "moment";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Reader } from "../lib/readers";
 
 enum Severity {
     CRITICAL = 50,
@@ -50,82 +52,66 @@ const columns: TableProps['columns'] = [
     },
 ]
 
-class ResponseError extends Error { };
-class ProcessingError extends Error { };
+type messageFetchProps = {
+    interval: number;
+    reader: Reader;
+    job: Job;
+    messages: ApiMessage[]
+    setMessages: (messages: ApiMessage[]) => void;
+    status: TableStatus;
+    setStatus: (status: TableStatus) => void;
+}
+
+function messageFetchEffect({ interval, reader, job, messages, setMessages, status, setStatus }: messageFetchProps) {
+    const task = async () => {
+        const { root, path } = job;
+        const after = messages[messages.length - 1]?.uid ?? 0;
+        const limit = 1000;
+        const response = await reader.readMessages({ root, path, after, limit }).catch(e => {
+            setStatus({
+                status: Status.ERROR,
+                detail: String(e)
+            });
+            return null;
+        });
+        if (!response) return;
+        if (response.messages.length) {
+            setMessages(messages.concat(response.messages));
+        }
+        const loadedCount = messages.length + response.messages.length;
+        const availableCount = response.total;
+        let newStatus: Status;
+        if (response.status === JobState.COMPLETE && loadedCount === availableCount) {
+            newStatus = Status.NONE
+        } else if (response.status === JobState.STARTED) {
+            newStatus = Status.LIVE;
+        } else {
+            newStatus = Status.ERROR;
+        }
+        setStatus({
+            status: newStatus, detail: `Loaded: ${loadedCount} / ${availableCount}${newStatus === Status.LIVE ? ' (live)' : ''}`
+        })
+    }
+    if (status.status == Status.LOADING) {
+        task();
+    }
+    const timeout = setInterval(task, interval);
+    return () => clearInterval(timeout);
+}
 
 export type MessageTableProps = {
-    job: ApiJob
-    key: string
+    job: Job
+    key: string,
+    reader: Reader
 };
 
-export default function MessageTable({ job }: MessageTableProps) {
+export default function MessageTable({ job, reader }: MessageTableProps) {
 
     const [status, setStatus] = useState<TableStatus>({ status: Status.LOADING, detail: "" });
-    const [after, setAfter] = useState<number>(0);
     const [messages, setMessages] = useState<ApiMessage[]>([]);
     const [tableHeight, setTableHeight] = useState(600);
 
-    const getData = async () => {
-        const params = new URLSearchParams({ after: String(after), limit: "1000" }).toString();
-        const path = job.path ?? []
-
-        try {
-            const response = await fetch(`/api/job/${job.root}/messages/${path.join('/')}?${params}`);
-            if (response.ok) {
-                try {
-                    const data: ApiMessages = await response.json();
-                    const loadedCount = data.messages.length;
-                    const totalMessagesLoaded = after + loadedCount;
-                    if (loadedCount) {
-                        setMessages(messages.concat(data.messages));
-                        setAfter(totalMessagesLoaded);
-                    }
-                    const newStatus = ((totalMessagesLoaded < data.total)
-                        ? Status.LOADING
-                        : (data.live
-                            ? Status.LIVE
-                            : Status.NONE
-                        )
-                    );
-                    setStatus({
-                        status: newStatus, detail: `Loaded: ${totalMessagesLoaded} / ${data.total}${data.live ? ' (live)' : ''}`
-                    })
-                } catch (e) {
-                    throw new ProcessingError();
-                }
-            } else {
-                throw new ResponseError();
-            }
-        } catch (e) {
-            let detail = "Unknown Error";
-            if (e instanceof ResponseError) {
-                // Could connect to server, but didn't get a good response
-                detail = "Server response error";
-            } else if (e instanceof ProcessingError) {
-                // Got a "good" response, but couldn't process it
-                detail = "Response processing error";
-            }
-            setStatus({
-                status: Status.ERROR,
-                detail
-            });
-        }
-
-    }
-    useEffect(() => {
-        let timeout: NodeJS.Timeout;
-        if (status.status != Status.NONE) {
-            const timeoutMs = {
-                [Status.LIVE]: 3000,
-                [Status.ERROR]: 10000,
-                [Status.LOADING]: 0,
-            }[status.status]
-            timeout = setTimeout(getData, timeoutMs)
-        }
-        return () => {
-            clearTimeout(timeout);
-        }
-    }, [after]);
+    useEffect(() => messageFetchEffect({ interval: 3000, reader, job, messages, setMessages, status, setStatus }), [reader, job, messages, status]);
 
     function getFooter(status: TableStatus) {
         return () => {

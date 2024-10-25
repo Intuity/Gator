@@ -31,7 +31,8 @@ const sider = {
             borderRightColor: cl.tertiarybg.toString(),
             borderRightWidth: 1,
             borderRightStyle: "solid",
-            maxWidth: 'auto'
+            maxWidth: 'auto',
+            overflow: 'auto'
         },
         zeroWidthTriggerStyle: {
             background: cl.accentbg.toString(),
