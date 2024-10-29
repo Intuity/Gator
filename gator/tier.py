@@ -54,7 +54,7 @@ class Tier(BaseLayer):
         self.jobs_launched: Dict[str, Child] = {}
         self.jobs_completed: Dict[str, Child] = {}
         # Tasks for pending jobs
-        self.job_tasks = []
+        self.job_tasks: list[asyncio.Task] = []
 
     @property
     def all_children(self) -> Dict[str, Child]:
@@ -121,6 +121,8 @@ class Tier(BaseLayer):
             for child in self.jobs_launched.values():
                 if child.ws:
                     await child.ws.stop(posted=True)
+            for job_task in self.job_tasks:
+                job_task.cancel()
 
     async def get_tree(self, **_) -> GetTreeResponse:
         tree = {}
@@ -374,7 +376,12 @@ class Tier(BaseLayer):
         if not all_ok:
             async with self.lock:
                 for child in to_launch:
+                    child.state = JobState.COMPLETE
+                    child.entry.result = JobResult.ABORTED
+                    self.jobs_completed[child.ident] = child
                     del self.jobs_pending[child.ident]
+                    await self.db.update_childentry(child.entry)
+                    child.e_complete.set()
             return
         # Launch
         async with self.lock:

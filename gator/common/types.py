@@ -46,6 +46,7 @@ class JobResult(IntEnum):
     UNKNOWN = 0
     SUCCESS = 1
     FAILURE = 2
+    ABORTED = 3
 
 
 @dataclasses.dataclass

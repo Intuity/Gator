@@ -18,7 +18,8 @@ export enum JobState {
 export enum JobResult {
     UNKNOWN = 0,
     SUCCESS = 1,
-    FAILURE = 2
+    FAILURE = 2,
+    ABORTED = 3
 }
 
 type ApiBaseJob<State extends JobState> = {

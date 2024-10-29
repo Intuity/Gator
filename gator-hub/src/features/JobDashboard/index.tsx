@@ -4,13 +4,13 @@ import { ReactNode, useEffect, useMemo, useState } from "react";
 import JobTree from "@/features/JobDashboard/lib/jobtree";
 import { EventDataNode } from "antd/lib/tree";
 import Tree, { TreeKey, TreeNode } from "@/features/JobDashboard/components/Dashboard/lib/tree";
-import { TableOutlined } from "@ant-design/icons";
+import { CheckCircleFilled, ClockCircleFilled, CloseCircleFilled, QuestionCircleFilled, StopFilled, TableOutlined } from "@ant-design/icons";
 import MessageTable from "@/features/JobDashboard/components/MessageTable";
 import RegistrationTable from "@/features/JobDashboard/components/RegistrationTable";
 import { ApiLayerResponse, Job, JobResult, JobState } from "@/types/job";
 import { HubReader, Reader } from "./lib/readers";
 import { view } from "./components/Dashboard/theme";
-import { Progress } from "antd";
+import { Progress, ProgressProps } from "antd";
 import { l } from "node_modules/vite/dist/node/types.d-aGj9QkWt";
 
 /**
@@ -215,26 +215,47 @@ export default function JobDashboard() {
                     successRatio = 0.2 + (0.7 * subSuccessRatio);
                 } else {
                     progressRatio = 1;
-                    successRatio = (result === JobResult.SUCCESS ? 0.3 : 0.2) + (0.7 * subSuccessRatio);
+                    if (result === JobResult.SUCCESS) {
+                        // Job itself successfully started and completed
+                        successRatio = 0.3
+                    } else if (result === JobResult.ABORTED) {
+                        // Job didn't successfully start
+                        successRatio = 0;
+                    } else {
+                        // Job successfully started
+                        successRatio = 0.2;
+                    }
+                    // Leave most of the bar to child jobs
+                    successRatio += (0.7 * subSuccessRatio);
                 }
         }
 
-        let progressStatus;
+        let progressStatus: ProgressProps["status"];
+        let icon: ReactNode;
         switch (result) {
             case JobResult.UNKNOWN:
-                progressStatus = (
-                    metrics.sub_failed
-                        ? "exception" as const
-                        : liveTreeKeys.includes(treeNode.key)
-                            ? "active" as const
-                            : "normal" as const
-                );
+                if (metrics.sub_failed) {
+                    progressStatus = "exception";
+                    icon = <CloseCircleFilled />
+                } else if (liveTreeKeys.includes(treeNode.key)) {
+                    progressStatus = "active";
+                    icon = <ClockCircleFilled />
+                } else {
+                    progressStatus = "normal";
+                    icon = <QuestionCircleFilled />
+                }
                 break;
             case JobResult.SUCCESS:
-                progressStatus = "success" as const;
+                progressStatus = "success";
+                icon = <CheckCircleFilled />
                 break;
             case JobResult.FAILURE:
-                progressStatus = "exception" as const;
+                progressStatus = "exception";
+                icon = <CloseCircleFilled />
+                break;
+            case JobResult.ABORTED:
+                progressStatus = "exception";
+                icon = <StopFilled />
                 break;
             default:
                 throw new Error("Invalid Result")
@@ -252,6 +273,7 @@ export default function JobDashboard() {
                         percent: Math.round(successRatio * 100)
                     }}
                     status={progressStatus}
+                    format={() => icon}
                 />
             </div>
         </span>
