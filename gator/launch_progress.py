@@ -42,7 +42,7 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> dict:
         bar.update(
             Summary(
                 metrics={
-                    "sub_total": kwds.get("sub_total", 0),
+                    "sub_total": min(kwds.get("sub_total", 0), 1),  # avoid early div/0
                     "sub_active": kwds.get("sub_active", 0),
                     "sub_passed": kwds.get("sub_passed", 0),
                     "sub_failed": kwds.get("sub_failed", 0),
