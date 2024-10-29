@@ -77,7 +77,7 @@ shell = "cd gator-hub && npm run build"
 shell = "cd gator-hub && npm run build_dev"
 
 [tool.poe.tasks.hub_run]
-shell = "GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub"
+shell = "GATOR_HUB_ROOT=$(readlink -f gator-hub/dist) python3 -m gator.hub"
 
 [tool.poe.tasks.lint]
 shell = "poetry run ruff check gator"
@@ -87,11 +87,11 @@ shell = "poetry run pytest"
 
 [tool.poe.tasks.example]
 shell = """
-    poetry run python3 -m gator examples/job.yaml
-    poetry run python3 -m gator examples/job_group.yaml
-    poetry run python3 -m gator examples/job_array.yaml
-    poetry run python3 -m gator examples/job_tree.yaml
-    poetry run python3 -m gator examples/job_msg_emitter_5.yaml
+    poetry run python3 -m gator examples/job.yaml --hub 0.0.0.0:8080
+    poetry run python3 -m gator examples/job_group.yaml --hub 0.0.0.0:8080
+    poetry run python3 -m gator examples/job_array.yaml --hub 0.0.0.0:8080
+    poetry run python3 -m gator examples/job_tree.yaml --hub 0.0.0.0:8080
+    poetry run python3 -m gator examples/job_msg_emitter_5.yaml --hub 0.0.0.0:8080
 """
 
 [tool.poe.tasks.docs]
@@ -107,7 +107,7 @@ hub = ["npm_build", "hub_run"]
 help = "Run a hub instance in development mode"
 shell = """
 cd gator-hub
-npm run build_dev
+npm run build_watch &
 cd ..
-GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub
+GATOR_HUB_ROOT=$(readlink -f gator-hub/dist) python3 -m gator.hub
 """

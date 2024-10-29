@@ -19,8 +19,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
+from gator.common.layer import WebsocketClient
 from gator.common.logger import Logger
-from gator.common.ws_client import WebsocketClient
+from gator.common.types import JobState
 from gator.specs import Job, JobArray, JobGroup
 from gator.tier import Tier
 
@@ -40,11 +41,14 @@ class TestTier:
         self.mk_db.push_logentry = AsyncMock()
         self.mk_db.push_procstat = AsyncMock()
         self.mk_db.push_metric = AsyncMock()
+        self.mk_db.push_childentry = AsyncMock()
         self.mk_db.get_attribute = AsyncMock()
         self.mk_db.get_logentry = AsyncMock()
         self.mk_db.get_procstat = AsyncMock()
         self.mk_db.get_metric = AsyncMock()
+        self.mk_db.get_childentry = AsyncMock()
         self.mk_db.update_metric = AsyncMock()
+        self.mk_db.update_childentry = AsyncMock()
         # Patch wrapper timestamping
         self.mk_wrp_dt = mocker.patch("gator.wrapper.datetime")
         self.mk_wrp_dt.now.side_effect = [datetime.fromtimestamp(x) for x in (123, 234, 345, 456)]
@@ -364,7 +368,12 @@ class TestTier:
         ws_cli = WebsocketClient(address=await tier.server.get_address())
         await ws_cli.start()
         response = await ws_cli.children()
-        assert set(response["launched"].keys()) == {"c", "mid"}
+        launched = {
+            j["ident"]
+            for j in response["jobs"]
+            if j["status"] in [JobState.LAUNCHED, JobState.STARTED]
+        }
+        assert launched == {"c", "mid"}
         # Report the tree structure
         tree = await tier.get_tree()
         assert tree == {

@@ -89,8 +89,9 @@ class Database:
     functions to allow data to be submitted to and queried from the table.
     """
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, readonly=False) -> None:
         self.path = path
+        self.readonly = readonly
         # Ensure path's parent folder exists
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # Track which dataclasses are register
@@ -104,7 +105,9 @@ class Database:
         self.define_transform(datetime, "INTEGER", lambda x: x.timestamp(), datetime.fromtimestamp)
 
     async def start(self) -> None:
-        self.__db = await aiosqlite.connect(self.path.as_posix(), timeout=1)
+        mode_param = "?mode=ro" if self.readonly else ""
+        database = f"file:{self.path.as_posix()}{mode_param}"
+        self.__db = await aiosqlite.connect(database, timeout=1)
 
         def _teardown() -> None:
             asyncio.run(self.stop())
@@ -182,7 +185,7 @@ class Database:
                               table in the database
         """
         # Create the table in the database and collect transformations to/from SQL
-        if descr.__name__ not in self.tables:
+        if descr.__name__ not in self.tables and not self.readonly:
             fields = []
             for field in descr.list_fields():
                 stype, _, _ = self.get_transform(field.type)
@@ -210,6 +213,8 @@ class Database:
             )
 
             async def _push(item: descr) -> Optional[int]:
+                if self.readonly:
+                    raise RuntimeError("Can't push to read-only database!")
                 nonlocal sql_put, transforms_put
                 assert isinstance(item, descr), "Wrong object type"
                 values = [x(y) for x, y in zip(transforms_put, dataclasses.astuple(item)[1:])]
@@ -228,6 +233,8 @@ class Database:
             )
 
             async def _update(item: descr) -> None:
+                if self.readonly:
+                    raise RuntimeError("Can't update read-only database!")
                 nonlocal sql_update, transforms_put
                 assert isinstance(item, descr), "Wrong object type"
                 assert item.db_uid is not None, "Object has no UID field"
@@ -304,6 +311,10 @@ class Database:
             setattr(self, f"get_{descr.__name__.lower()}", _get)
             # Track registration
             self.registered.append(descr)
+
+    def has_table(self, descr: Type[dataclasses.dataclass]) -> bool:
+        """Whether the db has a table for the given dataclass"""
+        return descr.__name__ in self.tables
 
     async def push(self, item: Any) -> None:
         descr = type(item)

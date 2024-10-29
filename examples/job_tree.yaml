@@ -1,5 +1,5 @@
 !JobGroup
-  ident: top
+  ident: tree
   env :
     TEST_A: hello
     TEST_B: goodbye
@@ -41,6 +41,10 @@
         - say_bye
       repeats: 4
       jobs   :
+      - !Job
+          ident: delay_10
+          command: sleep
+          args   : [30]
       - !Job
           ident: say_count
           command: echo

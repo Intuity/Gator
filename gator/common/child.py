@@ -14,41 +14,29 @@
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum, auto
 from pathlib import Path
 from typing import Optional, Union
 
 from ..specs import Job, JobArray, JobGroup
 from .summary import Summary, make_summary
-from .types import Result
+from .types import ChildEntry, JobState
 from .ws_wrapper import WebsocketWrapper
-
-
-class ChildState(Enum):
-    PENDING = auto()
-    LAUNCHED = auto()
-    STARTED = auto()
-    COMPLETE = auto()
 
 
 @dataclass
 class Child:
     spec: Union[Job, JobArray, JobGroup]
-    ident: str = "N/A"
+    ident: str
+    entry: ChildEntry
     tracking: Optional[Path] = None
-    state: ChildState = ChildState.PENDING
-    result: Result = Result.UNKNOWN
-    server: str = ""
+    state: JobState = JobState.PENDING
     exitcode: int = 0
 
     # Tracking of the state of the child tree and metrics
     summary: Summary = field(default_factory=make_summary)
 
-    # Timestamping
-    started: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
-    updated: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
-    completed: datetime = field(default_factory=lambda: datetime.fromtimestamp(0))
+    # Complete Event
     e_complete: asyncio.Event = field(default_factory=asyncio.Event)
+
     # Socket
     ws: Optional[WebsocketWrapper] = None

@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, Union
+from typing import Callable, Dict, Optional, Union, cast
 
 from quart import (
     Quart,
@@ -23,8 +23,34 @@ from quart import (
     request,
 )
 
-from ..common.ws_client import WebsocketClient
-from .tables import setup_db
+from ..common.db_client import resolve_client
+from ..common.types import (
+    ApiJob,
+    ApiJobsResponse,
+    ApiLayerResponse,
+    ApiMessagesResponse,
+    ApiResolvable,
+    JobResult,
+    JobState,
+)
+from .tables import Completion, Metric, Registration, setup_db
+
+
+@asynccontextmanager
+async def registration_client(registration: Registration):
+    completion = cast(Optional[Completion], await registration.get_related(Registration.completion))
+    db_file = completion.db_file if completion else ""
+    try:
+        async with resolve_client(
+            ApiResolvable(
+                server_url=registration.server_url,
+                db_file=db_file,
+                status=JobState.COMPLETE if completion else JobState.STARTED,
+            )
+        ) as cli:
+            yield cli
+    finally:
+        pass
 
 
 def setup_hub(
@@ -38,7 +64,7 @@ def setup_hub(
     db_pwd: str,
 ):
     # Setup database
-    db, tables = setup_db(db_host, db_port, db_name, db_user, db_pwd)
+    db = setup_db(db_host, db_port, db_name, db_user, db_pwd)
 
     # Create Quart application to host the interface and handle API requests
     hub = Quart(
@@ -51,9 +77,9 @@ def setup_hub(
     async def start_database():
         nonlocal db
         await db.start_connection_pool()
-        await tables.Completion.create_table(if_not_exists=True)
-        await tables.Registration.create_table(if_not_exists=True)
-        await tables.Metric.create_table(if_not_exists=True)
+        await Completion.create_table(if_not_exists=True)
+        await Registration.create_table(if_not_exists=True)
+        await Metric.create_table(if_not_exists=True)
 
     @hub.after_serving
     async def stop_database():
@@ -71,35 +97,37 @@ def setup_hub(
     @hub.post("/api/register")
     async def register():
         data = await request.get_json()
-        new_reg = tables.Registration(
-            ident=data["ident"],
-            layer=data["layer"],
-            server_url=data["url"],
-            owner=data["owner"],
-            timestamp=int(datetime.now().timestamp()),
+        new_reg = Registration(
+            {
+                Registration.ident: data["ident"],
+                Registration.layer: data["layer"],
+                Registration.server_url: data["url"],
+                Registration.owner: data["owner"],
+                Registration.timestamp: int(datetime.now().timestamp()),
+            }
         )
-        data = await tables.Registration.insert(new_reg).returning(tables.Registration.uid)
+        data = await Registration.insert(new_reg).returning(Registration.uid)
         return {"result": "success", "uid": data[0]["uid"]}
 
     @hub.post("/api/job/<int:job_id>/complete")
     async def complete(job_id: int):
         data = await request.get_json()
-        new_cmp = tables.Completion(
-            db_file=data["db_file"], timestamp=int(datetime.now().timestamp())
+        new_cmp = Completion(
+            {
+                Completion.db_file: data["db_file"],
+                Completion.result: data["result"],
+                Completion.timestamp: int(datetime.now().timestamp()),
+            }
         )
-        await tables.Completion.insert(new_cmp)
-        await tables.Registration.update({tables.Registration.completion: new_cmp}).where(
-            tables.Registration.uid == job_id
+        await Completion.insert(new_cmp)
+        await Registration.update({Registration.completion: new_cmp}).where(
+            Registration.uid == job_id
         )
         return {"result": "success"}
 
     def lookup_job(func: Callable) -> Callable:
         async def _inner(job_id: int, **kwargs) -> Dict[str, Union[str, int]]:
-            reg = (
-                await tables.Registration.objects()
-                .get(tables.Registration.uid == int(job_id))
-                .first()
-            )
+            reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
             return await func(reg, **kwargs)
 
         _inner.__name__ = func.__name__
@@ -107,42 +135,79 @@ def setup_hub(
 
     @hub.post("/api/job/<int:job_id>/heartbeat")
     @lookup_job
-    async def heartbeat(job: tables.Registration):
+    async def heartbeat(job: Registration):
         data = await request.get_json()
         for key, value in data.get("metrics", {}).items():
-            if await tables.Metric.exists().where(
-                (tables.Metric.registration == job) & (tables.Metric.name == key)
-            ):
-                await tables.Metric.update({tables.Metric.value: value}).where(
-                    (tables.Metric.registration == job) & (tables.Metric.name == key)
+            if await Metric.exists().where((Metric.registration == job) & (Metric.name == key)):
+                await Metric.update({Metric.value: value}).where(
+                    (Metric.registration == job) & (Metric.name == key)
                 )
             else:
-                new_mtc = tables.Metric(registration=job, name=key, value=value)
-                await tables.Metric.insert(new_mtc)
+                new_mtc = Metric({Metric.registration: job, Metric.name: key, Metric.value: value})
+                await Metric.insert(new_mtc)
         return {"result": "success"}
 
     @hub.get("/api/jobs")
-    async def jobs():
-        jobs = (
-            await tables.Registration.objects(tables.Registration.completion)
-            .order_by(tables.Registration.timestamp, ascending=False)
-            .output()
-            .limit(10)
+    async def jobs() -> ApiJobsResponse:
+        before = int(request.args.get("before", 0))
+        after = int(request.args.get("after", 0))
+        limit = int(request.args.get("limit", 10))
+        window_condition = (
+            ((Registration.uid > after) & (Registration.uid < before))
+            if after < before
+            else ((Registration.uid > after) | (Registration.uid < before))
         )
-        data = []
-        for job in jobs:
-            metrics = await tables.Metric.select(tables.Metric.name, tables.Metric.value).where(
-                tables.Metric.registration == job
+        registrations = (
+            await Registration.objects(Registration.completion)
+            .where(window_condition)
+            .order_by(Registration.uid, ascending=False)
+            .output()
+            .limit(limit)
+        )
+        jobs: list[ApiJob] = []
+        for registration in registrations:
+            list_metrics = await Metric.select(Metric.name, Metric.value).where(
+                Metric.registration == registration
             )
-            data.append({**job.to_dict(), "metrics": metrics})
-        return data
+            metrics = {m["name"]: m["value"] for m in list_metrics}
+            start = registration.timestamp
+
+            completion = registration.completion
+            if completion.uid is not None:
+                db_file = completion.db_file
+                status = JobState.COMPLETE
+                stop = completion.timestamp
+                result = cast(JobResult, completion.result)
+            else:
+                db_file = ""
+                status = JobState.STARTED
+                stop = None
+                result = JobResult.UNKNOWN
+            jobs.append(
+                ApiJob(
+                    uidx=registration.uid,
+                    ident=registration.ident,
+                    owner=registration.owner,
+                    status=status,
+                    metrics=metrics,
+                    server_url=registration.server_url,
+                    db_file=db_file,
+                    started=start,
+                    updated=stop or start,
+                    stopped=stop,
+                    result=result,
+                    expected_children=registration.layer == "tier",
+                )
+            )
+
+        return {"jobs": jobs, "status": JobState.STARTED}
 
     @hub.get("/api/job/<int:job_id>")
     @hub.get("/api/job/<int:job_id>/")
     @lookup_job
-    async def job_info(job):
+    async def job_info(job: Registration):
         # Get all metrics
-        metrics = await tables.Metric.select().where(tables.Metric.registration == job)
+        metrics = await Metric.select().where(Metric.registration == job)
         # Return data
         return {"result": "success", "job": job.to_dict(), "metrics": metrics}
 
@@ -150,22 +215,19 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/messages/")
     @hub.get("/api/job/<int:job_id>/messages/<path:hierarchy>")
     @lookup_job
-    async def job_messages(job, hierarchy: str = ""):
+    async def job_messages(registration: Registration, hierarchy: str = "") -> ApiMessagesResponse:
         # Get query parameters
         after_uid = int(request.args.get("after", 0))
         limit_num = int(request.args.get("limit", 10))
-        hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
+        path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
+
         # If necessary, dig down through the hierarchy to find the job
-        if hierarchy:
-            async with WebsocketClient(job.server_url) as ws:
-                data = await ws.resolve(path=hierarchy)
-                server_url = data["server_url"]
-        # If no hierarchy, we're using the top-level job
-        else:
-            server_url = job.server_url
+        async with registration_client(registration) as cli:
+            job = await cli.resolve(path=path)
         # Query messages via the job's websocket
-        async with WebsocketClient(server_url) as ws:
-            data = await ws.get_messages(after=after_uid, limit=limit_num)
+        async with resolve_client(job) as cli:
+            data = await cli.get_messages(after=after_uid, limit=limit_num)
+
         # Return data
         return data
 
@@ -173,21 +235,11 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/layer/")
     @hub.get("/api/job/<int:job_id>/layer/<path:hierarchy>")
     @lookup_job
-    async def job_layer(job, hierarchy: str = ""):
-        # If this is a tier, resolve the hierarchy
-        if job.layer == "tier":
-            logging.info(f"Resolving tier: {job.ident} -> {hierarchy}")
-            hierarchy = [x for x in hierarchy.split("/") if len(x.strip()) > 0]
-            async with WebsocketClient(job.server_url) as ws:
-                return await ws.resolve(path=hierarchy)
-        # Otherwise, it's a wrapper so just return the top job
-        else:
-            logging.info(f"Returning wrapper: {job.ident}")
-            return {
-                "ident": job.ident,
-                "path": [],
-                "children": [],
-            }
+    async def job_layer(job: Registration, hierarchy: str = "") -> ApiLayerResponse:
+        path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
+
+        async with registration_client(job) as cli:
+            return await cli.resolve(path=path)
 
     # Launch
     hub.run(host=host, port=port)

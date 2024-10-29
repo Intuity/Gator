@@ -84,10 +84,11 @@ class PassFailBar(JupyterMixin):
             total (float, optional): Total number of steps, or ``None`` to not change.
             Defaults to None.
         """
-        self.total = summary["sub_total"]
-        self.active = summary["sub_active"]
-        self.passed = summary["sub_passed"]
-        self.failed = summary["sub_failed"]
+        # Min total of one to avoid div by zero
+        self.total = max(summary["metrics"].get("sub_total", 0), 1)
+        self.active = summary["metrics"].get("sub_active", 0)
+        self.passed = summary["metrics"].get("sub_passed", 0)
+        self.failed = summary["metrics"].get("sub_failed", 0)
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         # Ensure space for the title text
