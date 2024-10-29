@@ -152,7 +152,6 @@ def setup_hub(
         before = int(request.args.get("before", 0))
         after = int(request.args.get("after", 0))
         limit = int(request.args.get("limit", 10))
-        print(before, after)
         window_condition = (
             ((Registration.uid > after) & (Registration.uid < before))
             if after < before
@@ -173,8 +172,8 @@ def setup_hub(
             metrics = {m["name"]: m["value"] for m in list_metrics}
             start = registration.timestamp
 
-            completion = cast(Optional[Completion], registration.completion)
-            if completion:
+            completion = registration.completion
+            if completion.uid is not None:
                 db_file = completion.db_file
                 status = JobState.COMPLETE
                 stop = completion.timestamp
@@ -184,7 +183,6 @@ def setup_hub(
                 status = JobState.STARTED
                 stop = None
                 result = JobResult.UNKNOWN
-
             jobs.append(
                 ApiJob(
                     uidx=registration.uid,
@@ -198,6 +196,7 @@ def setup_hub(
                     updated=stop or start,
                     stopped=stop,
                     result=result,
+                    expected_children=registration.layer == "tier",
                 )
             )
 

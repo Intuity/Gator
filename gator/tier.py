@@ -150,6 +150,7 @@ class Tier(BaseLayer):
                     stopped=child.entry.stopped,
                     result=child.entry.result,
                     owner=None,
+                    expected_children=child.entry.expected_children,
                 )
             )
         return ApiChildrenResponse(jobs=jobs, status=JobState.STARTED)
@@ -172,7 +173,9 @@ class Tier(BaseLayer):
         data = await super().resolve(path=path)
 
         # Get state of children
-        data["jobs"] = (await self.__list_children())["jobs"]
+        children = await self.__list_children()
+        data["jobs"] = children["jobs"]
+        data["expected_children"] = len(children["jobs"])
         return data
 
     async def __child_query(self, ident: str, **_) -> SpecResponse:
@@ -250,6 +253,8 @@ class Tier(BaseLayer):
                 await self.logger.debug(f"Received update from child {ident} of {self.ident}")
                 child.entry.updated = datetime.now().timestamp()
                 child.entry.result = JobResult(result)
+                if child.entry.result == JobResult.FAILURE:
+                    self.result = JobResult.FAILURE
                 child.summary = contextualise_summary(self.spec.ident, summary)
                 await self.db.update_childentry(child.entry)
             elif ident in self.jobs_completed:
@@ -307,6 +312,8 @@ class Tier(BaseLayer):
                 child.entry.db_file = (child.tracking / "db.sqlite").as_posix()
                 child.entry.stopped = child.entry.updated = datetime.now().timestamp()
                 child.entry.result = JobResult(result)
+                if child.entry.result == JobResult.FAILURE:
+                    self.result = JobResult.FAILURE
                 await self.db.update_childentry(child.entry)
 
                 if child.summary["metrics"].get("sub_active", 0):
@@ -420,6 +427,10 @@ class Tier(BaseLayer):
                     child_dir = base_trk_dir / str(idx_jarr)
                 else:
                     job_cp = job
+                if isinstance(job, (JobGroup, JobArray)):
+                    expected_children = job.expected_jobs
+                else:
+                    expected_children = 0
                 child_dir.mkdir(parents=True, exist_ok=True)
                 await self.db.push_childentry(
                     entry := ChildEntry(
@@ -428,6 +439,7 @@ class Tier(BaseLayer):
                         db_file=(child_dir / "db.sqlite").as_posix(),
                         started=None,
                         stopped=None,
+                        expected_children=expected_children,
                     )
                 )
                 grouped[job.ident].append(

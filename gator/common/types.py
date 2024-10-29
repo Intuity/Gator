@@ -106,6 +106,7 @@ class ChildEntry(Base):
     updated: Optional[float] = None
     stopped: Optional[float] = None
     result: JobResult = JobResult.UNKNOWN
+    expected_children: int = 0
 
 
 Metrics = Dict[str, int]
@@ -150,6 +151,7 @@ class ApiJob(TypedDict):
     updated: Optional[float]
     stopped: Optional[float]
     result: JobResult
+    expected_children: int
 
 
 class ApiJobsResponse(TypedDict):

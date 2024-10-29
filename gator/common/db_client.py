@@ -90,10 +90,11 @@ class _DBClient:
                         server_url=child.server_url,
                         db_file=child.db_file,
                         owner=None,
-                        result=child.result,
+                        result=JobResult(int(child.result)),
                         started=child.started,
                         updated=child.updated,
                         stopped=child.stopped,
+                        expected_children=child.expected_children,
                     )
                 )
 
@@ -110,6 +111,7 @@ class _DBClient:
             owner=None,
             result=result,
             jobs=jobs,
+            expected_children=len(jobs),
         )
 
     async def get_messages(self, after: int = 0, limit: int = 10) -> ApiMessagesResponse:

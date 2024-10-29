@@ -33,6 +33,7 @@ type ApiBaseJob<State extends JobState> = {
     updated: number | null;
     stopped: number | null;
     result: JobResult | null;
+    expected_children: number;
 }
 
 type ApiPendingJob = ApiBaseJob<JobState.PENDING> & {

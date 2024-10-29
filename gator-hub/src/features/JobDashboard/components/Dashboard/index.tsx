@@ -13,13 +13,14 @@ import {
     Segmented,
     Flex,
     FloatButton,
+    Input,
+    Tree as AntTree
 } from "antd";
 import { BgColorsOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode, View } from "./lib/tree";
 
-import Sider from "./components/Sider";
 import { antTheme, view } from "./theme";
-import { useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { EventDataNode } from "antd/lib/tree";
 const { Header, Content } = Layout;
@@ -138,6 +139,27 @@ function getBreadCrumbItems({
     return breadCrumbItems;
 }
 
+/**
+ * Processes a tree of nodes and applies a formatter to the title of each.
+ *
+ * @param tree the tree to format
+ * @param nodeTitleFormatter the formatter to apply
+ * @returns a formatted tree of nodes
+ */
+function treeTitleFormatter(
+    tree: Tree,
+    nodeTitleFormatter: (treeNode: TreeNode) => ReactNode,
+) {
+    const callback = (treeNode: TreeNode): TreeNode => {
+        return {
+            ...treeNode,
+            title: nodeTitleFormatter(treeNode),
+            children: treeNode.children?.map(callback),
+        };
+    };
+    return tree.getRoots().map(callback);
+}
+
 type DashView = View & {
     factory(): React.ReactNode
 }
@@ -145,31 +167,58 @@ type DashView = View & {
 export type DashboardProps = {
     tree: Tree,
     selectedTreeKeys: TreeKey[],
+    treeNodeFormatter: (treeNode: TreeNode, searchValue: string) => ReactNode;
     setSelectedTreeKeys: (keys: TreeKey[]) => void;
     onLoadData: (treeNode: EventDataNode<TreeNode>) => Promise<void>;
     loadedTreeKeys: TreeKey[];
     getViewsByKey: (key: TreeKey) => DashView[];
 }
 
-export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTreeKeys, setSelectedTreeKeys, getViewsByKey }: DashboardProps) {
+export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTreeKeys, setSelectedTreeKeys, getViewsByKey, treeNodeFormatter }: DashboardProps) {
     const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
     const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
+    const [searchValue, setSearchValue] = useState("");
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
         {} as { [key: TreeKey]: string | number },
     );
 
-    const onSelect = (newSelectedKeys: TreeKey[]) => {
-        const newExpandedKeys = new Set<TreeKey>(expandedTreeKeys);
-        for (const newSelectedKey of newSelectedKeys) {
-            for (const ancestor of tree.getAncestorsByKey(newSelectedKey)) {
-                newExpandedKeys.add(ancestor.key);
+    const onSelect = (newSelectedKeys: React.Key[]) => {
+        setSelectedTreeKeys(newSelectedKeys as TreeKey[]);
+        // Use a callback to get the current state
+        setExpandedTreeKeys(current => {
+            const newExpandedKeys = new Set<TreeKey>(current);
+            for (const newSelectedKey of newSelectedKeys) {
+                for (const ancestor of tree.getAncestorsByKey(newSelectedKey as TreeKey)) {
+                    newExpandedKeys.add(ancestor.key);
+                }
             }
-        }
-        setExpandedTreeKeys(Array.from(newExpandedKeys));
-        setSelectedTreeKeys(newSelectedKeys);
+            return Array.from(newExpandedKeys);
+        })
         // We're manually managing the ancestor expansion
         setAutoExpandTreeParent(false);
     };
+
+    const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { value } = e.target;
+        const newExpandedKeys = new Set<TreeKey>();
+        for (const [node, parent] of tree.walk()) {
+            const strTitle = node.title as string;
+            console.log(strTitle)
+            if (strTitle.includes(value) && parent !== null) {
+                newExpandedKeys.add(parent.key);
+            }
+        }
+        setExpandedTreeKeys(Array.from(newExpandedKeys));
+        setSearchValue(value);
+        setAutoExpandTreeParent(true);
+    };
+
+    const formattedTreeData = useMemo(() => {
+        return treeTitleFormatter(
+            tree,
+            (treeNode: TreeNode) => treeNodeFormatter(treeNode, searchValue)
+        );
+    }, [searchValue, tree, treeNodeFormatter]);
 
     const breadCrumbItems = getBreadCrumbItems({
         tree,
@@ -198,20 +247,28 @@ export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTr
         }
     }, [viewKey, currentContentKey, getViewsByKey]);
 
+    const onTreeExpand = (newExpandedKeys: React.Key[]) => {
+        setExpandedTreeKeys(newExpandedKeys as TreeKey[]);
+        setAutoExpandTreeParent(false);
+    };
+
     return (
         <ConfigProvider theme={antTheme}>
             <Layout {...view.props}>
-                <Sider
-                    tree={tree}
-                    selectedTreeKeys={selectedTreeKeys}
-                    setSelectedTreeKeys={onSelect}
-                    expandedTreeKeys={expandedTreeKeys}
-                    setExpandedTreeKeys={setExpandedTreeKeys}
-                    autoExpandTreeParent={autoExpandTreeParent}
-                    setAutoExpandTreeParent={setAutoExpandTreeParent}
-                    onLoadData={onLoadData}
-                    loadedTreeKeys={loadedTreeKeys}>
-                </Sider>
+                <Layout.Sider {...view.sider.props}>
+                    <Input {...view.sider.search.props} onChange={onSearchChange} />
+                    <AntTree
+                        {...view.sider.tree.props}
+                        onExpand={onTreeExpand}
+                        onSelect={onSelect}
+                        selectedKeys={selectedTreeKeys}
+                        expandedKeys={expandedTreeKeys}
+                        autoExpandParent={autoExpandTreeParent}
+                        treeData={formattedTreeData}
+                        loadData={onLoadData}
+                        loadedKeys={loadedTreeKeys}
+                    />
+                </Layout.Sider>
                 <Layout {...view.body.props}>
                     <Header {...view.body.header.props}>
                         <Flex {...view.body.header.flex.props}>

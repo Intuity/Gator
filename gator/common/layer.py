@@ -351,10 +351,14 @@ class BaseLayer:
         self.__hb_task = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
 
     async def teardown(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
+        # Stop the heartbeat process
+        self.__hb_event.set()
+        await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
         # Get job status and set relevant attributes
         msg_ok = await self.logger.check_limits(self.limits)
         code_ok = self.code == 0
-        if code_ok and msg_ok:
+        tree_ok = self.metrics.get_group("sub_failed") == 0
+        if code_ok and msg_ok and tree_ok:
             assert self.result != JobResult.FAILURE, "Went from a failing to passing state!?"
             self.result = JobResult.SUCCESS
             self.metrics.set_own("sub_passed", 1)
@@ -367,12 +371,11 @@ class BaseLayer:
                 await self.logger.error("Job failed as it violated the message limit")
             if not msg_ok:
                 await self.logger.error(f"Job failed with exit code {self.code}")
+            if not tree_ok:
+                await self.logger.error("Job failed because a child failed")
         self.metrics.set_own("sub_active", 0)
         # Record result in own db
         await self.db.push_attribute(Attribute(name="result", value=str(self.result)))
-        # Stop the heartbeat process
-        self.__hb_event.set()
-        await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
         # Tell the parent the job is complete
         summary = await self.summarise()
         await self.client.complete(
@@ -481,6 +484,7 @@ class BaseLayer:
             stopped=self.stopped,
             result=self.result,
             jobs=[],
+            expected_children=0,
         )
 
     @property
