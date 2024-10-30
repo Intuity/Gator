@@ -80,6 +80,10 @@ export type ApiChildrenResponse = {
 
 export type ApiLayerResponse = ApiJob & ApiChildrenResponse;
 
+export type ApiTreeResponse = ApiJob & {
+    jobs: ApiTreeResponse[]
+}
+
 export type Job = ApiJob & {
     root: number
     path: string[],

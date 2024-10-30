@@ -3,7 +3,7 @@
  * Copyright (c) 2023-2024 Vypercore. All Rights Reserved
  */
 
-import { ApiLayerResponse, Job, JobState } from "@/types/job";
+import { ApiTreeResponse, Job, JobState } from "@/types/job";
 import Tree, { TreeKey, TreeNode } from "../components/Dashboard/lib/tree";
 import moment from "moment";
 
@@ -63,7 +63,7 @@ export default class JobTree extends Tree<Job> {
         }
         return new JobTree(tree);
     }
-    updatedFromLayers(layers: { key: TreeKey, response: ApiLayerResponse }[]): JobTree {
+    updatedFromLayers(layers: { key: TreeKey, response: ApiTreeResponse }[]): JobTree {
         for (const { key, response } of layers) {
             const node = this.getNodeByKey(key);
             if (node === undefined) continue;
@@ -73,7 +73,7 @@ export default class JobTree extends Tree<Job> {
             };
             node.children = response.jobs.sort((a, b) => naturalCompare(a.ident, b.ident)).map(child => {
                 const path = [...job.path, child.ident];
-                const childKey = [job.root, ...path].join('-');
+                const childKey = [job.root, ...path].join('.');
                 const childNode = this.getNodeByKey(childKey);
                 return {
                     key: childKey,

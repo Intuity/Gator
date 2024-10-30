@@ -36,9 +36,9 @@ from .db import Database, Query
 from .logger import Logger, MessageLimits
 from .summary import Summary, make_summary
 from .types import (
-    ApiLayerResponse,
     ApiMessage,
     ApiMessagesResponse,
+    ApiTreeResponse,
     Attribute,
     ChildEntry,
     JobResult,
@@ -438,9 +438,11 @@ class BaseLayer:
         ]
         return {"messages": messages, "total": total, "status": JobState.STARTED}
 
-    async def resolve(self, path: List[str], **_) -> ApiLayerResponse:
-        del path
-        return ApiLayerResponse(
+    async def resolve(
+        self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0, **_
+    ) -> ApiTreeResponse:
+        del root_path, nest_path, depth
+        return ApiTreeResponse(
             uidx=self.uidx,
             ident=self.ident,
             status=JobState.STARTED,

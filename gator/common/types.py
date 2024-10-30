@@ -171,3 +171,10 @@ class ApiChildrenResponse(TypedDict):
 
 class ApiLayerResponse(ApiJob, ApiChildrenResponse):
     "Resolved layer (job + children) API response"
+
+
+class ApiTreeResponse(ApiJob):
+    "Resolved tree (job + descendants) API response"
+
+    status: JobState
+    jobs: Sequence["ApiTreeResponse"]

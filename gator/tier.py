@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Type
 
 from .common.child import Child
-from .common.db_client import database_client, websocket_client
+from .common.db_client import child_client
 from .common.layer import (
     BaseLayer,
     GetTreeResponse,
@@ -30,7 +30,7 @@ from .common.summary import Summary, contextualise_summary, merge_summaries
 from .common.types import (
     ApiChildrenResponse,
     ApiJob,
-    ApiLayerResponse,
+    ApiTreeResponse,
     Attribute,
     ChildEntry,
     JobResult,
@@ -140,7 +140,7 @@ class Tier(BaseLayer):
                 tree[child.ident] = await child.ws.get_tree()
         return tree
 
-    async def __list_children(self, **_) -> ApiChildrenResponse:
+    async def __list_children(self, **_) -> ApiTreeResponse:
         """List all of the children of this layer"""
         jobs: List[ApiJob] = []
         for child in self.all_children.values():
@@ -162,27 +162,58 @@ class Tier(BaseLayer):
             )
         return ApiChildrenResponse(jobs=jobs, status=JobState.STARTED)
 
-    async def resolve(self, path: List[str], **_) -> ApiLayerResponse:
-        if path:
-            child = self.all_children[path[0]]
-            match child.state:
-                case JobState.PENDING | JobState.LAUNCHED:
-                    client = None
-                case JobState.COMPLETE:
-                    client = database_client(path=child.tracking / "db.sqlite")
-                case JobState.STARTED:
-                    assert child.ws is not None, "Child started but no websocket!"
-                    client = websocket_client(child.ws)
-            if client is not None:
-                async with client as cli:
-                    return await cli.resolve(path=path[1:])
-            raise RuntimeError(f"Can't resolve `{path}` as the job hasn't started yet!")
-        data = await super().resolve(path=path)
+    async def resolve(
+        self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0, **_
+    ) -> ApiTreeResponse:
+        # Tunnel down to root
+        if root_path:
+            child = self.all_children[root_path[0]]
+            async with child_client(child) as cli:
+                if not cli:
+                    raise RuntimeError(
+                        f"Can't resolve `{child.ident}` as the job hasn't started yet!"
+                    )
+                return await cli.resolve(root_path=root_path[1:], nest_path=nest_path, depth=depth)
 
-        # Get state of children
-        children = await self.__list_children()
-        data["jobs"] = children["jobs"]
-        data["expected_children"] = len(children["jobs"])
+        # Resolve self
+        data = await super().resolve(root_path=root_path, nest_path=nest_path, depth=depth)
+
+        # Resolve nested path
+        jobs: List[ApiTreeResponse] = []
+        if nest_path:
+            child = self.all_children[nest_path[0]]
+            async with child_client(child) as cli:
+                jobs.append(await cli.resolve(root_path=[], nest_path=nest_path[1:], depth=depth))
+        elif depth > 1:
+            for child in self.all_children.values():
+                async with child_client(child) as cli:
+                    if not cli:
+                        continue
+                    jobs.append(
+                        await cli.resolve(root_path=[], nest_path=nest_path[1:], depth=depth)
+                    )
+        elif depth == 1:
+            for child in self.all_children.values():
+                jobs.append(
+                    ApiTreeResponse(
+                        uidx=child.entry.db_uid,
+                        ident=child.ident,
+                        status=child.state,
+                        metrics=self.metrics.dump(child.ident),
+                        server_url=child.entry.server_url,
+                        db_file=(child.tracking / "db.sqlite").as_posix(),
+                        started=child.entry.started,
+                        updated=child.entry.updated,
+                        stopped=child.entry.stopped,
+                        result=child.entry.result,
+                        owner=None,
+                        jobs=[],
+                        expected_children=child.entry.expected_children,
+                    )
+                )
+
+        data["jobs"] = jobs
+        data["expected_children"] = len(self.all_children)
         return data
 
     async def __child_query(self, ident: str, **_) -> SpecResponse:

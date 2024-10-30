@@ -1,18 +1,18 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import DefaultDict, Dict, List, cast
+from typing import DefaultDict, Dict, List, Optional, cast
 
+from .child import Child
 from .db import Database, Query
 from .layer import (
     BaseDatabase,
     GetTreeResponse,
 )
 from .types import (
-    ApiJob,
-    ApiLayerResponse,
     ApiMessage,
     ApiMessagesResponse,
     ApiResolvable,
+    ApiTreeResponse,
     Attribute,
     ChildEntry,
     JobResult,
@@ -43,20 +43,28 @@ class _DBClient:
     def __init__(self, db: BaseDatabase):
         self.db = db
 
-    async def resolve(self, path: List[str]) -> ApiLayerResponse:
-        if path:
-            resolve_ident = path[0]
-            if not self.db.has_table(ChildEntry):
-                raise RuntimeError(
-                    f"Tried to resolve `{resolve_ident}` in db without child entries"
-                )
-            for child in await self.db.get_childentry():
+    async def resolve(
+        self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0
+    ):
+        children: List[ChildEntry] = []
+        if self.db.has_table(ChildEntry):
+            children = await self.db.get_childentry()
+        elif resolve_path := (root_path or nest_path):
+            raise RuntimeError(f"Tried to resolve `{resolve_path[0]}` in db without child entries")
+
+        # Tunnl down to root
+        if root_path:
+            resolve_ident = root_path[0]
+            for child in children:
                 if child.ident == resolve_ident:
                     async with database_client(child.db_file) as db:
-                        return await db.resolve(path[1:])
+                        return await db.resolve(
+                            root_path=root_path[1:], nest_path=nest_path, depth=depth
+                        )
             else:
                 raise RuntimeError(f"Couldn't find child with ident `{resolve_ident}`")
 
+        # Resolve self
         ident = (await self.db.get_attribute(name="ident"))[0].value
         uidx = (await self.db.get_attribute(name="uidx"))[0].value
 
@@ -77,12 +85,27 @@ class _DBClient:
             else:
                 child_metrics[metric.scope][metric.name] = metric.value
 
-        jobs: List[ApiJob] = []
-        child: ChildEntry
-        if self.db.has_table(ChildEntry):
-            for child in await self.db.get_childentry():
+        # Resolve nested path
+        jobs: List[ApiTreeResponse] = []
+        if nest_path:
+            resolve_ident = nest_path[0]
+            for child in children:
+                if child.ident == resolve_ident:
+                    async with database_client(child.db_file) as db:
+                        jobs.append(
+                            await db.resolve(root_path=[], nest_path=nest_path[1:], depth=depth)
+                        )
+                        break
+            else:
+                raise RuntimeError(f"Couldn't find child with ident `{resolve_ident}`")
+        elif depth > 1:
+            for child in children:
+                async with database_client(child.db_file) as db:
+                    jobs.append(await db.resolve(root_path=[], nest_path=[], depth=depth - 1))
+        elif depth == 1:
+            for child in children:
                 jobs.append(
-                    ApiJob(
+                    ApiTreeResponse(
                         uidx=child.db_uid,
                         ident=child.ident,
                         status=JobState.COMPLETE,
@@ -95,10 +118,11 @@ class _DBClient:
                         updated=child.updated,
                         stopped=child.stopped,
                         expected_children=child.expected_children,
+                        jobs=[],
                     )
                 )
 
-        return ApiLayerResponse(
+        return ApiTreeResponse(
             uidx=uidx,
             ident=ident,
             status=JobState.COMPLETE,
@@ -140,8 +164,10 @@ class _WSClient:
     def __init__(self, ws: WebsocketClient | WebsocketWrapper):
         self.ws = ws
 
-    async def resolve(self, path: List[str]) -> ApiLayerResponse:
-        return await self.ws.resolve(path=path)
+    async def resolve(
+        self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0
+    ) -> ApiTreeResponse:
+        return await self.ws.resolve(root_path=root_path, nest_path=nest_path, depth=depth)
 
     async def get_messages(self, after: int = 0, limit: int = 10) -> ApiMessagesResponse:
         return await self.ws.get_messages(after=after, limit=limit)
@@ -180,5 +206,25 @@ async def downstream_client(server_url: str):
 async def websocket_client(websocket: WebsocketWrapper):
     try:
         yield _WSClient(websocket)
+    finally:
+        pass
+
+
+@asynccontextmanager
+async def child_client(child: Child):
+    match child.state:
+        case JobState.PENDING | JobState.LAUNCHED:
+            client = None
+        case JobState.COMPLETE:
+            client = database_client(path=child.tracking / "db.sqlite")
+        case JobState.STARTED:
+            assert child.ws is not None, "Child started but no websocket!"
+            client = websocket_client(child.ws)
+    try:
+        if client is None:
+            yield None
+        else:
+            async with client as cli:
+                yield cli
     finally:
         pass

@@ -27,9 +27,9 @@ from ..common.db_client import resolve_client
 from ..common.types import (
     ApiJob,
     ApiJobsResponse,
-    ApiLayerResponse,
     ApiMessagesResponse,
     ApiResolvable,
+    ApiTreeResponse,
     JobResult,
     JobState,
 )
@@ -223,7 +223,7 @@ def setup_hub(
 
         # If necessary, dig down through the hierarchy to find the job
         async with registration_client(registration) as cli:
-            job = await cli.resolve(path=path)
+            job = await cli.resolve(path)
         # Query messages via the job's websocket
         async with resolve_client(job) as cli:
             data = await cli.get_messages(after=after_uid, limit=limit_num)
@@ -231,15 +231,21 @@ def setup_hub(
         # Return data
         return data
 
-    @hub.get("/api/job/<int:job_id>/layer")
-    @hub.get("/api/job/<int:job_id>/layer/")
-    @hub.get("/api/job/<int:job_id>/layer/<path:hierarchy>")
+    @hub.get("/api/job/<int:job_id>/resolve")
+    @hub.get("/api/job/<int:job_id>/resolve/")
+    @hub.get("/api/job/<int:job_id>/resolve/<path:hierarchy>")
     @lookup_job
-    async def job_layer(job: Registration, hierarchy: str = "") -> ApiLayerResponse:
+    async def job_resolve(job: Registration, hierarchy: str = "") -> ApiTreeResponse:
         path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
+        nest_path = [
+            stripped
+            for el in request.args.get("nest_path", "").split("/")
+            if (stripped := el.strip())
+        ]
+        depth = int(request.args.get("depth", 1))
 
         async with registration_client(job) as cli:
-            return await cli.resolve(path=path)
+            return await cli.resolve(path, nest_path=nest_path, depth=depth)
 
     # Launch
     hub.run(host=host, port=port)

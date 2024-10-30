@@ -1,4 +1,4 @@
-import { ApiJobsResponse, ApiLayerResponse, ApiMessagesResponse } from "@/types/job"
+import { ApiJobsResponse, ApiMessagesResponse, ApiTreeResponse } from "@/types/job"
 
 type JobsProps = {
     after?: number;
@@ -18,7 +18,7 @@ type MessagesProps = {
 
 export type Reader = {
     readJobs: (props: JobsProps) => Promise<ApiJobsResponse | never>;
-    readLayer: (props: LayerProps) => Promise<ApiLayerResponse | never>;
+    readLayer: (props: LayerProps) => Promise<ApiTreeResponse | never>;
     readMessages: (props: MessagesProps) => Promise<ApiMessagesResponse>;
 }
 
@@ -71,7 +71,8 @@ export class HubReader implements Reader {
     }
 
     async readLayer({ root, path }: LayerProps) {
-        const url = new URL(`/api/job/${root}/layer/${path.join('/')}`, this.baseURL);
+        const url = new URL(`/api/job/${root}/resolve/${path.join('/')}`, this.baseURL);
+        url.searchParams.set("depth", "1")
         return await wrappedFetch(url, true, true);
     }
 
