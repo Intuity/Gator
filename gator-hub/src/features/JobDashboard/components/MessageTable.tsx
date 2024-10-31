@@ -1,9 +1,10 @@
 
-import { ApiMessage, Job, JobState } from "@/types/job";
+import { ApiMessage, ApiJob, JobState, Job } from "@/types/job";
 import { Alert, Spin, Table, TableProps } from "antd";
 import moment from "moment";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Reader } from "../lib/readers";
+import { TreeKey } from "./Dashboard/lib/tree";
 
 enum Severity {
     CRITICAL = 50,
@@ -52,7 +53,7 @@ const columns: TableProps['columns'] = [
     },
 ]
 
-type messageFetchProps = {
+type messageFetchEffectProps = {
     interval: number;
     reader: Reader;
     job: Job;
@@ -62,12 +63,12 @@ type messageFetchProps = {
     setStatus: (status: TableStatus) => void;
 }
 
-function messageFetchEffect({ interval, reader, job, messages, setMessages, status, setStatus }: messageFetchProps) {
+function messageFetchEffect({ interval, reader, job, messages, setMessages, status, setStatus }: messageFetchEffectProps) {
     const task = async () => {
-        const { root, path } = job;
+        const { root, path, ident } = job;
         const after = messages[messages.length - 1]?.uid ?? 0;
         const limit = 1000;
-        const response = await reader.readMessages({ root, path, after, limit }).catch(e => {
+        const response = await reader.readMessages({ root, path, ident, after, limit }).catch(e => {
             setStatus({
                 status: Status.ERROR,
                 detail: String(e)
@@ -95,13 +96,16 @@ function messageFetchEffect({ interval, reader, job, messages, setMessages, stat
     if (status.status == Status.LOADING) {
         task();
     }
-    const timeout = setInterval(task, interval);
+    let timeout = undefined;
+    if (status.status !== Status.NONE) {
+        timeout = setInterval(task, interval);
+    }
     return () => clearInterval(timeout);
 }
 
 export type MessageTableProps = {
-    job: Job
-    key: string,
+    job: Job,
+    key: TreeKey,
     reader: Reader
 };
 

@@ -36,9 +36,9 @@ from .db import Database, Query
 from .logger import Logger, MessageLimits
 from .summary import Summary, make_summary
 from .types import (
+    ApiJob,
     ApiMessage,
     ApiMessagesResponse,
-    ApiTreeResponse,
     Attribute,
     ChildEntry,
     JobResult,
@@ -298,7 +298,9 @@ class BaseLayer:
         if self.client.linked:
             await self.client.measure_latency()
             result = await self.client.register(ident=self.ident, server=server_address)
-            self.uidx = int(result["uidx"] or 0)
+            self.uidx = int(result["uidx"])
+            self.root = int(result["root"])
+            self.path = result["path"]
         # Otherwise, register with the parent
         else:
             self.__hub_uid = await HubAPI.register(
@@ -308,13 +310,17 @@ class BaseLayer:
                 owner=get_username(),
             )
             if self.__hub_uid is not None:
-                self.uidx = int(self.__hub_uid)
+                self.uidx = self.root = int(self.__hub_uid)
+                self.path = []
                 await self.logger.info(f"Registered with hub with ID {self.__hub_uid}")
             else:
-                self.uidx = 0
+                self.uidx = self.root = 0
+                self.path = []
         # Setup basic job info
         await self.db.push_attribute(Attribute(name="ident", value=self.ident))
         await self.db.push_attribute(Attribute(name="uidx", value=str(self.uidx)))
+        await self.db.push_attribute(Attribute(name="root", value=str(self.root)))
+        await self.db.push_attribute(Attribute(name="path", value=".".join(self.path)))
         # Schedule the heartbeat
         self.__hb_event = asyncio.Event()
         self.__hb_task = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
@@ -440,10 +446,12 @@ class BaseLayer:
 
     async def resolve(
         self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0, **_
-    ) -> ApiTreeResponse:
+    ) -> ApiJob:
         del root_path, nest_path, depth
-        return ApiTreeResponse(
+        return ApiJob(
             uidx=self.uidx,
+            root=self.root,
+            path=self.path,
             ident=self.ident,
             status=JobState.STARTED,
             metrics=self.metrics.dump_group(),
@@ -454,7 +462,7 @@ class BaseLayer:
             updated=self.updated,
             stopped=self.stopped,
             result=self.result,
-            jobs=[],
+            children=[],
             expected_children=0,
         )
 

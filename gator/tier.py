@@ -28,9 +28,8 @@ from .common.layer import (
 from .common.logger import Logger
 from .common.summary import Summary, contextualise_summary, merge_summaries
 from .common.types import (
-    ApiChildrenResponse,
+    ApiChildren,
     ApiJob,
-    ApiTreeResponse,
     Attribute,
     ChildEntry,
     JobResult,
@@ -140,13 +139,15 @@ class Tier(BaseLayer):
                 tree[child.ident] = await child.ws.get_tree()
         return tree
 
-    async def __list_children(self, **_) -> ApiTreeResponse:
+    async def __list_children(self, **_) -> ApiChildren:
         """List all of the children of this layer"""
-        jobs: List[ApiJob] = []
+        children: List[ApiJob] = []
         for child in self.all_children.values():
-            jobs.append(
+            children.append(
                 ApiJob(
                     uidx=child.entry.db_uid,
+                    root=self.root,
+                    path=[*self.path, self.ident],
                     ident=child.ident,
                     status=child.state,
                     metrics=self.metrics.dump(child.ident),
@@ -157,14 +158,15 @@ class Tier(BaseLayer):
                     stopped=child.entry.stopped,
                     result=child.entry.result,
                     owner=None,
+                    children=[],
                     expected_children=child.entry.expected_children,
                 )
             )
-        return ApiChildrenResponse(jobs=jobs, status=JobState.STARTED)
+        return ApiChildren(children=children, status=JobState.STARTED)
 
     async def resolve(
         self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0, **_
-    ) -> ApiTreeResponse:
+    ) -> ApiJob:
         # Tunnel down to root
         if root_path:
             child = self.all_children[root_path[0]]
@@ -179,24 +181,28 @@ class Tier(BaseLayer):
         data = await super().resolve(root_path=root_path, nest_path=nest_path, depth=depth)
 
         # Resolve nested path
-        jobs: List[ApiTreeResponse] = []
+        children: List[ApiJob] = []
         if nest_path:
             child = self.all_children[nest_path[0]]
             async with child_client(child) as cli:
-                jobs.append(await cli.resolve(root_path=[], nest_path=nest_path[1:], depth=depth))
+                children.append(
+                    await cli.resolve(root_path=[], nest_path=nest_path[1:], depth=depth)
+                )
         elif depth > 1:
             for child in self.all_children.values():
                 async with child_client(child) as cli:
                     if not cli:
                         continue
-                    jobs.append(
+                    children.append(
                         await cli.resolve(root_path=[], nest_path=nest_path[1:], depth=depth)
                     )
         elif depth == 1:
             for child in self.all_children.values():
-                jobs.append(
-                    ApiTreeResponse(
+                children.append(
+                    ApiJob(
                         uidx=child.entry.db_uid,
+                        root=self.root,
+                        path=[*self.path, self.ident],
                         ident=child.ident,
                         status=child.state,
                         metrics=self.metrics.dump(child.ident),
@@ -207,12 +213,12 @@ class Tier(BaseLayer):
                         stopped=child.entry.stopped,
                         result=child.entry.result,
                         owner=None,
-                        jobs=[],
+                        children=[],
                         expected_children=child.entry.expected_children,
                     )
                 )
 
-        data["jobs"] = jobs
+        data["children"] = children
         data["expected_children"] = len(self.all_children)
         return data
 
@@ -242,7 +248,11 @@ class Tier(BaseLayer):
                 child.entry.server_url = server
                 await self.db.update_childentry(child.entry)
                 child.ws = ws
-                return {"uidx": child.entry.db_uid}
+                return {
+                    "path": [*self.path, self.ident],
+                    "root": self.root,
+                    "uidx": child.entry.db_uid or 0,
+                }
             else:
                 await self.logger.error(f"Unknown child of {self.ident} start '{ident}'")
                 raise Exception(f"Bad child ident {ident}")

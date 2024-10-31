@@ -111,6 +111,8 @@ class TestWrapper:
             (
                 ("ident", "test"),
                 ("uidx", "0"),
+                ("root", "0"),
+                ("path", ""),
                 ("started", None),
                 ("cmd", "echo hi"),
                 ("cwd", tmp_path.as_posix()),

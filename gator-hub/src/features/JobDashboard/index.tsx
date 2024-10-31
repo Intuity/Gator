@@ -1,50 +1,16 @@
 
-import Dashboard from "@/features/JobDashboard/components/Dashboard";
-import { ReactNode, useEffect, useMemo, useState } from "react";
-import JobTree from "@/features/JobDashboard/lib/jobtree";
+import Dashboard, { TreeSelectState } from "@/features/JobDashboard/components/Dashboard";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import JobTree, { getJobKey, splitJobKey } from "@/features/JobDashboard/lib/jobtree";
 import { EventDataNode } from "antd/lib/tree";
 import Tree, { TreeKey, TreeNode } from "@/features/JobDashboard/components/Dashboard/lib/tree";
 import { CheckCircleFilled, ClockCircleFilled, CloseCircleFilled, QuestionCircleFilled, StopFilled, TableOutlined } from "@ant-design/icons";
 import MessageTable from "@/features/JobDashboard/components/MessageTable";
 import RegistrationTable from "@/features/JobDashboard/components/RegistrationTable";
-import { ApiLayerResponse, Job, JobResult, JobState } from "@/types/job";
+import { ApiJob, JobResult, JobState } from "@/types/job";
 import { HubReader, Reader } from "./lib/readers";
 import { view } from "./components/Dashboard/theme";
 import { Progress, ProgressProps } from "antd";
-import { l } from "node_modules/vite/dist/node/types.d-aGj9QkWt";
-
-/**
- * Splits strings into alpha and numeric portions before comparison
- * and tries to treat the numeric portions as numbers.
- */
-function naturalCompare(a: String | Number, b: String | Number) {
-    const num_regex = /(\d+\.?\d*)/g
-    const aParts = a.toString().split(num_regex);
-    const bParts = b.toString().split(num_regex);
-    while (true) {
-        const aPart = aParts.shift();
-        const bPart = bParts.shift();
-
-        if (aPart === undefined || bPart === undefined) {
-            if (aPart !== undefined) {
-                return 1;
-            }
-            if (bPart !== undefined) {
-                return -1;
-            }
-            return NaN;
-        }
-
-        const numCompare = Number.parseInt(aPart) - Number.parseInt(bPart);
-        if (!Number.isNaN(numCompare) && numCompare != 0) {
-            return numCompare;
-        }
-        const strCompare = aPart.localeCompare(bPart);
-        if (strCompare != 0) {
-            return strCompare;
-        }
-    }
-}
 
 type SearchedTextProps = {
     text: string;
@@ -70,46 +36,52 @@ function SearchedText({ text, searchValue }: SearchedTextProps): ReactNode {
     return title;
 }
 
-type liveFetchProps = {
+type liveFetchEffectProps = {
     interval: number;
     reader: Reader;
     tree: JobTree;
     setTree: (newTree: JobTree) => void;
     liveTreeKeys: TreeKey[]
-    setLiveTreeKeys: (newLiveTreeKeys: TreeKey[]) => void;
-    setLoadedTreeKeys: React.Dispatch<React.SetStateAction<TreeKey[]>>
 }
 
-function liveFetchEffect({ interval, reader, tree, setTree, liveTreeKeys, setLiveTreeKeys, setLoadedTreeKeys }: liveFetchProps) {
+function liveFetchEffect({ interval, reader, tree, setTree, liveTreeKeys }: liveFetchEffectProps) {
     const task = async () => {
-        const responses = await Promise.all(liveTreeKeys.map((k) => tree.getNodeByKey(k))
+
+        const apiJobs = await Promise.all(liveTreeKeys.map((k) => tree.getNodeByKey(k))
             .filter(node => node !== undefined)
-            .map(node => {
-                return new Promise<{ key: TreeKey, response: ApiLayerResponse }>(async (resolve) => {
-                    resolve({ key: node.key, response: await reader.readLayer(node.data) } as const)
-                })
-            }));
-        const newLiveTreeKeys: TreeKey[] = [];
-        for (const { key, response } of responses) {
-            if (response.status !== JobState.COMPLETE) newLiveTreeKeys.push(key);
-        }
-        const newTree = tree.updatedFromLayers(responses);
-        setLiveTreeKeys(newLiveTreeKeys);
+
+            .map(node => reader.readLayer(node.data)));
+        if (!apiJobs.length) return;
+
+        const newTree = tree.updatedFromJobs(apiJobs);
         setTree(newTree);
-        updateLoadedTreeKeys(newTree, setLoadedTreeKeys);
     }
     const timeout = setInterval(task, interval);
     return () => clearInterval(timeout);
 }
 
-const updateLoadedTreeKeys = (tree: JobTree, setLoadedTreeKeys: (keys: TreeKey[]) => void) => {
-    const newLoadedTreeKeys = [];
-    for (const [{ key, data, children }, _parent] of tree.walk()) {
-        if (children?.length === data.expected_children || data.result === JobResult.ABORTED) {
-            newLoadedTreeKeys.push(key);
+type urlPathEffectProps = {
+    selectedTreeKeys: TreeKey[]
+    tree: JobTree
+}
+
+function urlPathEffect({ selectedTreeKeys, tree }: urlPathEffectProps) {
+    const url = new URL(document.location.href);
+    url.searchParams.delete("path");
+    let idents: string[] = []
+    for (const treeKey of selectedTreeKeys) {
+        const node = tree.getNodeByKey(treeKey);
+        if (node) {
+            const path = [node.data.root, ...node.data.path, node.data.ident]
+            url.searchParams.append("path", path.join('.'));
+            idents.push(node.data.ident);
         }
+
     }
-    setLoadedTreeKeys(newLoadedTreeKeys);
+    // Note if we want browser back button to navigate this history
+    // we can use pushState here.
+    history.replaceState(null, idents.join('|'), url);
+    return () => { };
 }
 
 
@@ -117,42 +89,73 @@ export default function JobDashboard() {
     const [reader, _setReader] = useState<Reader>(new HubReader())
 
     const [tree, setTree] = useState<JobTree>(JobTree.fromJobs([]));
+    const [treeSelectState, setTreeSelectState] = useState<TreeSelectState>(() => {
+        const url = new URL(document.location.href);
+        const urlSelectedKeys = url.searchParams.getAll("path");
 
-    const [selectedTreeKeys, setWrappedSelectedTreeKeys] = useState<TreeKey[]>([]);
+        Promise.allSettled(urlSelectedKeys.map(k => reader.readTunnel(splitJobKey(k)))).then(results => {
+            const jobs = results.filter(r => r.status === "fulfilled").map(r => r.value);
+            const newTree = tree.updatedFromJobs(jobs);
 
-    const [loadedTreeKeys, setLoadedTreeKeys] = useState<TreeKey[]>([]);
+            setTree(newTree);
+            setTreeSelectState(state => {
+                const newExpandedKeys = new Set<TreeKey>(state.expandedKeys);
+                for (const newSelectedKey of urlSelectedKeys) {
+                    for (const ancestor of newTree.getAncestorsByKey(newSelectedKey as TreeKey)) {
+                        newExpandedKeys.add(ancestor.key);
+                    }
+                }
+                return {
+                    ...state,
+                    selectedKeys: urlSelectedKeys,
+                    expandedKeys: Array.from(newExpandedKeys),
+                    autoExpandParents: false
+                }
+            });
+        })
 
-    const [liveTreeKeys, setLiveTreeKeys] = useState<TreeKey[]>([]);
+        return {
+            selectedKeys: [],
+            expandedKeys: [],
+            autoExpandParents: false,
+        }
+    });
 
-    const setSelectedTreeKeys = (newSelectedKeys: TreeKey[]) => {
-        setWrappedSelectedTreeKeys(newSelectedKeys);
+    const [loadingTreeKeys, setLoadingTreeKeys] = useState<TreeKey[]>([]);
 
-        // Take the most recent 5 non-complete keys
-        const newLiveTreeKeys = newSelectedKeys.filter(k => tree.getNodeByKey(k)?.data.status !== JobState.COMPLETE)
-        setLiveTreeKeys(current => [
-            ...newLiveTreeKeys,
-            ...current.filter(el => !newLiveTreeKeys.includes(el))
-        ].slice(0, 5))
+    const loadedTreeKeys: TreeKey[] = [];
+    for (const [{ key, data, children }, _parent] of tree.walk()) {
+        if (children?.length === data.expected_children || data.result === JobResult.ABORTED) {
+            loadedTreeKeys.push(key);
+        }
     }
 
-    async function onLoadData(eventNode: EventDataNode<TreeNode<Job>>) {
-        const job = eventNode.data;
+    const liveTreeKeys = useRef<TreeKey[]>([]);
+    useMemo(() => {
+        // Take the 5 most recently selected non-complete items
+        liveTreeKeys.current = [
+            ...treeSelectState.selectedKeys,
+            ...liveTreeKeys.current.filter(k => !treeSelectState.selectedKeys.includes(k))
+        ].filter(k => tree.getNodeByKey(k)?.data.status !== JobState.COMPLETE).slice(0, 5);
+
+    }, [tree, treeSelectState, loadedTreeKeys]);
+
+    async function onLoadData(eventNode: EventDataNode<TreeNode<ApiJob>>) {
         const node = tree.getNodeByKey(eventNode.key);
         if (node === undefined) return;
-        const response = await reader.readLayer({ root: job.root, path: job.path }).catch(_e => {
+
+        setLoadingTreeKeys(state => [...state, node.key]);
+        const response = await reader.readLayer(node.data).catch(_e => {
             return null;
         });
 
-        // TODO display errors to user
-        setLoadedTreeKeys(current => [...current, node.key]);
         if (!response) return;
-        const newTree = tree.updatedFromLayers([{ key: node.key, response }]);
-        updateLoadedTreeKeys(newTree, setLoadedTreeKeys);
+        const newTree = tree.updatedFromJobs([response])
+        setLoadingTreeKeys(state => [...state, node.key].filter(k => k !== node.key));
         setTree(newTree);
-        return;
     }
 
-    function setSelectedRows(rows: Job[]) {
+    function setSelectedRows(rows: ApiJob[]) {
         const newTree = JobTree.fromJobs(rows);
         for (const root of tree.getRoots()) {
             const node = newTree.getNodeByKey(root.key);
@@ -176,21 +179,18 @@ export default function JobDashboard() {
                 }
             ]
         } else {
-            const job = node.data;
-            const path = job.path ?? [];
-            const tableKey = [job.uidx, ...path].join('-');
             return [
                 {
                     value: "message_table",
                     icon: <TableOutlined />,
-                    factory: () => <MessageTable job={job} key={tableKey} reader={reader} />
+                    factory: () => <MessageTable job={node.data} key={node.key} reader={reader} />
                 },
             ];
         }
     }, [selectedRowKeys, reader]);
 
-    function treeNodeFormatter(treeNode: TreeNode<Job>, searchValue: string) {
-        const { status, result, metrics } = treeNode.data;
+    function treeNodeFormatter(treeNode: TreeNode<ApiJob>, searchValue: string) {
+        const { status, result, metrics, expected_children } = treeNode.data;
         let successRatio: number;
         let progressRatio: number;
         switch (status) {
@@ -203,7 +203,7 @@ export default function JobDashboard() {
                 progressRatio = 0.2;
                 break;
             default:
-                const total = metrics.sub_total ?? 1;
+                const total = Math.max(metrics.sub_total ?? 1, expected_children);
                 const passed = metrics.sub_passed ?? (result === JobResult.SUCCESS ? 1 : 0);
                 const active = metrics.sub_active ?? (result === JobResult.UNKNOWN ? 1 : 0);
                 const failed = metrics.sub_failed ?? (result === JobResult.FAILURE ? 1 : 0);
@@ -237,7 +237,7 @@ export default function JobDashboard() {
                 if (metrics.sub_failed) {
                     progressStatus = "exception";
                     icon = <CloseCircleFilled />
-                } else if (liveTreeKeys.includes(treeNode.key)) {
+                } else if (liveTreeKeys.current.includes(treeNode.key)) {
                     progressStatus = "active";
                     icon = <ClockCircleFilled />
                 } else {
@@ -278,8 +278,8 @@ export default function JobDashboard() {
             </div>
         </span>
     }
+    useEffect(() => urlPathEffect({ selectedTreeKeys: treeSelectState.selectedKeys, tree }), [treeSelectState.selectedKeys, tree])
+    useEffect(() => liveFetchEffect({ interval: 3000, reader, tree, setTree, liveTreeKeys: liveTreeKeys.current }), [reader, tree, liveTreeKeys.current])
 
-    useEffect(() => liveFetchEffect({ interval: 3000, reader, tree, setTree, liveTreeKeys, setLiveTreeKeys, setLoadedTreeKeys }), [reader, tree, liveTreeKeys])
-
-    return <Dashboard tree={tree} onLoadData={onLoadData} loadedTreeKeys={loadedTreeKeys} selectedTreeKeys={selectedTreeKeys} setSelectedTreeKeys={setSelectedTreeKeys} getViewsByKey={getViewsByKey} treeNodeFormatter={treeNodeFormatter} />
+    return <Dashboard tree={tree} treeSelectState={treeSelectState} setTreeSelectState={setTreeSelectState} onLoadData={onLoadData} loadedKeys={[...loadingTreeKeys, ...loadedTreeKeys]} getViewsByKey={getViewsByKey} treeNodeFormatter={treeNodeFormatter} />
 }

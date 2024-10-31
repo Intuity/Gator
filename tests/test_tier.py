@@ -370,7 +370,7 @@ class TestTier:
         response = await ws_cli.children()
         launched = {
             j["ident"]
-            for j in response["jobs"]
+            for j in response["children"]
             if j["status"] in [JobState.LAUNCHED, JobState.STARTED]
         }
         assert launched == {"c", "mid"}

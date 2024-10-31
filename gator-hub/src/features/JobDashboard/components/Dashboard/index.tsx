@@ -20,7 +20,7 @@ import { BgColorsOutlined } from "@ant-design/icons";
 import Tree, { TreeKey, TreeNode, View } from "./lib/tree";
 
 import { antTheme, view } from "./theme";
-import { ReactNode, useMemo, useState } from "react";
+import { Dispatch, ReactNode, SetStateAction, useMemo, useState } from "react";
 import { BreadcrumbItemType } from "antd/lib/breadcrumb/Breadcrumb";
 import { EventDataNode } from "antd/lib/tree";
 const { Header, Content } = Layout;
@@ -164,38 +164,43 @@ type DashView = View & {
     factory(): React.ReactNode
 }
 
+export type TreeSelectState = {
+    selectedKeys: TreeKey[];
+    expandedKeys: TreeKey[];
+    autoExpandParents: boolean;
+}
+
 export type DashboardProps = {
     tree: Tree,
-    selectedTreeKeys: TreeKey[],
+    treeSelectState: TreeSelectState,
+    setTreeSelectState: Dispatch<SetStateAction<TreeSelectState>>;
     treeNodeFormatter: (treeNode: TreeNode, searchValue: string) => ReactNode;
-    setSelectedTreeKeys: (keys: TreeKey[]) => void;
+    loadedKeys: TreeKey[]
     onLoadData: (treeNode: EventDataNode<TreeNode>) => Promise<void>;
-    loadedTreeKeys: TreeKey[];
     getViewsByKey: (key: TreeKey) => DashView[];
 }
 
-export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTreeKeys, setSelectedTreeKeys, getViewsByKey, treeNodeFormatter }: DashboardProps) {
-    const [expandedTreeKeys, setExpandedTreeKeys] = useState<TreeKey[]>([]);
-    const [autoExpandTreeParent, setAutoExpandTreeParent] = useState(true);
+export default function Dashboard({ tree, treeSelectState, setTreeSelectState, loadedKeys, onLoadData, getViewsByKey, treeNodeFormatter }: DashboardProps) {
     const [searchValue, setSearchValue] = useState("");
     const [treeKeyContentKey, setTreeKeyContentKey] = useState(
         {} as { [key: TreeKey]: string | number },
     );
 
     const onSelect = (newSelectedKeys: React.Key[]) => {
-        setSelectedTreeKeys(newSelectedKeys as TreeKey[]);
-        // Use a callback to get the current state
-        setExpandedTreeKeys(current => {
-            const newExpandedKeys = new Set<TreeKey>(current);
+        setTreeSelectState(state => {
+            const newExpandedKeys = new Set<TreeKey>(state.expandedKeys);
             for (const newSelectedKey of newSelectedKeys) {
                 for (const ancestor of tree.getAncestorsByKey(newSelectedKey as TreeKey)) {
                     newExpandedKeys.add(ancestor.key);
                 }
             }
-            return Array.from(newExpandedKeys);
+            return {
+                ...state,
+                selectedKeys: newSelectedKeys as TreeKey[],
+                expandedKeys: Array.from(newExpandedKeys),
+                autoExpandParents: false
+            }
         })
-        // We're manually managing the ancestor expansion
-        setAutoExpandTreeParent(false);
     };
 
     const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,14 +208,16 @@ export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTr
         const newExpandedKeys = new Set<TreeKey>();
         for (const [node, parent] of tree.walk()) {
             const strTitle = node.title as string;
-            console.log(strTitle)
             if (strTitle.includes(value) && parent !== null) {
                 newExpandedKeys.add(parent.key);
             }
         }
-        setExpandedTreeKeys(Array.from(newExpandedKeys));
         setSearchValue(value);
-        setAutoExpandTreeParent(true);
+        setTreeSelectState(state => ({
+            ...state,
+            expandedKeys: Array.from(newExpandedKeys),
+            autoExpandParents: true
+        }));
     };
 
     const formattedTreeData = useMemo(() => {
@@ -222,11 +229,11 @@ export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTr
 
     const breadCrumbItems = getBreadCrumbItems({
         tree,
-        selectedTreeKeys,
+        selectedTreeKeys: treeSelectState.selectedKeys,
         onSelect,
     });
 
-    const viewKey = selectedTreeKeys[0] ?? Tree.ROOT;
+    const viewKey = treeSelectState.selectedKeys[0] ?? Tree.ROOT;
     const contentViews = getViewsByKey(viewKey);
     const defaultView = contentViews[0];
     const currentContentKey = treeKeyContentKey[viewKey] ?? defaultView.value;
@@ -234,7 +241,7 @@ export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTr
     const onViewChange = (newView: string | number) => {
         setTreeKeyContentKey({
             ...treeKeyContentKey,
-            [selectedTreeKeys[0]]: newView,
+            [treeSelectState.selectedKeys[0]]: newView,
         });
     };
 
@@ -247,9 +254,12 @@ export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTr
         }
     }, [viewKey, currentContentKey, getViewsByKey]);
 
-    const onTreeExpand = (newExpandedKeys: React.Key[]) => {
-        setExpandedTreeKeys(newExpandedKeys as TreeKey[]);
-        setAutoExpandTreeParent(false);
+    const onExpand = (newExpandedKeys: React.Key[]) => {
+        setTreeSelectState(state => ({
+            ...state,
+            expandedKeys: newExpandedKeys as TreeKey[],
+            autoExpandParents: false
+        }));
     };
 
     return (
@@ -259,14 +269,14 @@ export default function Dashboard({ tree, onLoadData, loadedTreeKeys, selectedTr
                     <Input {...view.sider.search.props} onChange={onSearchChange} />
                     <AntTree
                         {...view.sider.tree.props}
-                        onExpand={onTreeExpand}
+                        onExpand={onExpand}
                         onSelect={onSelect}
-                        selectedKeys={selectedTreeKeys}
-                        expandedKeys={expandedTreeKeys}
-                        autoExpandParent={autoExpandTreeParent}
+                        selectedKeys={treeSelectState.selectedKeys}
+                        expandedKeys={treeSelectState.expandedKeys}
+                        autoExpandParent={treeSelectState.autoExpandParents}
                         treeData={formattedTreeData}
                         loadData={onLoadData}
-                        loadedKeys={loadedTreeKeys}
+                        loadedKeys={loadedKeys}
                     />
                 </Layout.Sider>
                 <Layout {...view.body.props}>

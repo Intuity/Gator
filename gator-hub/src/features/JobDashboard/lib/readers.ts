@@ -1,4 +1,4 @@
-import { ApiJobsResponse, ApiMessagesResponse, ApiTreeResponse } from "@/types/job"
+import { ApiChildren, ApiJob, ApiMessagesResponse } from "@/types/job"
 
 type JobsProps = {
     after?: number;
@@ -8,17 +8,20 @@ type JobsProps = {
 type LayerProps = {
     root: number;
     path: string[];
+    ident: string;
 }
 type MessagesProps = {
     root: number;
     path: string[];
+    ident: string;
     after?: number;
     limit?: number;
 }
 
 export type Reader = {
-    readJobs: (props: JobsProps) => Promise<ApiJobsResponse | never>;
-    readLayer: (props: LayerProps) => Promise<ApiTreeResponse | never>;
+    readJobs: (props: JobsProps) => Promise<ApiChildren | never>;
+    readLayer: (props: LayerProps) => Promise<ApiJob | never>;
+    readTunnel: (props: LayerProps) => Promise<ApiJob | never>;
     readMessages: (props: MessagesProps) => Promise<ApiMessagesResponse>;
 }
 
@@ -70,14 +73,21 @@ export class HubReader implements Reader {
         return await wrappedFetch(url, true, true);
     }
 
-    async readLayer({ root, path }: LayerProps) {
-        const url = new URL(`/api/job/${root}/resolve/${path.join('/')}`, this.baseURL);
+    async readLayer({ root, path, ident }: LayerProps) {
+        const url = new URL(`/api/job/${root}/resolve/${[...path, ident].join('/')}`, this.baseURL);
         url.searchParams.set("depth", "1")
         return await wrappedFetch(url, true, true);
     }
 
-    async readMessages({ root, path, ...params }: MessagesProps) {
-        const url = new URL(`/api/job/${root}/messages/${path.join('/')}`, this.baseURL);
+    async readTunnel({ root, path, ident }: LayerProps) {
+        const url = new URL(`/api/job/${root}/resolve/}`, this.baseURL);
+        url.searchParams.set("depth", "1")
+        url.searchParams.set("nest_path", [...path, ident].join('/'))
+        return await wrappedFetch(url, true, true);
+    }
+
+    async readMessages({ root, path, ident, ...params }: MessagesProps) {
+        const url = new URL(`/api/job/${root}/messages/${[...path, ident].join('/')}`, this.baseURL);
         for (const [key, value] of Object.entries(params)) {
             if (value != null) {
                 url.searchParams.set(key, String(value))

@@ -142,6 +142,8 @@ class ApiJob(TypedDict):
     "Resolved job API response"
 
     uidx: int
+    root: int
+    path: List[str]
     ident: str
     status: JobState
     metrics: Metrics
@@ -152,29 +154,12 @@ class ApiJob(TypedDict):
     updated: Optional[float]
     stopped: Optional[float]
     result: JobResult
+    children: List["ApiJob"]
     expected_children: int
 
 
-class ApiJobsResponse(TypedDict):
-    "Root jobs API response"
-
-    status: JobState
-    jobs: Sequence[ApiJob]
-
-
-class ApiChildrenResponse(TypedDict):
+class ApiChildren(TypedDict):
     "Resolved children API response"
 
     status: JobState
-    jobs: Sequence[ApiJob]
-
-
-class ApiLayerResponse(ApiJob, ApiChildrenResponse):
-    "Resolved layer (job + children) API response"
-
-
-class ApiTreeResponse(ApiJob):
-    "Resolved tree (job + descendants) API response"
-
-    status: JobState
-    jobs: Sequence["ApiTreeResponse"]
+    children: Sequence[ApiJob]

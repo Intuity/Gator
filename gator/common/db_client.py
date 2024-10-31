@@ -9,10 +9,10 @@ from .layer import (
     GetTreeResponse,
 )
 from .types import (
+    ApiJob,
     ApiMessage,
     ApiMessagesResponse,
     ApiResolvable,
-    ApiTreeResponse,
     Attribute,
     ChildEntry,
     JobResult,
@@ -45,7 +45,7 @@ class _DBClient:
 
     async def resolve(
         self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0
-    ):
+    ) -> ApiJob:
         children: List[ChildEntry] = []
         if self.db.has_table(ChildEntry):
             children = await self.db.get_childentry()
@@ -66,7 +66,10 @@ class _DBClient:
 
         # Resolve self
         ident = (await self.db.get_attribute(name="ident"))[0].value
-        uidx = (await self.db.get_attribute(name="uidx"))[0].value
+        uidx = int((await self.db.get_attribute(name="uidx"))[0].value)
+        root = int((await self.db.get_attribute(name="root"))[0].value)
+        path = (await self.db.get_attribute(name="path"))[0].value
+        path = path.split(".") if path else []
 
         started_attr = await self.db.get_attribute(name="started")
         stopped_attr = await self.db.get_attribute(name="stopped")
@@ -86,13 +89,13 @@ class _DBClient:
                 child_metrics[metric.scope][metric.name] = metric.value
 
         # Resolve nested path
-        jobs: List[ApiTreeResponse] = []
+        child_jobs: List[ApiJob] = []
         if nest_path:
             resolve_ident = nest_path[0]
             for child in children:
                 if child.ident == resolve_ident:
                     async with database_client(child.db_file) as db:
-                        jobs.append(
+                        child_jobs.append(
                             await db.resolve(root_path=[], nest_path=nest_path[1:], depth=depth)
                         )
                         break
@@ -101,12 +104,14 @@ class _DBClient:
         elif depth > 1:
             for child in children:
                 async with database_client(child.db_file) as db:
-                    jobs.append(await db.resolve(root_path=[], nest_path=[], depth=depth - 1))
+                    child_jobs.append(await db.resolve(root_path=[], nest_path=[], depth=depth - 1))
         elif depth == 1:
             for child in children:
-                jobs.append(
-                    ApiTreeResponse(
+                child_jobs.append(
+                    ApiJob(
                         uidx=child.db_uid,
+                        root=root,
+                        path=[*path, ident],
                         ident=child.ident,
                         status=JobState.COMPLETE,
                         metrics=child_metrics[child.ident],
@@ -118,12 +123,14 @@ class _DBClient:
                         updated=child.updated,
                         stopped=child.stopped,
                         expected_children=child.expected_children,
-                        jobs=[],
+                        children=[],
                     )
                 )
 
-        return ApiTreeResponse(
+        return ApiJob(
             uidx=uidx,
+            root=root,
+            path=path,
             ident=ident,
             status=JobState.COMPLETE,
             metrics=metrics,
@@ -134,8 +141,8 @@ class _DBClient:
             stopped=stop,
             owner=None,
             result=result,
-            jobs=jobs,
-            expected_children=len(jobs),
+            children=child_jobs,
+            expected_children=len(children),
         )
 
     async def get_messages(self, after: int = 0, limit: int = 10) -> ApiMessagesResponse:
@@ -166,7 +173,7 @@ class _WSClient:
 
     async def resolve(
         self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0
-    ) -> ApiTreeResponse:
+    ) -> ApiJob:
         return await self.ws.resolve(root_path=root_path, nest_path=nest_path, depth=depth)
 
     async def get_messages(self, after: int = 0, limit: int = 10) -> ApiMessagesResponse:

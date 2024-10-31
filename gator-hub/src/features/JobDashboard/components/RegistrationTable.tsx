@@ -3,7 +3,7 @@ import { Alert, Spin, Table, TableProps } from "antd";
 import moment from "moment";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TreeKey } from "./Dashboard/lib/tree";
-import { Job } from "@/types/job";
+import { ApiJob } from "@/types/job";
 import { Reader } from "../lib/readers";
 
 enum Severity {
@@ -30,8 +30,8 @@ type TableStatus = {
 }
 
 export type JobNode = {
-    key: number,
-    data: Job;
+    key: TreeKey,
+    data: ApiJob;
 }
 
 const columns: TableProps<JobNode>['columns'] = [
@@ -57,7 +57,7 @@ const columns: TableProps<JobNode>['columns'] = [
     },
 ]
 
-type JobFetchProps = {
+type JobFetchEffectProps = {
     interval: number;
     reader: Reader;
     jobs: JobNode[]
@@ -66,10 +66,10 @@ type JobFetchProps = {
     setStatus: (status: TableStatus) => void;
 }
 
-function jobFetchEffect({ interval, reader, jobs, setJobs, status, setStatus }: JobFetchProps) {
+function jobFetchEffect({ interval, reader, jobs, setJobs, status, setStatus }: JobFetchEffectProps) {
     const task = async () => {
-        const before = jobs[jobs.length - 1]?.key ?? 0;
-        const after = jobs[0]?.key ?? 0;
+        const before = Number(jobs[jobs.length - 1]?.key) || 0;
+        const after = Number(jobs[0]?.key) || 0;
         const limit = 1000;
         const response = await reader.readJobs({ before, after, limit }).catch(e => {
             setStatus({
@@ -79,13 +79,11 @@ function jobFetchEffect({ interval, reader, jobs, setJobs, status, setStatus }: 
             return null;
         });
         if (!response) return;
-        if (response.jobs.length) {
-            const responseJobs: JobNode[] = response.jobs.map(job => ({
-                key: job.uidx,
+        if (response.children.length) {
+            const responseJobs: JobNode[] = response.children.map(job => ({
+                key: [job.root, ...job.path, job.ident].join('.'),
                 data: {
-                    ...job,
-                    path: [],
-                    root: job.uidx
+                    ...job
                 }
             }))
             const byKey = responseJobs.reduce((acc, job) => {
@@ -95,7 +93,7 @@ function jobFetchEffect({ interval, reader, jobs, setJobs, status, setStatus }: 
             // Add new jobs, replacing any existing jobs with newer copies
             const newJobs = jobs.filter(j => !(j.key in byKey))
                 .concat(responseJobs)
-                .sort((a, b) => b.key - a.key);
+                .sort((a, b) => Number(b.key) - Number(a.key));
             setJobs(newJobs);
             setStatus({
                 status: Status.LIVE, detail: `Loaded: ${newJobs.length} / ${newJobs[0].key}`
@@ -112,7 +110,7 @@ function jobFetchEffect({ interval, reader, jobs, setJobs, status, setStatus }: 
 export type RegistrationTableProps = {
     key: TreeKey;
     selectedRowKeys: TreeKey[];
-    setSelectedRows: (rows: Job[]) => void,
+    setSelectedRows: (rows: ApiJob[]) => void,
     reader: Reader
 };
 

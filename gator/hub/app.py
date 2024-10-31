@@ -25,11 +25,10 @@ from quart import (
 
 from ..common.db_client import resolve_client
 from ..common.types import (
+    ApiChildren,
     ApiJob,
-    ApiJobsResponse,
     ApiMessagesResponse,
     ApiResolvable,
-    ApiTreeResponse,
     JobResult,
     JobState,
 )
@@ -148,7 +147,7 @@ def setup_hub(
         return {"result": "success"}
 
     @hub.get("/api/jobs")
-    async def jobs() -> ApiJobsResponse:
+    async def jobs() -> ApiChildren:
         before = int(request.args.get("before", 0))
         after = int(request.args.get("after", 0))
         limit = int(request.args.get("limit", 10))
@@ -164,7 +163,7 @@ def setup_hub(
             .output()
             .limit(limit)
         )
-        jobs: list[ApiJob] = []
+        children: list[ApiJob] = []
         for registration in registrations:
             list_metrics = await Metric.select(Metric.name, Metric.value).where(
                 Metric.registration == registration
@@ -183,9 +182,11 @@ def setup_hub(
                 status = JobState.STARTED
                 stop = None
                 result = JobResult.UNKNOWN
-            jobs.append(
+            children.append(
                 ApiJob(
                     uidx=registration.uid,
+                    root=registration.uid,
+                    path=[],
                     ident=registration.ident,
                     owner=registration.owner,
                     status=status,
@@ -196,11 +197,12 @@ def setup_hub(
                     updated=stop or start,
                     stopped=stop,
                     result=result,
+                    children=[],
                     expected_children=registration.layer == "tier",
                 )
             )
 
-        return {"jobs": jobs, "status": JobState.STARTED}
+        return {"children": children, "status": JobState.STARTED}
 
     @hub.get("/api/job/<int:job_id>")
     @hub.get("/api/job/<int:job_id>/")
@@ -219,8 +221,7 @@ def setup_hub(
         # Get query parameters
         after_uid = int(request.args.get("after", 0))
         limit_num = int(request.args.get("limit", 10))
-        path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
-
+        path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())][1:]
         # If necessary, dig down through the hierarchy to find the job
         async with registration_client(registration) as cli:
             job = await cli.resolve(path)
@@ -235,13 +236,13 @@ def setup_hub(
     @hub.get("/api/job/<int:job_id>/resolve/")
     @hub.get("/api/job/<int:job_id>/resolve/<path:hierarchy>")
     @lookup_job
-    async def job_resolve(job: Registration, hierarchy: str = "") -> ApiTreeResponse:
-        path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())]
+    async def job_resolve(job: Registration, hierarchy: str = "") -> ApiJob:
+        path = [stripped for el in hierarchy.split("/") if (stripped := el.strip())][1:]
         nest_path = [
             stripped
-            for el in request.args.get("nest_path", "").split("/")
+            for el in request.args.get("nest_path", "root").split("/")
             if (stripped := el.strip())
-        ]
+        ][1:]
         depth = int(request.args.get("depth", 1))
 
         async with registration_client(job) as cli:

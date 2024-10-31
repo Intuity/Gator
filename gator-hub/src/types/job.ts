@@ -23,7 +23,9 @@ export enum JobResult {
 }
 
 type ApiBaseJob<State extends JobState> = {
+    root: number;
     uidx: number;
+    path: string[];
     ident: string;
     owner: string | null;
     status: State;
@@ -34,6 +36,7 @@ type ApiBaseJob<State extends JobState> = {
     updated: number | null;
     stopped: number | null;
     result: JobResult | null;
+    children: ApiJob[];
     expected_children: number;
 }
 
@@ -68,25 +71,9 @@ type ApiCompleteJob = ApiBaseJob<JobState.COMPLETE> & {
 
 export type ApiJob = ApiPendingJob | ApiLaunchedJob | ApiStartedJob | ApiCompleteJob;
 
-export type ApiJobsResponse = {
+export type ApiChildren = {
     status: JobState
-    jobs: ApiJob[]
-}
-
-export type ApiChildrenResponse = {
-    status: JobState
-    jobs: ApiJob[]
-}
-
-export type ApiLayerResponse = ApiJob & ApiChildrenResponse;
-
-export type ApiTreeResponse = ApiJob & {
-    jobs: ApiTreeResponse[]
-}
-
-export type Job = ApiJob & {
-    root: number
-    path: string[],
+    children: ApiJob[]
 }
 
 export type ApiMessage = {
@@ -101,3 +88,5 @@ export type ApiMessagesResponse = {
     messages: ApiMessage[];
     status: JobState;
 }
+
+export type Job = Omit<ApiJob, "children">;
