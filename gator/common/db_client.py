@@ -14,7 +14,7 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import DefaultDict, Dict, List, Optional, cast
+from typing import DefaultDict, Dict, List, Optional, Union, cast
 
 from .child import Child
 from .db import Database, Query
@@ -182,7 +182,7 @@ class _DBClient:
 
 
 class _WSClient:
-    def __init__(self, ws: WebsocketClient | WebsocketWrapper):
+    def __init__(self, ws: Union[WebsocketClient, WebsocketWrapper]):
         self.ws = ws
 
     async def resolve(
@@ -198,7 +198,7 @@ class _WSClient:
 
 
 @asynccontextmanager
-async def database_client(path: str | Path):
+async def database_client(path: Union[str, Path]):
     path = Path(path)
     if not path.exists():
         raise RuntimeError("No Exist")
@@ -234,7 +234,9 @@ async def websocket_client(websocket: WebsocketWrapper):
 @asynccontextmanager
 async def child_client(child: Child):
     match child.state:
-        case JobState.PENDING | JobState.LAUNCHED:
+        case JobState.PENDING:
+            client = None
+        case JobState.LAUNCHED:
             client = None
         case JobState.COMPLETE:
             client = database_client(path=child.tracking / "db.sqlite")

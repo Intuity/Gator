@@ -141,7 +141,9 @@ class Metrics:
         """
         return self.set(Metric.Scope.GROUP, name, value)
 
-    def get(self, scope: MetricScope, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
+    def get(
+        self, scope: MetricScope, name: str, default: _TDefault = NoReturn
+    ) -> Union[int, _TDefault]:
         """
         Get metric for given scope
         """
@@ -150,13 +152,13 @@ class Metrics:
             raise KeyError(f"No metric named `{name}` in scope `{scope}`")
         return value
 
-    def get_own(self, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
+    def get_own(self, name: str, default: _TDefault = NoReturn) -> Union[int, _TDefault]:
         """
         Get metric for own scope
         """
         return self.get(Metric.Scope.OWN, name, default=default)
 
-    def get_group(self, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
+    def get_group(self, name: str, default: _TDefault = NoReturn) -> Union[int, _TDefault]:
         """
         Get metric for group scope
         """
