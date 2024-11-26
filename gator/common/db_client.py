@@ -233,16 +233,14 @@ async def websocket_client(websocket: WebsocketWrapper):
 
 @asynccontextmanager
 async def child_client(child: Child):
-    match child.state:
-        case JobState.PENDING:
-            client = None
-        case JobState.LAUNCHED:
-            client = None
-        case JobState.COMPLETE:
-            client = database_client(path=child.tracking / "db.sqlite")
-        case JobState.STARTED:
-            assert child.ws is not None, "Child started but no websocket!"
-            client = websocket_client(child.ws)
+    if child.state in [JobState.PENDING, JobState.LAUNCHED]:
+        client = None
+    elif JobState.COMPLETE:
+        client = database_client(path=child.tracking / "db.sqlite")
+    elif JobState.STARTED:
+        assert child.ws is not None, "Child started but no websocket!"
+        client = websocket_client(child.ws)
+
     try:
         if client is None:
             yield None
