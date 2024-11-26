@@ -13,15 +13,25 @@
 # limitations under the License.
 
 import dataclasses
+import enum
 import logging
+import sys
 from datetime import datetime
-from enum import IntEnum, StrEnum
+
+if sys.version_info >= (3, 11):
+    StrEnum = enum.StrEnum
+else:
+
+    class StrEnum(str, enum.Enum):
+        ...
+
+
 from typing import Dict, List, Optional, Sequence, TypedDict, Union
 
 from .db import Base
 
 
-class LogSeverity(IntEnum):
+class LogSeverity(enum.IntEnum):
     """Log severity levels matched to Python's defaults"""
 
     CRITICAL = logging.CRITICAL
@@ -31,7 +41,7 @@ class LogSeverity(IntEnum):
     DEBUG = logging.DEBUG
 
 
-class JobState(IntEnum):
+class JobState(enum.IntEnum):
     """Status of a job"""
 
     PENDING = 0
@@ -40,7 +50,7 @@ class JobState(IntEnum):
     COMPLETE = 3
 
 
-class JobResult(IntEnum):
+class JobResult(enum.IntEnum):
     """Result of a job"""
 
     UNKNOWN = 0
