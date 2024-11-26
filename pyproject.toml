@@ -77,7 +77,7 @@ shell = "cd gator-hub && npm run build"
 shell = "cd gator-hub && npm run build_dev"
 
 [tool.poe.tasks.hub_run]
-shell = "GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub"
+shell = "GATOR_HUB_ROOT=$(readlink -f gator-hub/dist) python3 -m gator.hub"
 
 [tool.poe.tasks.lint]
 shell = "poetry run ruff check gator"
@@ -107,7 +107,7 @@ hub = ["npm_build", "hub_run"]
 help = "Run a hub instance in development mode"
 shell = """
 cd gator-hub
-npm run build_dev
+npm run build_watch &
 cd ..
-GATOR_HUB_ROOT=$(readlink -f gator-hub/src/dist) python3 -m gator.hub
+GATOR_HUB_ROOT=$(readlink -f gator-hub/dist) python3 -m gator.hub
 """

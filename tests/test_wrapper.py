@@ -1,4 +1,4 @@
-# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2024, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
+from gator.common.layer import WebsocketClient
 from gator.common.logger import Logger
 from gator.common.types import Attribute, LogSeverity, ProcStat
-from gator.common.ws_client import WebsocketClient
 from gator.specs import Cores, Job, License, Memory
 from gator.wrapper import Wrapper
 
@@ -89,8 +89,10 @@ class TestWrapper:
         assert not wrp.complete
         assert not wrp.terminated
         assert wrp.code == 0
-        assert wrp.db is None
-        assert wrp.server is None
+        with pytest.raises(AttributeError):
+            assert wrp.db is None
+        with pytest.raises(AttributeError):
+            assert wrp.server is None
         # Launch the job and wait for completion
         await wrp.launch()
         # Check state after job has run
@@ -107,16 +109,20 @@ class TestWrapper:
         values = {}
         for idx, (key, val) in enumerate(
             (
+                ("ident", "test"),
+                ("uidx", "0"),
+                ("root", "0"),
+                ("path", ""),
+                ("started", None),
                 ("cmd", "echo hi"),
                 ("cwd", tmp_path.as_posix()),
                 ("host", socket.gethostname()),
-                ("started", None),
                 ("req_cores", "2"),
                 ("req_memory", "1500.0"),
                 ("req_licenses", "A=1,B=3"),
                 ("pid", str(wrp.proc.pid)),
-                ("stopped", None),
                 ("exit", str(wrp.proc.returncode)),
+                ("stopped", None),
             )
         ):
             assert self.mk_db.push_attribute.mock_calls[idx].args[0].name == key
@@ -136,7 +142,7 @@ class TestWrapper:
         # Check metrics were pushed into the database
         # NOTE: Don't check the value because the object is reused
         metrics = [x.args[0] for x in self.mk_db.push_metric.mock_calls]
-        assert {x.name for x in metrics} == {f"msg_{x.name.lower()}" for x in LogSeverity}
+        assert {x.name for x in metrics} >= {f"msg_{x.name.lower()}" for x in LogSeverity}
         # Check for update calls
         final = {}
         for call in self.mk_db.update_metric.mock_calls:
@@ -144,7 +150,7 @@ class TestWrapper:
             assert mtc in metrics
             if mtc.value > final.get(mtc.name, 0):
                 final[mtc.name] = mtc.value
-        assert set(final.keys()) == {"msg_info", "msg_debug"}
+        assert set(final.keys()) >= {"msg_info", "msg_debug"}
         assert final["msg_info"] > 0
         assert final["msg_debug"] > 0
 
@@ -342,10 +348,12 @@ class TestWrapper:
         await sub_cli.metric(name="widgets", value=123)
         await sub_cli.metric(name="gizmos", value=345)
         await sub_cli.metric(name="gadgets", value=567)
+        # Heartbeat to sync
+        await wrp.heartbeat()
         # Check for those metrics
-        assert wrp.metrics["widgets"].value == 123
-        assert wrp.metrics["gizmos"].value == 345
-        assert wrp.metrics["gadgets"].value == 567
+        assert wrp.metrics.get_own("widgets") == 123
+        assert wrp.metrics.get_own("gizmos") == 345
+        assert wrp.metrics.get_own("gadgets") == 567
         # Check they've been written to the database
         assert any(
             (x.args[0].name == "widgets" and x.args[0].value == 123)
@@ -363,10 +371,12 @@ class TestWrapper:
         await sub_cli.metric(name="widgets", value=678)
         await sub_cli.metric(name="gizmos", value=789)
         await sub_cli.metric(name="gadgets", value=890)
+        # Heartbeat to sync
+        await wrp.heartbeat()
         # Check for those metrics
-        assert wrp.metrics["widgets"].value == 678
-        assert wrp.metrics["gizmos"].value == 789
-        assert wrp.metrics["gadgets"].value == 890
+        assert wrp.metrics.get_own("widgets") == 678
+        assert wrp.metrics.get_own("gizmos") == 789
+        assert wrp.metrics.get_own("gadgets") == 890
         # Check they've been written to the database
         assert any(
             (x.args[0].name == "widgets" and x.args[0].value == 678)

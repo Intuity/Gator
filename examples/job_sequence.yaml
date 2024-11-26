@@ -1,0 +1,22 @@
+!JobGroup
+ident: test_sequence
+jobs:
+  - !Job
+      ident  : job_a
+      command: exit
+      args   :
+        - 1
+  - !Job
+      ident  : job_b
+      command: echo
+      args   :
+        - "This is B"
+      on_pass:
+        - job_a
+  - !Job
+      ident  : job_c
+      command: echo
+      args   :
+        - "This is C"
+      on_pass:
+        - job_b

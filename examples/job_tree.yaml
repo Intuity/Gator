@@ -1,5 +1,5 @@
 !JobGroup
-  ident: top
+  ident: tree
   env :
     TEST_A: hello
     TEST_B: goodbye

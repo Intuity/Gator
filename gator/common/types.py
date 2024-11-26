@@ -1,4 +1,4 @@
-# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2024, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,8 @@
 import dataclasses
 import logging
 from datetime import datetime
-from enum import IntEnum
+from enum import IntEnum, StrEnum
+from typing import Dict, List, Optional, Sequence, TypedDict, Union
 
 from .db import Base
 
@@ -30,12 +31,22 @@ class LogSeverity(IntEnum):
     DEBUG = logging.DEBUG
 
 
-class Result(IntEnum):
+class JobState(IntEnum):
     """Status of a job"""
+
+    PENDING = 0
+    LAUNCHED = 1
+    STARTED = 2
+    COMPLETE = 3
+
+
+class JobResult(IntEnum):
+    """Result of a job"""
 
     UNKNOWN = 0
     SUCCESS = 1
     FAILURE = 2
+    ABORTED = 3
 
 
 @dataclasses.dataclass
@@ -66,9 +77,89 @@ class ProcStat(Base):
     timestamp: datetime = dataclasses.field(default_factory=datetime.now)
 
 
+class _MetricScopeEnum(StrEnum):
+    OWN = "_OWN_"
+    GROUP = "_GROUP_"
+
+
+MetricScope = Union[_MetricScopeEnum, str]
+
+
 @dataclasses.dataclass
 class Metric(Base):
     """General purpose numeric (integer) metric"""
 
+    Scope = _MetricScopeEnum
+
+    scope: MetricScope = Scope.OWN
     name: str = ""
     value: int = 0
+
+
+@dataclasses.dataclass
+class ChildEntry(Base):
+    """General purpose attribute"""
+
+    ident: str = ""
+    server_url: str = ""
+    db_file: str = ""
+    started: Optional[float] = None
+    updated: Optional[float] = None
+    stopped: Optional[float] = None
+    result: JobResult = JobResult.UNKNOWN
+    expected_children: int = 0
+
+
+Metrics = Dict[str, int]
+
+
+class ApiResolvable(TypedDict):
+    "Minimal data required to resolve a job either via websocket or database"
+
+    status: JobState
+    server_url: str
+    db_file: str
+
+
+class ApiMessage(TypedDict):
+    "Message API"
+
+    uid: int
+    severity: int
+    message: str
+    timestamp: int
+
+
+class ApiMessagesResponse(TypedDict):
+    "Root jobs API response"
+
+    messages: List[ApiMessage]
+    total: int
+    status: JobState
+
+
+class ApiJob(TypedDict):
+    "Resolved job API response"
+
+    uidx: int
+    root: int
+    path: List[str]
+    ident: str
+    status: JobState
+    metrics: Metrics
+    server_url: str
+    db_file: str
+    owner: Optional[str]
+    started: Optional[float]
+    updated: Optional[float]
+    stopped: Optional[float]
+    result: JobResult
+    children: List["ApiJob"]
+    expected_children: int
+
+
+class ApiChildren(TypedDict):
+    "Resolved children API response"
+
+    status: JobState
+    children: Sequence[ApiJob]
