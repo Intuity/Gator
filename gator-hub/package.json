@@ -1,5 +1,5 @@
 {
-  "name": "bucketbase",
+  "name": "gator-hub",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,7 +8,6 @@
     "build": "tsc && vite build",
     "build_dev": "NODE_ENV=development tsc && vite build --minify false --sourcemap inline --mode dev",
     "build_watch": "NODE_ENV=development vite build --minify false --sourcemap inline --mode dev --watch",
-    "bundle": "BUCKET_CVG_JSON=$BUCKET_CVG_JSON vite build --config vite-bundle.config.ts",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
