@@ -1,4 +1,4 @@
-# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2024, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,16 +20,15 @@ import subprocess
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 
 import expandvars
 import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
-from .common.layer import BaseLayer
+from .common.layer import BaseLayer, MetricResponse
 from .common.summary import Summary
-from .common.types import Attribute, LogSeverity, Metric, ProcStat
+from .common.types import Attribute, JobResult, LogSeverity, ProcStat
 
 
 class Wrapper(BaseLayer):
@@ -57,8 +56,14 @@ class Wrapper(BaseLayer):
         # Register additional data types
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
+        # Record stop time
+        self.started = self.updated = datetime.now().timestamp()
+        await self.db.push_attribute(Attribute(name="started", value=str(self.started)))
         # Launch
         await self.__launch()
+        # Record stop time
+        self.stopped = self.updated = datetime.now().timestamp()
+        await self.db.push_attribute(Attribute(name="stopped", value=str(self.stopped)))
         # Report
         await self.__report()
         # Teardown
@@ -78,20 +83,13 @@ class Wrapper(BaseLayer):
 
     async def summarise(self) -> Summary:
         summary = await super().summarise()
-        msg_ok = await self.logger.check_limits(self.limits)
-        passed = all((self.complete, (self.code == 0), msg_ok))
-        summary["sub_total"] = 1
-        summary["sub_active"] = [1, 0][self.complete]
-        summary["sub_passed"] = [0, 1][passed]
-        if self.complete and not passed:
-            summary["sub_failed"] = 1
+        if self.result is JobResult.FAILURE:
             summary["failed_ids"] = [[self.spec.ident]]
         else:
-            summary["sub_failed"] = 0
             summary["failed_ids"] = []
         return summary
 
-    async def __handle_metric(self, name: str, value: int, **_) -> Dict[str, str]:
+    async def __handle_metric(self, name: str, value: int, **_) -> MetricResponse:
         """
         Handle an arbitrary metric being reported from a child, the only names
         that cannot be used are those reserved for message statistics (e.g.
@@ -99,20 +97,7 @@ class Wrapper(BaseLayer):
 
         Example: { "name": "lint_warnings", "value": 12 }
         """
-        # Check name doesn't clash
-        if name in (f"msg_{x.name.lower()}" for x in LogSeverity):
-            return {
-                "result": "error",
-                "reason": f"Reserved metric name '{name}'",
-            }
-        # Check if a metric already exists
-        if (metric := self.metrics.get(name, None)) is not None:
-            metric.value = value
-            await self.db.update_metric(metric)
-        # Otherwise create it
-        else:
-            self.metrics[name] = (metric := Metric(name=name, value=value))
-            await self.db.push_metric(metric)
+        self.metrics.set_own(name, value)
         # Return success
         return {"result": "success"}
 
@@ -211,11 +196,9 @@ class Wrapper(BaseLayer):
             except asyncio.exceptions.TimeoutError:
                 pass
 
-    async def __launch(self) -> int:
+    async def __launch(self) -> None:
         """
         Launch the process and pipe STDIN, STDOUT, and STDERR with line buffering
-
-        :returns:   The process ID of the launched task
         """
         # Overlay any custom variables on the environment
         env = {str(k): str(v) for k, v in (self.spec.env or os.environ).items()}
@@ -250,9 +233,6 @@ class Wrapper(BaseLayer):
         await self.db.push_attribute(Attribute(name="cmd", value=full_cmd))
         await self.db.push_attribute(Attribute(name="cwd", value=working_dir.as_posix()))
         await self.db.push_attribute(Attribute(name="host", value=socket.gethostname()))
-        await self.db.push_attribute(
-            Attribute(name="started", value=str(datetime.now().timestamp()))
-        )
         await self.db.push_attribute(Attribute(name="req_cores", value=str(cpu_cores)))
         await self.db.push_attribute(Attribute(name="req_memory", value=str(memory_mb)))
         await self.db.push_attribute(
@@ -276,12 +256,8 @@ class Wrapper(BaseLayer):
             )
         except Exception as e:
             await self.logger.critical(f"Caught exception launching {self.ident}: {e}")
-            self.metrics["msg_critical"].value += 1
             self.complete = True
             await self.db.push_attribute(Attribute(name="pid", value="0"))
-            await self.db.push_attribute(
-                Attribute(name="stopped", value=str(datetime.now().timestamp()))
-            )
             await self.db.push_attribute(Attribute(name="exit", value=255))
             return
         # Monitor process usage
@@ -303,9 +279,6 @@ class Wrapper(BaseLayer):
         await self.logger.info(f"Task completed with return code {self.code}")
         # Insert final attributes
         await self.db.push_attribute(Attribute(name="pid", value=str(self.proc.pid)))
-        await self.db.push_attribute(
-            Attribute(name="stopped", value=str(datetime.now().timestamp()))
-        )
         await self.db.push_attribute(Attribute(name="exit", value=str(self.code)))
         # Mark complete
         self.complete = True
@@ -314,10 +287,8 @@ class Wrapper(BaseLayer):
         # Pull data back from resource tracking
         data = await self.db.get_procstat(sql_order_by=("timestamp", True))
         pid = await self.db.get_attribute(name="pid")
-        ts_started = await self.db.get_attribute(name="started")
-        ts_stopped = await self.db.get_attribute(name="stopped")
-        started_at = datetime.fromtimestamp(float(ts_started[0].value))
-        stopped_at = datetime.fromtimestamp(float(ts_stopped[0].value))
+        started_at = datetime.fromtimestamp(self.started)
+        stopped_at = datetime.fromtimestamp(self.stopped)
         # If plotting enabled, draw the plot
         if self.plotting:
             dates = []

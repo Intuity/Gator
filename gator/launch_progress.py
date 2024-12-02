@@ -1,4 +1,4 @@
-# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2024, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from .common.progress import PassFailBar
+from .common.summary import Summary
 from .launch import launch as launch_base
 
 
@@ -39,10 +40,15 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> dict:
     def _update(_, tree=None, **kwds):
         # Update the progress bars
         bar.update(
-            kwds.get("sub_total", 0),
-            kwds.get("sub_active", 0),
-            kwds.get("sub_passed", 0),
-            kwds.get("sub_failed", 0),
+            Summary(
+                metrics={
+                    "sub_total": kwds.get("sub_total", 1),  # (1 to avoid early div/0)
+                    "sub_active": kwds.get("sub_active", 0),
+                    "sub_passed": kwds.get("sub_passed", 0),
+                    "sub_failed": kwds.get("sub_failed", 0),
+                },
+                failed_ids=[],
+            )
         )
         # Display the tree
         if tree:

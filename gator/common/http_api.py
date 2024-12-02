@@ -1,4 +1,4 @@
-# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2024, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ class HTTPAPI:
         else:
             return {}
 
-    async def post(self, route: str, **kwargs: Dict[str, Union[str, int]]) -> Dict[str, str]:
+    async def post(self, route: str, **kwargs: Union[str, int]) -> Dict[str, str]:
         """
         Perform a POST request on a route supported by the parent server,
         attaching a JSON encoded dictionary of the keyword arguments to the query.
@@ -104,5 +104,6 @@ class HTTPAPI:
                     f"Failed to POST to {full_url} after {self.retries} retries",
                     file=sys.stderr,
                 )
+                return {}
         else:
             return {}

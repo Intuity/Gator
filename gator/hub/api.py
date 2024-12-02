@@ -1,4 +1,4 @@
-# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2024, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 from typing import Dict
 
 from ..common.http_api import HTTPAPI
+from ..common.types import JobResult
 
 
 class _HubAPI(HTTPAPI):
@@ -28,8 +29,8 @@ class _HubAPI(HTTPAPI):
         response = await self.post(self.REGISTER, ident=ident, url=url, layer=layer, owner=owner)
         return response.get("uid", None)
 
-    async def complete(self, uid: str, db_file: str) -> None:
-        await self.post(self.COMPLETE.format(job_id=uid), db_file=db_file)
+    async def complete(self, uid: str, db_file: str, result: JobResult) -> None:
+        await self.post(self.COMPLETE.format(job_id=uid), db_file=db_file, result=int(result))
 
     async def heartbeat(self, uid: str, data: Dict[str, int]) -> None:
         await self.post(self.HEARTBEAT.format(job_id=uid), **data)

@@ -1,4 +1,4 @@
-# Copyright 2023, Peter Birch, mailto:peter@lightlogic.co.uk
+# Copyright 2024, Peter Birch, mailto:peter@lightlogic.co.uk
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,13 +23,13 @@ from .ws_wrapper import WebsocketWrapper
 
 
 class WebsocketClient(WebsocketWrapper):
-    def __init__(self, address: Optional[str] = None) -> None:
+    def __init__(self, address: Optional[str] = None):
         super().__init__()
         if address is None and "GATOR_PARENT" in os.environ:
             address = os.environ["GATOR_PARENT"]
         self.address = address
 
-    async def start(self) -> None:
+    async def start(self):
         # If no address provided or websocket already started, just return
         if (self.address is None) or self.linked:
             if not self.ws_event.is_set():
@@ -55,7 +55,7 @@ class WebsocketClient(WebsocketWrapper):
             await self.stop_monitor()
             self.ws = None
 
-    async def __aenter__(self) -> None:
+    async def __aenter__(self):
         await self.start()
         return self
 
