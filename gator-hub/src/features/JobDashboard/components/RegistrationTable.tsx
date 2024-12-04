@@ -10,6 +10,7 @@ import { TreeKey } from "./Dashboard/lib/tree";
 import { ApiJob } from "@/types/job";
 import { Reader } from "../lib/readers";
 
+/*
 enum Severity {
     CRITICAL = 50,
     FATAL = CRITICAL,
@@ -20,6 +21,7 @@ enum Severity {
     DEBUG = 10,
     NOTSET = 0
 }
+*/
 
 enum Status {
     ERROR,
