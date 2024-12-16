@@ -17,10 +17,11 @@ import math
 import signal
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, Optional, Type, Union
+from typing import Dict, Optional, Type, Union
 
 from rich.console import Console
 
+from .common.layer import HeartbeatCb
 from .common.logger import Logger, MessageLimits
 from .common.summary import Summary
 from .common.types import LogSeverity
@@ -42,7 +43,7 @@ async def launch(
     quiet: bool = False,
     all_msg: bool = False,
     verbose: bool = False,
-    heartbeat_cb: Optional[Callable] = None,
+    heartbeat_cb: Optional[HeartbeatCb] = None,
     console: Optional[Console] = None,
     scheduler: Type = LocalScheduler,
     sched_opts: Optional[Dict[str, str]] = None,

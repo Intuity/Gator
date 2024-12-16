@@ -116,7 +116,7 @@ def main(
         sched_opts[key.strip()] = val.strip()
     # Launch with optional progress tracking
     try:
-        asyncio.run(
+        summary = asyncio.run(
             (launch_progress if progress else launch).launch(
                 ident=ident,
                 hub=hub,
@@ -147,13 +147,23 @@ def main(
             e.obj.jobs = ["..."]
         con.log(Spec.dump([e.obj]))
         sys.exit(1)
-    except Exception:
+    except BaseException:
         console_file = (Path(tracking) / "error.log").open("a") if parent else None
         con = Console(file=console_file)
         con.log(traceback.format_exc())
         if verbose:
             con.print_exception(show_locals=True)
         sys.exit(1)
+
+    metrics = summary["metrics"]
+    if (
+        (len(summary["failed_ids"]) == 0)
+        and (metrics["sub_passed"] == metrics["sub_total"])
+        and (metrics["msg_error"] == 0)
+        and (metrics["msg_critical"] == 0)
+    ):
+        sys.exit(0)
+    sys.exit(1)
 
 
 if __name__ == "__main__":

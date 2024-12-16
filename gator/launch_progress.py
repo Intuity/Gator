@@ -19,12 +19,13 @@ from rich.live import Live
 from rich.table import Table
 from rich.tree import Tree
 
+from .common.layer import BaseLayer
 from .common.progress import PassFailBar
 from .common.summary import Summary
 from .launch import launch as launch_base
 
 
-async def launch(glyph: str = "🐊 Gator", **kwargs) -> dict:
+async def launch(glyph: str = "🐊 Gator", **kwargs) -> Summary:
     # Create console
     console = Console(log_path=False)
     # Create table
@@ -37,19 +38,9 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> dict:
     live.start(refresh=True)
 
     # Create an update function
-    def _update(_, tree=None, **kwds):
+    def _update(_layer: BaseLayer, summary: Summary, /, tree: Tree | None = None):
         # Update the progress bars
-        bar.update(
-            Summary(
-                metrics={
-                    "sub_total": kwds.get("sub_total", 1),  # (1 to avoid early div/0)
-                    "sub_active": kwds.get("sub_active", 0),
-                    "sub_passed": kwds.get("sub_passed", 0),
-                    "sub_failed": kwds.get("sub_failed", 0),
-                },
-                failed_ids=[],
-            )
-        )
+        bar.update(summary)
         # Display the tree
         if tree:
 

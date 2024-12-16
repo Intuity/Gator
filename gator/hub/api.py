@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict
-
 from ..common.http_api import HTTPAPI
+from ..common.summary import Summary
 from ..common.types import JobResult
 
 
@@ -32,7 +31,7 @@ class _HubAPI(HTTPAPI):
     async def complete(self, uid: str, db_file: str, result: JobResult) -> None:
         await self.post(self.COMPLETE.format(job_id=uid), db_file=db_file, result=int(result))
 
-    async def heartbeat(self, uid: str, data: Dict[str, int]) -> None:
+    async def heartbeat(self, uid: str, data: Summary) -> None:
         await self.post(self.HEARTBEAT.format(job_id=uid), **data)
 
 
