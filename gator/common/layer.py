@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
+    Awaitable,
     Callable,
     DefaultDict,
     Dict,
@@ -62,6 +63,8 @@ class SpecResponse(TypedDict):
 
 
 GetTreeResponse = Dict[str, Union[str, "GetTreeResponse"]]
+
+HeartbeatCb = Optional[Callable[["BaseLayer", Summary], Union[None, Awaitable[None]]]]
 
 
 class MetricResponseSuccess(TypedDict):
@@ -208,7 +211,7 @@ class BaseLayer:
         interval: int = 5,
         quiet: bool = False,
         all_msg: bool = False,
-        heartbeat_cb: Optional[Callable] = None,
+        heartbeat_cb: Optional[HeartbeatCb] = None,
         limits: MessageLimits = None,
     ) -> None:
         # Capture initialisation variables
@@ -386,15 +389,15 @@ class BaseLayer:
             #       pass after completion
             while True:
                 # Run the heartbeat process
-                result = await self.heartbeat()
+                summary = await self.heartbeat()
                 # If a heartbeat callback is registered, deliver the result
                 if self.heartbeat_cb:
-                    call = self.heartbeat_cb(self, **result)
+                    call = self.heartbeat_cb(self, summary)
                     if cb_async:
                         await call
                 # If linked, update hub with heartbeat data
                 if self.__hub_uid is not None:
-                    await HubAPI.heartbeat(self.__hub_uid, result)
+                    await HubAPI.heartbeat(self.__hub_uid, summary)
                 # If done event set, break out
                 if done_evt.is_set():
                     break

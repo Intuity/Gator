@@ -29,7 +29,6 @@
         - inner
       env    :
         TEST_C: direct
-      command: exit
       command: bash
       args   :
         - "-c"
