@@ -64,7 +64,7 @@ class SpecResponse(TypedDict):
 
 GetTreeResponse = Dict[str, Union[str, "GetTreeResponse"]]
 
-HeartbeatCb = Optional[Callable[["BaseLayer", Summary], None | Awaitable[None]]]
+HeartbeatCb = Optional[Callable[["BaseLayer", Summary], Union[None, Awaitable[None]]]]
 
 
 class MetricResponseSuccess(TypedDict):
