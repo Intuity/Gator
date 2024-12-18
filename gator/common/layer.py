@@ -35,7 +35,7 @@ from ..hub.api import HubAPI
 from ..specs import Job, JobArray, JobGroup, Spec
 from .db import Database, Query
 from .logger import Logger, MessageLimits
-from .summary import Summary, make_summary
+from .summary import Summary
 from .types import (
     ApiJob,
     ApiMessage,
@@ -50,7 +50,7 @@ from .types import (
     MetricScope,
     ProcStat,
 )
-from .utility import get_username
+from .utility import as_couroutine, get_username
 from .ws_client import WebsocketClient
 from .ws_server import WebsocketServer
 from .ws_wrapper import WebsocketWrapper
@@ -224,7 +224,7 @@ class BaseLayer:
         self.interval = interval
         self.quiet = quiet
         self.all_msg = all_msg
-        self.heartbeat_cb = heartbeat_cb
+        self.heartbeat_cb = None if heartbeat_cb is None else as_couroutine(heartbeat_cb)
         self.limits = limits or MessageLimits()
         # Check spec object
         self.spec.check()
@@ -357,9 +357,12 @@ class BaseLayer:
         # Record result in own db
         await self.db.push_attribute(Attribute(name="result", value=str(self.result)))
         # Tell the parent the job is complete
-        summary = await self.summarise()
+        summary = await self.heartbeat()
+        if self.heartbeat_cb:
+            # Callback with final status
+            await self.heartbeat_cb(self, summary)
         await self.client.complete(
-            ident=self.ident, code=self.code, result=self.result, summary=summary
+            ident=self.ident, code=self.code, result=self.result, summary=summary.as_dict()
         )
         # Log the warning/error count
         msg_keys = [f"msg_{x.name.lower()}" for x in LogSeverity]
@@ -383,7 +386,6 @@ class BaseLayer:
         self.terminated = True
 
     async def __heartbeat_loop(self, done_evt: asyncio.Event) -> None:
-        cb_async = self.heartbeat_cb and asyncio.iscoroutinefunction(self.heartbeat_cb)
         try:
             # NOTE: We don't loop on done_evt so that there is always a final
             #       pass after completion
@@ -392,9 +394,7 @@ class BaseLayer:
                 summary = await self.heartbeat()
                 # If a heartbeat callback is registered, deliver the result
                 if self.heartbeat_cb:
-                    call = self.heartbeat_cb(self, summary)
-                    if cb_async:
-                        await call
+                    await self.heartbeat_cb(self, summary)
                 # If linked, update hub with heartbeat data
                 if self.__hub_uid is not None:
                     await HubAPI.heartbeat(self.__hub_uid, summary)
@@ -420,12 +420,12 @@ class BaseLayer:
         # Summarise state
         summary = await self.summarise()
         # Update group metrics
-        for name, value in summary["metrics"].items():
+        for name, value in summary.metrics.items():
             self.metrics.set_group(name, value)
         # Sync metrics to database
         await self.metrics.sync(self.db)
         # Report to parent
-        await self.client.update(ident=self.ident, summary=summary, result=self.result)
+        await self.client.update(ident=self.ident, summary=summary.as_dict(), result=self.result)
         # Return the summary
         return summary
 
@@ -480,6 +480,6 @@ class BaseLayer:
         return (self.client is None) or (not self.client.linked)
 
     async def summarise(self) -> Summary:
-        return make_summary(
+        return Summary(
             metrics=self.metrics.dump_own(),
         )

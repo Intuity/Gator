@@ -15,7 +15,7 @@
 import asyncio
 import os
 import sys
-from typing import Dict, Union
+from typing import Any, Dict
 
 import aiohttp
 
@@ -74,7 +74,7 @@ class HTTPAPI:
         else:
             return {}
 
-    async def post(self, route: str, **kwargs: Union[str, int]) -> Dict[str, str]:
+    async def post(self, route: str, **kwargs: Any) -> Dict[str, str]:
         """
         Perform a POST request on a route supported by the parent server,
         attaching a JSON encoded dictionary of the keyword arguments to the query.

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+from typing import Union
 
 from rich.console import Console
 from rich.live import Live
@@ -38,7 +39,7 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> Summary:
     live.start(refresh=True)
 
     # Create an update function
-    def _update(_layer: BaseLayer, summary: Summary, /, tree: Tree | None = None):
+    def _update(_layer: BaseLayer, summary: Summary, /, tree: Union[Tree, None] = None):
         # Update the progress bars
         bar.update(summary)
         # Display the tree

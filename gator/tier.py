@@ -26,7 +26,7 @@ from .common.layer import (
     SpecResponse,
 )
 from .common.logger import Logger
-from .common.summary import Summary, contextualise_summary, merge_summaries
+from .common.summary import Summary, SummaryDict
 from .common.types import (
     ApiChildren,
     ApiJob,
@@ -107,7 +107,7 @@ class Tier(BaseLayer):
 
         # Report
         summary = await self.summarise()
-        metrics = summary["metrics"]
+        metrics = summary.metrics
         await self.logger.info(
             f"Complete - "
             f"W: {metrics.get('msg_warning', 0)}, "
@@ -261,7 +261,7 @@ class Tier(BaseLayer):
         self,
         ident: str,
         result: JobResult,
-        summary: Summary,
+        summary: SummaryDict,
         **_,
     ):
         """
@@ -303,7 +303,7 @@ class Tier(BaseLayer):
                 child.entry.result = JobResult(result)
                 if child.entry.result == JobResult.FAILURE:
                     self.result = JobResult.FAILURE
-                child.summary = contextualise_summary(self.spec.ident, summary)
+                child.summary = Summary(**summary).contextualised(self.spec.ident)
                 await self.db.update_childentry(child.entry)
             elif ident in self.jobs_completed:
                 await self.logger.error(
@@ -319,7 +319,7 @@ class Tier(BaseLayer):
         ident: str,
         result: JobResult,
         code: int,
-        summary: Summary,
+        summary: SummaryDict,
         **_,
     ):
         """
@@ -356,7 +356,7 @@ class Tier(BaseLayer):
                 child = self.jobs_launched[ident]
                 # Apply updates
                 child.state = JobState.COMPLETE
-                child.summary = contextualise_summary(self.spec.ident, summary)
+                child.summary = Summary(**summary).contextualised(self.spec.ident)
                 child.entry.db_file = (child.tracking / "db.sqlite").as_posix()
                 child.entry.stopped = child.entry.updated = datetime.now().timestamp()
                 child.entry.result = JobResult(result)
@@ -364,7 +364,7 @@ class Tier(BaseLayer):
                     self.result = JobResult.FAILURE
                 await self.db.update_childentry(child.entry)
 
-                if child.summary["metrics"].get("sub_active", 0):
+                if child.summary.metrics.get("sub_active", 0):
                     await self.logger.error(
                         f"Child {ident} of {self.ident} reported active jobs on completion"
                     )
@@ -442,13 +442,13 @@ class Tier(BaseLayer):
         data = await super().summarise()
         async with self.lock:
             for child in list(self.jobs_launched.values()) + list(self.jobs_completed.values()):
-                for name, value in child.summary["metrics"].items():
+                for name, value in child.summary.metrics.items():
                     self.metrics.set(child.ident, name, value)
-                data = merge_summaries(data, child.summary)
+                data = data.merged(child.summary)
 
         # While jobs are still starting up, estimate the total number expected
-        data["metrics"]["sub_total"] = max(
-            data["metrics"].get("sub_total", 1),
+        data.metrics["sub_total"] = max(
+            data.metrics.get("sub_total", 1),
             self.spec.expected_jobs + 1,  # (+1 for self)
         )
         return data

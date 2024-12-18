@@ -131,7 +131,7 @@ async def launch(
     # Calculate final summary
     summary = await top.summarise()
     # Log out failures
-    if failed_ids := summary["failed_ids"]:
+    if failed_ids := summary.failed_ids:
         msg = f"In this hierarchy {len(failed_ids)} jobs failed: "
         for idx, f_id in enumerate(failed_ids):
             entry = f"[{idx:0{math.ceil(math.log(len(failed_ids)))}d}] {'.'.join(f_id)}"

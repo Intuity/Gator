@@ -84,9 +84,9 @@ class Wrapper(BaseLayer):
     async def summarise(self) -> Summary:
         summary = await super().summarise()
         if self.result is JobResult.FAILURE:
-            summary["failed_ids"] = [[self.spec.ident]]
+            summary.failed_ids = [[self.spec.ident]]
         else:
-            summary["failed_ids"] = []
+            summary.failed_ids = []
         return summary
 
     async def __handle_metric(self, name: str, value: int, **_) -> MetricResponse:
