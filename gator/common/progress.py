@@ -85,10 +85,10 @@ class PassFailBar(JupyterMixin):
             Defaults to None.
         """
         # Min total of one to avoid div by zero
-        self.total = summary["metrics"].get("sub_total", 1)
-        self.active = summary["metrics"].get("sub_active", 0)
-        self.passed = summary["metrics"].get("sub_passed", 0)
-        self.failed = summary["metrics"].get("sub_failed", 0)
+        self.total = summary.metrics.get("sub_total", 1)
+        self.active = summary.metrics.get("sub_active", 0)
+        self.passed = summary.metrics.get("sub_passed", 0)
+        self.failed = summary.metrics.get("sub_failed", 0)
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         # Ensure space for the title text

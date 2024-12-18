@@ -155,13 +155,7 @@ def main(
             con.print_exception(show_locals=True)
         sys.exit(1)
 
-    metrics = summary["metrics"]
-    if (
-        (len(summary["failed_ids"]) == 0)
-        and (metrics["sub_passed"] == metrics["sub_total"])
-        and (metrics["msg_error"] == 0)
-        and (metrics["msg_critical"] == 0)
-    ):
+    if summary.passed:
         sys.exit(0)
     sys.exit(1)
 

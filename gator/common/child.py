@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from ..specs import Job, JobArray, JobGroup
-from .summary import Summary, make_summary
+from .summary import Summary
 from .types import ChildEntry, JobState
 from .ws_wrapper import WebsocketWrapper
 
@@ -33,7 +33,7 @@ class Child:
     exitcode: int = 0
 
     # Tracking of the state of the child tree and metrics
-    summary: Summary = field(default_factory=make_summary)
+    summary: Summary = field(default_factory=Summary)
 
     # Complete Event
     e_complete: asyncio.Event = field(default_factory=asyncio.Event)

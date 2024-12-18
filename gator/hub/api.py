@@ -32,7 +32,7 @@ class _HubAPI(HTTPAPI):
         await self.post(self.COMPLETE.format(job_id=uid), db_file=db_file, result=int(result))
 
     async def heartbeat(self, uid: str, data: Summary) -> None:
-        await self.post(self.HEARTBEAT.format(job_id=uid), **data)
+        await self.post(self.HEARTBEAT.format(job_id=uid), **data.as_dict())
 
 
 HubAPI = _HubAPI()

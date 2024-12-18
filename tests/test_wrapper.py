@@ -392,9 +392,9 @@ class TestWrapper:
         )
         # Check that the metrics are included in the summary
         summary = await wrp.summarise()
-        assert summary["metrics"]["widgets"] == 678
-        assert summary["metrics"]["gizmos"] == 789
-        assert summary["metrics"]["gadgets"] == 890
+        assert summary.metrics["widgets"] == 678
+        assert summary.metrics["gizmos"] == 789
+        assert summary.metrics["gadgets"] == 890
         # Stop the client
         await sub_cli.stop()
         # Stop the job
