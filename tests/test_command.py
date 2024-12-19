@@ -139,3 +139,85 @@ def test_bad_group_exit(tmp_path):
 
     proc = subprocess.run(f"python3 -m gator {spec_file}", shell=True)
     assert proc.returncode != 0
+
+
+def test_bad_limit_good_job_exit(tmp_path):
+    spec_file = tmp_path / "job_good_exit_bad_limit.yaml"
+    spec_file.write_text(
+        dedent(
+            """
+    !Job
+    ident: test_job
+    command: bash
+    args: [-c, echo stderr >&2; exit 0]
+    """
+        )
+    )
+
+    proc = subprocess.run(f"python3 -m gator {spec_file} --limit-error=0", shell=True)
+    assert proc.returncode != 0
+
+
+def test_good_limit_good_job_exit(tmp_path):
+    spec_file = tmp_path / "job_good_exit_good_limit.yaml"
+    spec_file.write_text(
+        dedent(
+            """
+    !Job
+    ident: test_job
+    command: bash
+    args: [-c, echo stderr >&2; exit 0]
+    """
+        )
+    )
+
+    proc = subprocess.run(f"python3 -m gator {spec_file} --limit-error=1", shell=True)
+    assert proc.returncode == 0
+
+
+def test_bad_limit_good_nested_exit(tmp_path):
+    spec_file = tmp_path / "nested_good_exit_bad_limit.yaml"
+    spec_file.write_text(
+        dedent(
+            """
+    !JobGroup
+    ident: test_group
+    jobs:
+    - !Job
+        ident  : job_a
+        command: bash
+        args: ["-c", "echo stderr >&2; exit 0"]
+    - !Job
+        ident  : job_b
+        command: bash
+        args: ["-c", "exit 0"]
+    """
+        )
+    )
+
+    proc = subprocess.run(f"python3 -m gator {spec_file} --limit-error=0", shell=True)
+    assert proc.returncode != 0
+
+
+def test_good_limit_good_nested_exit(tmp_path):
+    spec_file = tmp_path / "nested_good_exit_good_limit.yaml"
+    spec_file.write_text(
+        dedent(
+            """
+    !JobGroup
+    ident: test_group
+    jobs:
+    - !Job
+        ident  : job_a
+        command: bash
+        args: ["-c", "echo stderr >&2; exit 0"]
+    - !Job
+        ident  : job_b
+        command: bash
+        args: ["-c", "exit 0"]
+    """
+        )
+    )
+
+    proc = subprocess.run(f"python3 -m gator {spec_file} --limit-error=1", shell=True)
+    assert proc.returncode == 0
