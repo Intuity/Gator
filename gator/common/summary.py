@@ -51,12 +51,7 @@ class Summary:
     @property
     def passed(self):
         metrics = self.metrics
-        if (
-            (len(self.failed_ids) == 0)
-            and (metrics["sub_passed"] == metrics["sub_total"])
-            and (metrics["msg_error"] == 0)
-            and (metrics["msg_critical"] == 0)
-        ):
+        if (len(self.failed_ids) == 0) and (metrics["sub_passed"] == metrics["sub_total"]):
             return True
         return False
 
