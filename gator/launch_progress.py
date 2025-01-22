@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import os
 from typing import Union
 
 from rich.console import Console
@@ -28,7 +29,8 @@ from .launch import launch as launch_base
 
 async def launch(glyph: str = "🐊 Gator", **kwargs) -> Summary:
     # Create console
-    console = Console(log_path=False)
+    # Unset COLUMNS and LINES as they prevent automatic resizing
+    console = Console(log_path=False, _environ={**os.environ, "COLUMNS": "", "LINES": ""})
     # Create table
     table = Table(expand=True, show_edge=False, show_header=False)
     # Create a progress bar
