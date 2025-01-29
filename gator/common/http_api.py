@@ -56,7 +56,7 @@ class HTTPAPI:
             full_url = f"http://{self.url}{self.ROUTE_PREFIX}/{route}"
             for _ in range(self.retries):
                 try:
-                    async with self.session.get(full_url) as resp:
+                    async with self.session.get(full_url, raise_for_status=True) as resp:
                         data = await resp.json()
                         if data.get("result", None) != "success":
                             print(
@@ -64,7 +64,7 @@ class HTTPAPI:
                                 file=sys.stderr,
                             )
                         return data
-                except aiohttp.ClientConnectionError:
+                except (aiohttp.ClientConnectionError, aiohttp.ClientResponseError):
                     await asyncio.sleep(self.delay)
             else:
                 print(
@@ -89,7 +89,9 @@ class HTTPAPI:
             full_url = f"http://{self.url}{self.ROUTE_PREFIX}/{route}"
             for _ in range(10):
                 try:
-                    async with self.session.post(full_url, json=kwargs) as resp:
+                    async with self.session.post(
+                        full_url, json=kwargs, raise_for_status=True
+                    ) as resp:
                         data = await resp.json()
                         if data.get("result", None) != "success":
                             print(
@@ -97,7 +99,7 @@ class HTTPAPI:
                                 file=sys.stderr,
                             )
                         return data
-                except aiohttp.ClientConnectionError:
+                except (aiohttp.ClientConnectionError, aiohttp.ClientResponseError):
                     await asyncio.sleep(0.1)
             else:
                 print(
