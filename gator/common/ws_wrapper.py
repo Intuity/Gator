@@ -17,7 +17,7 @@ import atexit
 import dataclasses
 import itertools
 import json
-from typing import Any, Dict, Optional, Union, ClassVar
+from typing import Any, ClassVar, Dict, Optional, Union
 
 import websockets
 import websockets.exceptions
