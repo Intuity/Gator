@@ -67,13 +67,13 @@ class WebsocketWrapper(WebsocketRouter):
             await self.__monitor_task
             self.__monitor_task = None
 
-    async def stop(self) -> None:
+    async def stop_ws(self) -> None:
         await self.stop_monitor()
 
     @classmethod
     async def stop_all(cls) -> None:
         for ws in cls.WS_WRAPPERS:
-            await ws.stop()
+            await ws.stop_ws()
 
     async def send(self, data: Union[str, dict]) -> None:
         await self.ws.send(data if isinstance(data, str) else json.dumps(data))
