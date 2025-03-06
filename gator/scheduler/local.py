@@ -102,7 +102,7 @@ class LocalScheduler(BaseScheduler):
                     # Launch jobs
                     self.slots[task.ident] = granted
                     self.launched_processes[task.ident] = await asyncio.create_subprocess_shell(
-                        self.create_command(task, {"concurrency": granted}),
+                        " ".join(self.create_command(task, {"concurrency": granted})),
                         stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.STDOUT,

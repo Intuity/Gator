@@ -88,7 +88,7 @@ class BaseScheduler:
         ]
         return cmd
 
-    def create_command(self, child: Child, options: Optional[Dict[str, str]] = None) -> str:
+    def create_command(self, child: Child, options: Optional[Dict[str, str]] = None) -> List[str]:
         """
         Build a command for launching a job on the compute infrastructure using
         details from the child object.
@@ -100,13 +100,11 @@ class BaseScheduler:
         full_opts = self.options.copy()
         full_opts.update(options or {})
 
-        return " ".join(
-            itertools.chain(
-                self.base_command,
-                ["--id", child.ident, "--tracking", child.tracking.as_posix()],
-                *(["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()),
-            )
-        )
+        return list(itertools.chain(
+            self.base_command,
+            ["--id", child.ident, "--tracking", child.tracking.as_posix()],
+            *(["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()),
+        ))
 
     @abc.abstractmethod
     async def launch(self, tasks: List[Child]) -> None:
