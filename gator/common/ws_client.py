@@ -52,8 +52,8 @@ class WebsocketClient(WebsocketWrapper):
     async def stop(self) -> None:
         if self.ws is not None:
             await self.ws.close()
-            await self.stop_monitor()
             self.ws = None
+        await super().stop()
 
     async def __aenter__(self):
         await self.start()
