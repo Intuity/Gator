@@ -24,7 +24,6 @@ import aiohttp
 
 from ..common.child import Child
 from ..common.logger import Logger, MessageLimits
-from ..specs import Job
 from .common import BaseScheduler, SchedulerError
 
 
@@ -58,7 +57,12 @@ class SlurmScheduler(BaseScheduler):
     def token(self) -> str:
         if self.expired:
             result = subprocess.run(
-                ["scontrol", "token", f"lifespan={int(self._interval*1.1)}", f"username={self._username}"],
+                [
+                    "scontrol",
+                    "token",
+                    f"lifespan={int(self._interval*1.1)}",
+                    f"username={self._username}",
+                ],
                 capture_output=True,
                 timeout=5,
                 check=True,
@@ -101,14 +105,14 @@ class SlurmScheduler(BaseScheduler):
             # Generate an SBATCH script for each task requested
             sbatch = ["#!/bin/sh", "#SBATCH"]
             for task in tasks:
-                sbatch.append(f"srun {' '.join(self.create_command(task) + ['-v'])}")
+                sbatch.append(f"srun {' '.join([*self.create_command(task), '-v'])}")
 
             # Submit to slurm
             payload = {
                 "job": {
                     "script": "\n".join(sbatch) + "\n",
                     "partition": self._queue,
-                    "current_working_directory": os.getcwd(),
+                    "current_working_directory": Path.cwd().as_posix(),
                     "user_id": str(os.getuid()),
                     "group_id": str(os.getgid()),
                     "environment": [f"{k}={v}" for k, v in os.environ.items()],
