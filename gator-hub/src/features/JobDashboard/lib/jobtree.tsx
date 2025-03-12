@@ -4,7 +4,7 @@
  */
 
 import { ApiJob, Job, JobState } from "@/types/job";
-import Tree, { TreeKey, TreeNode } from "../components/Dashboard/lib/tree";
+import Tree, { TreeNode } from "../components/Dashboard/lib/tree";
 import moment from "moment";
 
 export type JobNode = TreeNode<Job>;
