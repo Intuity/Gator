@@ -40,6 +40,7 @@ class LocalScheduler(BaseScheduler):
         self.complete = {}
         self.monitors = {}
         self.slots = {}
+        self.terminated = False
         self.concurrency = self.get_option("concurrency", 1, int)
         self.update = asyncio.Event()
         if self.concurrency < 0:
@@ -78,6 +79,9 @@ class LocalScheduler(BaseScheduler):
                     if slots < 1:
                         self.update.clear()
                         await self.update.wait()
+
+                if self.terminated:
+                    return
                 # Pop the next task
                 task = remaining.pop(0)
                 # Grant 1 slot for a job, up to max jobs for a group/array
@@ -110,3 +114,6 @@ class LocalScheduler(BaseScheduler):
     async def wait_for_all(self):
         await self.launch_task
         await asyncio.gather(*self.monitors.values())
+
+    async def stop(self):
+        self.terminated = True

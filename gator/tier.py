@@ -123,10 +123,13 @@ class Tier(BaseLayer):
     async def stop(self, **kwargs) -> None:
         await super().stop(**kwargs)
         await self.logger.warning("Stopping all jobs")
+        await self.scheduler.stop()
         async with self.lock:
             for child in self.jobs_launched.values():
                 if child.ws:
                     await child.ws.stop(posted=True)
+                else:
+                    child.e_complete.set()
 
     async def get_tree(self, **_) -> GetTreeResponse:
         tree = {}
