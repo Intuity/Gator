@@ -37,15 +37,15 @@ class ProgressDisplay:
     and a progress bar.
     """
 
-    def __init__(self, glyph: str, max_fails: int = 10, max_running: int = 10):
+    def __init__(self, glyph: str, max_fail_rows: int = 10, max_running_rows: int = 10):
         self.bar = PassFailBar(glyph, 1, 0, 0, 0)
         self.failures: dict[str, ApiJob] = {}
         self.running: dict[str, ApiJob] = {}
-        self.max_fails = max_fails
-        self.max_running = max_running
+        self.max_fail_rows = max_fail_rows
+        self.max_running_rows = max_running_rows
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        if self.failures:
+        if self.max_fail_rows and self.failures:
             yield Rule("▼ Failed Jobs ▼", style=Style(color="red"))
 
             fail_table = Table(
@@ -60,7 +60,7 @@ class ProgressDisplay:
             )
 
             for i, (ident, job) in enumerate(self.failures.items()):
-                if i == self.max_fails:
+                if i == self.max_fail_rows:
                     excess = len(self.failures) - i
                     if excess:
                         fail_table.add_row(f"... and {excess} more...", "")
@@ -70,9 +70,9 @@ class ProgressDisplay:
 
             yield fail_table
 
-        yield self.bar
+        if self.max_running_rows and self.running:
+            yield Rule("▼ Running Jobs ▼", style=Style(color="default"))
 
-        if self.running:
             run_table = Table(
                 expand=True,
                 show_header=False,
@@ -85,7 +85,7 @@ class ProgressDisplay:
             )
 
             for i, (ident, job) in enumerate(self.running.items()):
-                if i == self.max_running:
+                if i == self.max_running_rows:
                     excess = len(self.running) - i
                     if excess:
                         run_table.add_row(f"... and {excess} more...", "")
@@ -96,7 +96,7 @@ class ProgressDisplay:
 
             yield run_table
 
-            yield Rule("▲ Running Jobs ▲", style=Style(color="default"))
+        yield self.bar
 
     async def update(self, layer: BaseLayer, summary: Summary):
         self.bar.update(summary)
