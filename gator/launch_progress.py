@@ -20,6 +20,7 @@ from typing import Union
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.live import Live
 from rich.rule import Rule
+from rich.style import Style
 from rich.table import Table
 from rich.tree import Tree
 
@@ -37,7 +38,6 @@ class ProgressDisplay:
     """
 
     def __init__(self, glyph: str, max_fails: int = 10, max_running: int = 10):
-        self.max_rows = 10
         self.bar = PassFailBar(glyph, 1, 0, 0, 0)
         self.failures: dict[str, ApiJob] = {}
         self.running: dict[str, ApiJob] = {}
@@ -46,7 +46,7 @@ class ProgressDisplay:
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         if self.failures:
-            yield Rule("▼ Failed Jobs ▼")
+            yield Rule("▼ Failed Jobs ▼", style=Style(color="red"))
 
             fail_table = Table(
                 expand=True,
@@ -57,14 +57,15 @@ class ProgressDisplay:
                 show_edge=False,
                 border_style="none",
                 box=None,
-                padding=0,
             )
 
             for i, (ident, job) in enumerate(self.failures.items()):
-                if i > self.max_fails:
-                    fail_table.add_row("", f"and {i - self.max_fails} more...")
+                if i == self.max_fails:
+                    excess = len(self.failures) - i
+                    if excess:
+                        fail_table.add_row(f"... and {excess} more...", "")
                     break
-                messages = (Path(job["db_file"]).parent / "messages.log").as_posix()
+                messages = os.path.relpath(Path(job["db_file"]).parent / "messages.log", Path.cwd())
                 fail_table.add_row(ident, messages)
 
             yield fail_table
@@ -81,25 +82,27 @@ class ProgressDisplay:
                 show_edge=False,
                 border_style="none",
                 box=None,
-                padding=0,
             )
 
             for i, (ident, job) in enumerate(self.running.items()):
-                if i > self.max_running:
-                    run_table.add_row("", f"and {i - self.max_running} more...")
+                if i == self.max_running:
+                    excess = len(self.running) - i
+                    if excess:
+                        run_table.add_row(f"... and {excess} more...", "")
                     break
-                messages = (Path(job["db_file"]).parent / "messages.log").as_posix()
+
+                messages = os.path.relpath(Path(job["db_file"]).parent / "messages.log", Path.cwd())
                 run_table.add_row(ident, messages)
 
             yield run_table
 
-            yield Rule("▲ Running Jobs ▲")
+            yield Rule("▲ Running Jobs ▲", style=Style(color="default"))
 
     async def update(self, layer: BaseLayer, summary: Summary):
         self.bar.update(summary)
 
         for job_id in summary.failed_ids:
-            display_id = ".".join(job_id)
+            display_id = ".".join(job_id[1:])
             if display_id in self.failures:
                 continue
             job = await layer.resolve(job_id[1:])
@@ -107,7 +110,7 @@ class ProgressDisplay:
 
         running = {}
         for job_id in summary.running_ids:
-            display_id = ".".join(job_id)
+            display_id = ".".join(job_id[1:])
             job = await layer.resolve(job_id[1:])
             running[display_id] = job
         self.running = running
@@ -118,7 +121,7 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> Summary:
     # Unset COLUMNS and LINES as they prevent automatic resizing
     console = Console(log_path=False, _environ={**os.environ, "COLUMNS": "", "LINES": ""})
     # Create progress display
-    progress = ProgressDisplay(glyph, 5)
+    progress = ProgressDisplay(glyph, 3, 3)
 
     # Start console
     live = Live(progress, refresh_per_second=4, console=console)
