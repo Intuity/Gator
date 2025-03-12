@@ -391,7 +391,7 @@ class Tier(BaseLayer):
                 child.e_complete.set()
             return
         # Accumulate results for all dependencies
-        await self.logger.info(f"Dependencies of {ident} complete, testing for launch")
+        await self.logger.debug(f"Dependencies of {ident} complete, testing for launch")
         by_id = {x.spec.ident: x.entry.result for x in wait_for}
         # Check if pass/fail criteria is met
         all_ok = True
