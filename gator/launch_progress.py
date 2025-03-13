@@ -121,7 +121,7 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> Summary:
     # Unset COLUMNS and LINES as they prevent automatic resizing
     console = Console(log_path=False, _environ={**os.environ, "COLUMNS": "", "LINES": ""})
     # Create progress display
-    progress = ProgressDisplay(glyph, 3, 3)
+    progress = ProgressDisplay(glyph, 10, 5)
 
     # Start console
     live = Live(progress, refresh_per_second=4, console=console)
