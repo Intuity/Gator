@@ -102,7 +102,7 @@ jobs:
       run: |
         poe example
     - name: Archive code coverage results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: pytest-cov
         path: htmlcov
