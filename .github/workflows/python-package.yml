@@ -104,5 +104,5 @@ jobs:
     - name: Archive code coverage results
       uses: actions/upload-artifact@v4
       with:
-        name: pytest-cov
-        path: htmlcov
+        name: pytest-cov-${{ matrix.python-version }}
+        path: htmlcov-${{ matrix.python-version }}
