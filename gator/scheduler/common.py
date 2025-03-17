@@ -114,3 +114,10 @@ class BaseScheduler:
         infrastructure.
         """
         return
+
+    @abc.abstractmethod
+    async def stop(self) -> None:
+        """
+        Stop scheduling tasks
+        """
+        return

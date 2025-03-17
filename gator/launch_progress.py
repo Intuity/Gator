@@ -14,36 +14,124 @@
 
 import asyncio
 import os
+from pathlib import Path
 from typing import Union
 
-from rich.console import Console
+from rich.console import Console, ConsoleOptions, RenderResult
 from rich.live import Live
+from rich.rule import Rule
+from rich.style import Style
 from rich.table import Table
 from rich.tree import Tree
 
 from .common.layer import BaseLayer
 from .common.progress import PassFailBar
 from .common.summary import Summary
+from .common.types import ApiJob
 from .launch import launch as launch_base
+
+
+class ProgressDisplay:
+    """
+    Display element for task progress including failed tasks, running tasks
+    and a progress bar.
+    """
+
+    def __init__(self, glyph: str, max_fail_rows: int = 10, max_running_rows: int = 10):
+        self.bar = PassFailBar(glyph, 1, 0, 0, 0)
+        self.failures: dict[str, ApiJob] = {}
+        self.running: dict[str, ApiJob] = {}
+        self.max_fail_rows = max_fail_rows
+        self.max_running_rows = max_running_rows
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        if self.max_fail_rows and self.failures:
+            yield Rule("▼ Failed Jobs ▼", style=Style(color="red"))
+
+            fail_table = Table(
+                expand=True,
+                show_header=False,
+                show_footer=False,
+                collapse_padding=True,
+                show_lines=False,
+                show_edge=False,
+                border_style="none",
+                box=None,
+            )
+
+            for i, (ident, job) in enumerate(self.failures.items()):
+                if i == self.max_fail_rows:
+                    excess = len(self.failures) - i
+                    if excess:
+                        fail_table.add_row(f"... and {excess} more...", "")
+                    break
+                messages = os.path.relpath(Path(job["db_file"]).parent / "messages.log", Path.cwd())
+                fail_table.add_row(ident, messages)
+
+            yield fail_table
+
+        if self.max_running_rows and self.running:
+            yield Rule("▼ Running Jobs ▼", style=Style(color="default"))
+
+            run_table = Table(
+                expand=True,
+                show_header=False,
+                show_footer=False,
+                collapse_padding=True,
+                show_lines=False,
+                show_edge=False,
+                border_style="none",
+                box=None,
+            )
+
+            for i, (ident, job) in enumerate(self.running.items()):
+                if i == self.max_running_rows:
+                    excess = len(self.running) - i
+                    if excess:
+                        run_table.add_row(f"... and {excess} more...", "")
+                    break
+
+                messages = os.path.relpath(Path(job["db_file"]).parent / "messages.log", Path.cwd())
+                run_table.add_row(ident, messages)
+
+            yield run_table
+
+        yield self.bar
+
+    async def update(self, layer: BaseLayer, summary: Summary):
+        self.bar.update(summary)
+
+        for job_id in summary.failed_ids:
+            display_id = ".".join(job_id[1:])
+            if display_id in self.failures:
+                continue
+            job = await layer.resolve(job_id[1:])
+            self.failures[display_id] = job
+
+        running = {}
+        for job_id in summary.running_ids:
+            display_id = ".".join(job_id[1:])
+            job = await layer.resolve(job_id[1:])
+            running[display_id] = job
+        self.running = running
 
 
 async def launch(glyph: str = "🐊 Gator", **kwargs) -> Summary:
     # Create console
     # Unset COLUMNS and LINES as they prevent automatic resizing
     console = Console(log_path=False, _environ={**os.environ, "COLUMNS": "", "LINES": ""})
-    # Create table
-    table = Table(expand=True, show_edge=False, show_header=False)
-    # Create a progress bar
-    bar = PassFailBar(glyph, 1, 0, 0, 0)
-    table.add_row(bar)
+    # Create progress display
+    progress = ProgressDisplay(glyph, 10, 5)
+
     # Start console
-    live = Live(table, refresh_per_second=4, console=console)
+    live = Live(progress, refresh_per_second=4, console=console)
     live.start(refresh=True)
 
     # Create an update function
-    def _update(_layer: BaseLayer, summary: Summary, /, tree: Union[Tree, None] = None):
-        # Update the progress bars
-        bar.update(summary)
+    async def _update(layer: BaseLayer, summary: Summary, /, tree: Union[Tree, None] = None):
+        # Update the progress display
+        await progress.update(layer, summary)
+
         # Display the tree
         if tree:
 

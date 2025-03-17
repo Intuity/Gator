@@ -123,10 +123,13 @@ class Tier(BaseLayer):
     async def stop(self, **kwargs) -> None:
         await super().stop(**kwargs)
         await self.logger.warning("Stopping all jobs")
+        await self.scheduler.stop()
         async with self.lock:
             for child in self.jobs_launched.values():
                 if child.ws:
                     await child.ws.stop(posted=True)
+                else:
+                    child.e_complete.set()
 
     async def get_tree(self, **_) -> GetTreeResponse:
         tree = {}
@@ -391,7 +394,7 @@ class Tier(BaseLayer):
                 child.e_complete.set()
             return
         # Accumulate results for all dependencies
-        await self.logger.info(f"Dependencies of {ident} complete, testing for launch")
+        await self.logger.debug(f"Dependencies of {ident} complete, testing for launch")
         by_id = {x.spec.ident: x.entry.result for x in wait_for}
         # Check if pass/fail criteria is met
         all_ok = True

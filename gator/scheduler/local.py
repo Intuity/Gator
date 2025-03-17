@@ -108,5 +108,12 @@ class LocalScheduler(BaseScheduler):
         self.launch_task = asyncio.create_task(_inner())
 
     async def wait_for_all(self):
-        await self.launch_task
+        try:
+            await self.launch_task
+        except asyncio.CancelledError:
+            pass
         await asyncio.gather(*self.monitors.values())
+
+    async def stop(self):
+        if self.launch_task is not None:
+            self.launch_task.cancel()

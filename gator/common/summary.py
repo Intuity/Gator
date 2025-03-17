@@ -25,6 +25,7 @@ class SummaryDict(TypedDict):
 class Summary:
     metrics: Dict[str, int] = field(default_factory=dict)
     failed_ids: List[List[str]] = field(default_factory=list)
+    running_ids: List[List[str]] = field(default_factory=list)
 
     def from_dict(self, data: SummaryDict) -> "Summary":
         return type(self)(**data)
@@ -35,6 +36,7 @@ class Summary:
     def contextualised(self, context: str) -> "Summary":
         new_summary = type(self)(**asdict(self))
         new_summary.failed_ids = [[context, *x] for x in self.failed_ids]
+        new_summary.running_ids = [[context, *x] for x in self.running_ids]
         return new_summary
 
     def merged(
@@ -46,12 +48,17 @@ class Summary:
             for m_key, m_val in summary.metrics.items():
                 base.metrics[m_key] = base.metrics.get(m_key, 0) + m_val
             base.failed_ids += summary.failed_ids
+            base.running_ids += summary.running_ids
         return base
 
     @property
     def passed(self):
         metrics = self.metrics
-        if (len(self.failed_ids) == 0) and (metrics["sub_passed"] == metrics["sub_total"]):
+        if (
+            (len(self.failed_ids) == 0)
+            and (metrics["sub_passed"] == metrics["sub_total"])
+            and not self.running_ids
+        ):
             return True
         return False
 

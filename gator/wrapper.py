@@ -87,6 +87,10 @@ class Wrapper(BaseLayer):
             summary.failed_ids = [[self.spec.ident]]
         else:
             summary.failed_ids = []
+        if self.started and not self.complete:
+            summary.running_ids = [[self.spec.ident]]
+        else:
+            summary.running_ids = []
         return summary
 
     async def __handle_metric(self, name: str, value: int, **_) -> MetricResponse:
