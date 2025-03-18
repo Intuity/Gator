@@ -25,7 +25,8 @@ from rich.markup import escape
 
 from . import launch, launch_progress
 from .common.logger import MessageLimits
-from .scheduler import LocalScheduler
+from .common.ws_wrapper import WebsocketWrapper
+from .scheduler import LocalScheduler, SlurmScheduler
 from .specs import Spec
 from .specs.common import SpecError
 
@@ -54,7 +55,7 @@ from .specs.common import SpecError
 @click.option(
     "--scheduler",
     default="local",
-    type=click.Choice(("local",), case_sensitive=False),
+    type=click.Choice(("local","slurm"), case_sensitive=False),
     help="Select the scheduler to use for launching jobs",
     show_default=True,
 )
@@ -101,7 +102,10 @@ def main(
     )
     tracking.mkdir(parents=True, exist_ok=True)
     # Select the right scheduler
-    sched = {"local": LocalScheduler}.get(scheduler.lower())
+    sched = {
+        "local": LocalScheduler,
+        "slurm": SlurmScheduler,
+    }.get(scheduler.lower())
     # Break apart scheduler options as '<KEY>=<VALUE>'
     sched_opts = {}
     for arg in sched_arg:
@@ -115,6 +119,7 @@ def main(
         key, val = arg.split("=")
         sched_opts[key.strip()] = val.strip()
     # Launch with optional progress tracking
+    exit_code = 0
     try:
         summary = asyncio.run(
             (launch_progress if progress else launch).launch(
@@ -136,6 +141,8 @@ def main(
                 ),
             )
         )
+        if not summary.passed:
+            exit_code = 1
     except SpecError as e:
         console_file = (Path(tracking) / "error.log").open("a") if parent else None
         con = Console(file=console_file)
@@ -146,18 +153,19 @@ def main(
         if hasattr(e.obj, "jobs"):
             e.obj.jobs = ["..."]
         con.log(Spec.dump([e.obj]))
-        sys.exit(1)
+        exit_code = 1
     except BaseException:
         console_file = (Path(tracking) / "error.log").open("a") if parent else None
         con = Console(file=console_file)
         con.log(traceback.format_exc())
         if verbose:
             con.print_exception(show_locals=True)
-        sys.exit(1)
-
-    if summary.passed:
-        sys.exit(0)
-    sys.exit(1)
+        exit_code = 1
+    finally:
+        # Stop active websocket wrappers (may be left over if an exception occurs)
+        asyncio.run(WebsocketWrapper.stop_all())
+        # Forward an exception code
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

@@ -14,5 +14,6 @@
 
 from .common import SchedulerError
 from .local import LocalScheduler
+from .slurm import SlurmScheduler
 
-assert all((LocalScheduler, SchedulerError))
+assert all((LocalScheduler, SchedulerError, SlurmScheduler))
