@@ -25,6 +25,7 @@ import aiohttp
 from ..common.child import Child
 from ..common.logger import Logger, MessageLimits
 from .common import BaseScheduler, SchedulerError
+from ..specs.jobs import Job
 
 
 class SlurmScheduler(BaseScheduler):
@@ -105,7 +106,22 @@ class SlurmScheduler(BaseScheduler):
             # Generate an SBATCH script for each task requested
             sbatch = ["#!/bin/sh", "#SBATCH"]
             for task in tasks:
-                sbatch.append(f"srun {' '.join([*self.create_command(task), '-v'])}")
+                cmd = ["srun"]
+                if isinstance(task.spec, Job):
+                    cmd.append(f"--cpus-per-task={task.spec.requested_cores}")
+                    cmd.append(f"--mem={task.spec.requested_memory}M")
+                    if len(task.spec.requested_licenses) > 0:
+                        cmd.append(
+                            "--licenses=" +
+                            ",".join(f"{k}:{v}" for k, v in task.spec.requested_licenses.items())
+                        )
+                    if len(task.spec.requested_features) > 0:
+                        cmd.append(
+                            "--gres=" +
+                            ",".join(f"{k}:{v}" for k, v in task.spec.requested_features.items())
+                        )
+                cmd += self.create_command(task)
+                sbatch.append(" ".join(cmd + self.create_command(task)))
 
             # Submit to slurm
             payload = {
