@@ -159,7 +159,8 @@ class LocalScheduler(BaseScheduler):
                 continue
             if child.spec.expected_jobs == self.slots[ident]:
                 continue
-
+            if child.ws is None:
+                continue
             granted = self.slots[ident] + remaining
             child_updated_opts = await child.ws.update_scheduler_opts(
                 options={"concurrency": granted}
