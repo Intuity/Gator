@@ -36,9 +36,11 @@ class LocalScheduler(BaseScheduler):
         super().__init__(parent, interval, quiet, logger, options, limits)
         self.launch_task = None
         self.update_lock = asyncio.Lock()
-        self.launched = {}
+        self.launched_processes = {}
+        self.launched_children: Dict[str, Child] = {}
         self.complete = {}
         self.monitors = {}
+        self.total_tasks = 0
         self.slots = {}
         self.concurrency = self.get_option("concurrency", 1, int)
         self.update = asyncio.Event()
@@ -53,16 +55,21 @@ class LocalScheduler(BaseScheduler):
         async with self.update_lock:
             self.complete[ident] = rc
             released = self.slots[ident]
-            self.concurrency += released
-            del self.launched[ident]
+            del self.launched_processes[ident]
+            del self.launched_children[ident]
             del self.monitors[ident]
             del self.slots[ident]
+            # Give the released slots preferentially to running children
+            released = await self.update_children_slots(released)
+            # Take any remaining to schedule new jobs
+            self.concurrency += released
             self.update.set()
         # Log how many concurrency slots were released
         await self.logger.debug(f"Task '{ident}' released {released} slots on completion")
 
     async def launch(self, tasks: List[Child]) -> None:
         await self.logger.debug(f"Local scheduler using concurrency of {self.concurrency}")
+        self.total_tasks += len(tasks)
 
         async def _inner():
             # Track tasks to be scheduled
@@ -92,14 +99,15 @@ class LocalScheduler(BaseScheduler):
                 async with self.update_lock:
                     # Launch jobs
                     self.slots[task.ident] = granted
-                    self.launched[task.ident] = await asyncio.create_subprocess_shell(
+                    self.launched_processes[task.ident] = await asyncio.create_subprocess_shell(
                         self.create_command(task, {"concurrency": granted}),
                         stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.STDOUT,
                     )
+                    self.launched_children[task.ident] = task
                     self.monitors[task.ident] = asyncio.create_task(
-                        self.__monitor(task.ident, self.launched[task.ident])
+                        self.__monitor(task.ident, self.launched_processes[task.ident])
                     )
                     # Restore any unused concurrency
                     self.concurrency += slots
@@ -113,6 +121,54 @@ class LocalScheduler(BaseScheduler):
         except asyncio.CancelledError:
             pass
         await asyncio.gather(*self.monitors.values())
+
+    async def update_options(self, options: Dict[str, str]) -> Dict[str, str]:
+        updated_options = {}
+
+        if "concurrency" in options:
+            concurrency = self.get_option("concurrency", 1, int)
+            remaining = int(options["concurrency"]) - concurrency
+
+            if remaining:
+                # If any available, give the extra concurrency preferentially
+                # to running children before using it to schedule more jobs
+                # ourselves.
+                remaining = await self.update_children_slots(remaining)
+                remaining_tasks = (
+                    self.total_tasks - len(self.complete) - len(self.launched_children)
+                )
+                granted = max(remaining, remaining_tasks)
+                async with self.update_lock:
+                    self.concurrency += granted
+                updated_options["concurrency"] = self.options["concurrency"] = concurrency + granted
+            else:
+                # Unmodifed
+                updated_options["concurrency"] = concurrency
+
+        return updated_options
+
+    async def update_children_slots(self, slots: int) -> int:
+        """
+        Update the concurrency for children
+        """
+        remaining = slots
+        for ident, child in self.launched_children.items():
+            if not remaining:
+                break
+            if isinstance(child.spec, Job):
+                continue
+            if child.spec.expected_jobs == self.slots[ident]:
+                continue
+
+            granted = self.slots[ident] + remaining
+            child_updated_opts = await child.ws.update_scheduler_opts(
+                options={"concurrency": granted}
+            )
+            used = child_updated_opts.get("concurrency", self.slots[ident])
+            remaining -= granted - used
+            self.slots[ident] = used
+
+        return remaining
 
     async def stop(self):
         if self.launch_task is not None:

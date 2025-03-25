@@ -49,6 +49,18 @@ class BaseScheduler:
         value = self.options.get(name, default)
         return value if as_type is None else as_type(value)
 
+    async def update_options(self, options: Dict[str, str]) -> Dict[str, str]:
+        """
+        Update the scheduler's options. Only specified options are updated,
+        and the rest are left unchanged.
+
+        Returns a dict of the updated options which can be used to communicate
+        back to the caller which options were accepted. For example, if the caller
+        provides more concurrency than the schedular needs, the scheduler can
+        return a lower updated value to indicate it didn't take all of it.
+        """
+        raise NotImplementedError()
+
     @functools.cached_property
     def scheduler_id(self) -> str:
         return type(self).__name__.lower().replace("scheduler", "")

@@ -81,6 +81,7 @@ class Tier(BaseLayer):
         await self.db.register(ChildEntry)
         # Register client handlers for downwards calls
         self.client.add_route("get_tree", self.get_tree)
+        self.client.add_route("update_scheduler_opts", self.update_scheduler_opts)
         # Create a scheduler
         try:
             self.scheduler = self.sched_cls(
@@ -141,6 +142,9 @@ class Tier(BaseLayer):
             elif child.ws:
                 tree[child.ident] = await child.ws.get_tree()
         return tree
+
+    async def update_scheduler_opts(self, options: Dict[str, str], **_) -> Dict[str, str]:
+        return await self.scheduler.update_options(options)
 
     async def __list_children(self, **_) -> ApiChildren:
         """List all of the children of this layer"""
