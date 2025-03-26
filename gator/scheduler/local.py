@@ -15,6 +15,8 @@
 import asyncio
 from typing import Dict, List, Optional
 
+import websockets.exceptions
+
 from ..common.child import Child
 from ..common.logger import Logger, MessageLimits
 from ..specs import Job
@@ -159,12 +161,15 @@ class LocalScheduler(BaseScheduler):
                 continue
             if child.spec.expected_jobs == self.slots[ident]:
                 continue
-            if child.ws is None:
+            if child.ws is None or not child.ws.linked:
                 continue
             granted = self.slots[ident] + remaining
-            child_updated_opts = await child.ws.update_scheduler_opts(
-                options={"concurrency": granted}
-            )
+            try:
+                child_updated_opts = await child.ws.update_scheduler_opts(
+                    options={"concurrency": granted}
+                )
+            except websockets.exceptions.ConnectionClosed:
+                child_updated_opts = {}
             used = child_updated_opts.get("concurrency", self.slots[ident])
             remaining -= granted - used
             self.slots[ident] = used
