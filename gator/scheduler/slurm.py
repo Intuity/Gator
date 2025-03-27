@@ -18,7 +18,7 @@ import os
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import ClassVar, Dict, List, Optional
 
 import aiohttp
 
@@ -30,6 +30,11 @@ from ..specs.jobs import Job
 
 class SlurmScheduler(BaseScheduler):
     """Executes tasks via a Slurm cluster"""
+
+    RETRY_ON_ERROR : ClassVar[set[int]] = {
+        # 7000: Unable to connect to database (slurmdb connection failure)
+        7000,
+    }
 
     def __init__(
         self,
@@ -75,6 +80,10 @@ class SlurmScheduler(BaseScheduler):
             self._expiry = datetime.now() + timedelta(seconds=self._interval)
         return self._token
 
+    def clear_token(self):
+        self._token = None
+        self._expiry = None
+
     def get_session(self) -> aiohttp.ClientSession:
         return aiohttp.ClientSession(
             base_url=self._api_root + (f"/slurm/{self._api_version}/" if self._api_version else ""),
@@ -83,6 +92,69 @@ class SlurmScheduler(BaseScheduler):
                 "X-SLURM-USER-TOKEN": self.token,
             }
         )
+
+    async def _retry_post(
+        self,
+        route: str,
+        payload: dict[str, str],
+        retries: int = 3,
+        backoff: float = 1.0,
+    ) -> dict[str, str]:
+        for idx in range(retries):
+            async with self.get_session() as session:
+                async with session.post(route, json=payload) as resp:
+                    data = await resp.json()
+                    err_nums = [x.get("error_number", None) for x in data.get("errors", [])]
+                    # Check for a known error
+                    if set(err_nums).intersection(self.RETRY_ON_ERROR):
+                        # Log what happened
+                        await self.logger.debug(
+                            f"Slurm API error on attempt {idx}/{retries}, retrying "
+                            f"in {backoff} seconds (with forced token refresh)"
+                        )
+                        # Force a token expiry
+                        self.clear_token()
+                        # Wait a little
+                        await asyncio.sleep(backoff)
+                        # Retry
+                        continue
+                    # If no known error, return the data
+                    return data
+        else:
+            raise SchedulerError(
+                f"Post request to {route} failed {retries} times: {data}"
+            )
+
+    async def _retry_get(
+        self,
+        route: str,
+        retries: int = 3,
+        backoff: float = 1.0,
+    ) -> dict[str, str]:
+        for idx in range(retries):
+            async with self.get_session() as session:
+                async with session.get(route) as resp:
+                    data = await resp.json()
+                    err_nums = [x.get("error_number", None) for x in data.get("errors", [])]
+                    # Check for a known error
+                    if set(err_nums).intersection(self.RETRY_ON_ERROR):
+                        # Log what happened
+                        await self.logger.debug(
+                            f"Slurm API error on attempt {idx}/{retries}, retrying "
+                            f"in {backoff} seconds (with forced token refresh)"
+                        )
+                        # Force a token expiry
+                        self.clear_token()
+                        # Wait a little
+                        await asyncio.sleep(backoff)
+                        # Retry
+                        continue
+                    # If no known error, return the data
+                    return data
+        else:
+            raise SchedulerError(
+                f"Post request to {route} failed {retries} times: {data}"
+            )
 
     async def launch(self, tasks: List[Child]) -> None:
         # Figure out the active API version of Slurm REST interface
@@ -94,59 +166,52 @@ class SlurmScheduler(BaseScheduler):
                     self._api_version = Path(slurm_roots[0]).parts[2]
             await self.logger.info(f"Slurm scheduler using REST API version {self._api_version}")
 
-        # Re-establish a session with the new API root URL
-        async with self.get_session() as session:
+        # Ping to check connection/authentication to Slurm
+        data = await self._retry_get("ping")
+        ping = data["pings"][0]["latency"]
+        await self.logger.debug(f"Slurm REST latency {ping}")
 
-            # Ping to check connection/authentication to Slurm
-            async with session.get("ping") as resp:
-                data = await resp.json()
-                ping = data["pings"][0]["latency"]
-                await self.logger.debug(f"Slurm REST latency {ping}")
+        # Figure out the requested resources
+        tres_per_job = []
+        if isinstance(task.spec, Job):
+            tres_per_job +[
+                f"cpu={int(task.spec.requested_cores)}",
+                f"mem={int(task.spec.requested_memory)}",
+                *[f"license/{k}:{v}" for k, v in task.spec.requested_licenses.items()],
+                *[f"gres/{k}:{v}" for k, v in task.spec.requested_features.items()],
+            ]
 
-            # For each task
-            sbatch_hdr = ["#!/bin/sh", "#SBATCH"]
-            for task in tasks:
-                # Generate an SBATCH description
-                sbatch = sbatch_hdr[:]
-                if isinstance(task.spec, Job):
-                    sbatch.append(f"#SBATCH --cpus-per-task={task.spec.requested_cores}")
-                    sbatch.append(f"#SBATCH --mem={int(task.spec.requested_memory)}M")
-                    if len(task.spec.requested_licenses) > 0:
-                        sbatch.append(
-                            "#SBATCH --licenses=" +
-                            ",".join(f"{k}:{v}" for k, v in task.spec.requested_licenses.items())
-                        )
-                    if len(task.spec.requested_features) > 0:
-                        sbatch.append(
-                            "#SBATCH --gres=" +
-                            ",".join(f"{k}:{v}" for k, v in task.spec.requested_features.items())
-                        )
-                sbatch.append(" ".join(self.create_command(task)))
-                # Submit to slurm
-                payload = {
-                    "job": {
-                        "script": "\n".join(sbatch) + "\n",
-                        "partition": self._queue,
-                        "current_working_directory": Path.cwd().as_posix(),
-                        "user_id": str(os.getuid()),
-                        "group_id": str(os.getgid()),
-                        "environment": [f"{k}={v}" for k, v in os.environ.items()],
-                    }
-                }
-                async with session.post("job/submit", json=payload) as resp:
-                    data = await resp.json()
-                    self._job_ids.append(job_id := data["result"]["job_id"])
-                    await self.logger.info(f"Scheduled Slurm job {job_id}")
+        # For each task...
+        payload = { "jobs": [] }
+        for task in tasks:
+            payload["jobs"].append({
+                "script": "\n".join([
+                    "#!/bin/sh",
+                    "#SBATCH",
+                    " ".join(self.create_command(task)),
+                    "",
+                ]),
+                "tres_per_job": ",".join(tres_per_job),
+                "partition": self._queue,
+                "current_working_directory": Path.cwd().as_posix(),
+                "user_id": str(os.getuid()),
+                "group_id": str(os.getgid()),
+                "environment": [f"{k}={v}" for k, v in os.environ.items()],
+            })
+
+        # Submit the entire payload to Slurm
+        data = await self._retry_post("job/submit", payload)
+        self._job_ids.append(job_id := data["result"]["job_id"])
+        await self.logger.info(f"Scheduled Slurm job {job_id}")
 
     async def wait_for_all(self):
         for job_id in self._job_ids:
             while True:
                 states = []
-                async with self.get_session() as session:
-                    async with session.get(f"job/{job_id}") as resp:
-                        data = await resp.json()
-                        for job in data["jobs"]:
-                            states += job["job_state"]
+                data = await self._retry_get(f"job/{job_id}")
+                print(data)
+                for job in data["jobs"]:
+                    states += job["job_state"]
                 if len([x for x in states if x.lower() in ("pending", "running")]) == 0:
                     break
                 await asyncio.sleep(5)

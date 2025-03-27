@@ -63,12 +63,6 @@ async def launch(
     if not console:
         console = Console(log_path=False)
         console.log("Starting Gator :crocodile:")
-    # Log the machine's details
-    uname = platform.uname()
-    console.log(
-        f"Running on {socket.getfqdn()} as PID {os.getpid()} under {os.getcwd()} "
-        f"(architecture {uname.processor}, OS {uname.system} {uname.release})"
-    )
     # Start client
     client = WebsocketClient(address=parent)
     await client.start()
@@ -79,6 +73,13 @@ async def launch(
         forward=all_msg,
     )
     logger.set_console(console)
+    # Log the machine's details
+    uname = platform.uname()
+    await logger.info(
+        f"[:crocodile:] Running on {socket.getfqdn()} as PID {os.getpid()} under "
+        f"{os.getcwd()} (architecture {uname.processor}, OS {uname.system} "
+        f"{uname.release})"
+    )
     # Work out where the spec is coming from
     # - From server (nested call)
     if spec is None and client.linked and ident:
