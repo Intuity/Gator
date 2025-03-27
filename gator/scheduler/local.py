@@ -154,7 +154,7 @@ class LocalScheduler(BaseScheduler):
         Update the concurrency for children
         """
         remaining = slots
-        for ident, child in self.launched_children.items():
+        for ident, child in self.launched_children.copy().items():
             if not remaining:
                 break
             if isinstance(child.spec, Job):
