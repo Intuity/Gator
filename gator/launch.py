@@ -14,7 +14,10 @@
 
 import asyncio
 import math
+import os
+import platform
 import signal
+import socket
 from functools import partial
 from pathlib import Path
 from typing import Dict, Optional, Type, Union
@@ -60,6 +63,12 @@ async def launch(
     if not console:
         console = Console(log_path=False)
         console.log("Starting Gator :crocodile:")
+    # Log the machine's details
+    uname = platform.uname()
+    console.log(
+        f"Running on {socket.getfqdn()} as PID {os.getpid()} under {os.getcwd()} "
+        f"(architecture {uname.processor}, OS {uname.system} {uname.release})"
+    )
     # Start client
     client = WebsocketClient(address=parent)
     await client.start()

@@ -103,41 +103,40 @@ class SlurmScheduler(BaseScheduler):
                 ping = data["pings"][0]["latency"]
                 await self.logger.debug(f"Slurm REST latency {ping}")
 
-            # Generate an SBATCH script for each task requested
-            sbatch = ["#!/bin/sh", "#SBATCH"]
+            # For each task
+            sbatch_hdr = ["#!/bin/sh", "#SBATCH"]
             for task in tasks:
-                cmd = ["srun"]
+                # Generate an SBATCH description
+                sbatch = sbatch_hdr[:]
                 if isinstance(task.spec, Job):
-                    cmd.append(f"--cpus-per-task={task.spec.requested_cores}")
-                    cmd.append(f"--mem={task.spec.requested_memory}M")
+                    sbatch.append(f"#SBATCH --cpus-per-task={task.spec.requested_cores}")
+                    sbatch.append(f"#SBATCH --mem={int(task.spec.requested_memory)}M")
                     if len(task.spec.requested_licenses) > 0:
-                        cmd.append(
-                            "--licenses=" +
+                        sbatch.append(
+                            "#SBATCH --licenses=" +
                             ",".join(f"{k}:{v}" for k, v in task.spec.requested_licenses.items())
                         )
                     if len(task.spec.requested_features) > 0:
-                        cmd.append(
-                            "--gres=" +
+                        sbatch.append(
+                            "#SBATCH --gres=" +
                             ",".join(f"{k}:{v}" for k, v in task.spec.requested_features.items())
                         )
-                cmd += self.create_command(task)
-                sbatch.append(" ".join(cmd + self.create_command(task)))
-
-            # Submit to slurm
-            payload = {
-                "job": {
-                    "script": "\n".join(sbatch) + "\n",
-                    "partition": self._queue,
-                    "current_working_directory": Path.cwd().as_posix(),
-                    "user_id": str(os.getuid()),
-                    "group_id": str(os.getgid()),
-                    "environment": [f"{k}={v}" for k, v in os.environ.items()],
+                sbatch.append(" ".join(self.create_command(task)))
+                # Submit to slurm
+                payload = {
+                    "job": {
+                        "script": "\n".join(sbatch) + "\n",
+                        "partition": self._queue,
+                        "current_working_directory": Path.cwd().as_posix(),
+                        "user_id": str(os.getuid()),
+                        "group_id": str(os.getgid()),
+                        "environment": [f"{k}={v}" for k, v in os.environ.items()],
+                    }
                 }
-            }
-            async with session.post("job/submit", json=payload) as resp:
-                data = await resp.json()
-                self._job_ids.append(job_id := data["result"]["job_id"])
-                await self.logger.info(f"Scheduled Slurm job {job_id}")
+                async with session.post("job/submit", json=payload) as resp:
+                    data = await resp.json()
+                    self._job_ids.append(job_id := data["result"]["job_id"])
+                    await self.logger.info(f"Scheduled Slurm job {job_id}")
 
     async def wait_for_all(self):
         for job_id in self._job_ids:
