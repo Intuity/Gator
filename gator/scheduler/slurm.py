@@ -202,7 +202,7 @@ class SlurmScheduler(BaseScheduler):
                     "name": task.ident,
                     "script": "\n".join([
                         "#!/bin/bash",
-                        " ".join(self.create_command(task)) + f" | tee {os.getcwd()}/task_{idx}.log",
+                        " ".join(self.create_command(task)),
                         "",
                     ]),
                     "tres_per_job": ",".join(tres_per_job),
