@@ -15,6 +15,7 @@
 import abc
 import functools
 import itertools
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
 from ..common.child import Child
@@ -30,6 +31,7 @@ class BaseScheduler:
 
     def __init__(
         self,
+        tracking: Path,
         parent: str,
         interval: int = 5,
         quiet: bool = True,
@@ -37,6 +39,7 @@ class BaseScheduler:
         options: Optional[Dict[str, str]] = None,
         limits: Optional[MessageLimits] = None,
     ) -> None:
+        self.tracking = tracking
         self.parent = parent
         self.interval = interval
         self.quiet = quiet

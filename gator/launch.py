@@ -76,9 +76,8 @@ async def launch(
     # Log the machine's details
     uname = platform.uname()
     await logger.info(
-        f"[:crocodile:] Running on {socket.getfqdn()} as PID {os.getpid()} under "
-        f"{os.getcwd()} (architecture {uname.processor}, OS {uname.system} "
-        f"{uname.release})"
+        f"Running on {socket.getfqdn()} as PID {os.getpid()} under {os.getcwd()} "
+        f"(architecture: {uname.processor}, OS: {uname.system} {uname.release})"
     )
     # Work out where the spec is coming from
     # - From server (nested call)

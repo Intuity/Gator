@@ -17,6 +17,7 @@ import getpass
 import os
 import subprocess
 from datetime import datetime, timedelta
+from enum import IntEnum
 from pathlib import Path
 from typing import ClassVar, Dict, List, Optional
 
@@ -28,16 +29,25 @@ from .common import BaseScheduler, SchedulerError
 from ..specs.jobs import Job
 
 
+class SlurmErrorCodes(IntEnum):
+    """Enumerates common Slurm error codes"""
+    INVALID_TRES_SPEC: int = 2115
+    """Invalid Trackable RESource (TRES) specification"""
+    SLURMDB_CONN_FAIL: int = 7000
+    """Unable to connect to database (slurmdb connection failure)"""
+
+
+
 class SlurmScheduler(BaseScheduler):
     """Executes tasks via a Slurm cluster"""
 
     RETRY_ON_ERROR : ClassVar[set[int]] = {
-        # 7000: Unable to connect to database (slurmdb connection failure)
-        7000,
+        SlurmErrorCodes.SLURMDB_CONN_FAIL,
     }
 
     def __init__(
         self,
+        tracking: Path,
         parent: str,
         interval: int = 5,
         quiet: bool = True,
@@ -45,7 +55,7 @@ class SlurmScheduler(BaseScheduler):
         options: Optional[Dict[str, str]] = None,
         limits: Optional[MessageLimits] = None,
     ) -> None:
-        super().__init__(parent, interval, quiet, logger, options, limits)
+        super().__init__(tracking, parent, interval, quiet, logger, options, limits)
         self._username : str = getpass.getuser()
         self._api_root : str = self.get_option("api_root", "http://127.0.0.1:6820/")
         self._api_version : str | None = None
@@ -54,6 +64,8 @@ class SlurmScheduler(BaseScheduler):
         self._interval : int = int(self.get_option("jwt_interval", 60))
         self._queue : str = self.get_option("queue", "generalq")
         self._job_ids : list[int] = []
+        self._stdout_dirx : Path = self.tracking / "slurm"
+        self._stdout_dirx.mkdir(exist_ok=True, parents=True)
 
     @property
     def expired(self) -> bool:
@@ -171,45 +183,65 @@ class SlurmScheduler(BaseScheduler):
         ping = data["pings"][0]["latency"]
         await self.logger.debug(f"Slurm REST latency {ping}")
 
-        # Figure out the requested resources
-        tres_per_job = []
-        if isinstance(task.spec, Job):
-            tres_per_job +[
-                f"cpu={int(task.spec.requested_cores)}",
-                f"mem={int(task.spec.requested_memory)}",
-                *[f"license/{k}:{v}" for k, v in task.spec.requested_licenses.items()],
-                *[f"gres/{k}:{v}" for k, v in task.spec.requested_features.items()],
-            ]
-
         # For each task...
-        payload = { "jobs": [] }
-        for task in tasks:
-            payload["jobs"].append({
-                "script": "\n".join([
-                    "#!/bin/sh",
-                    "#SBATCH",
-                    " ".join(self.create_command(task)),
-                    "",
-                ]),
-                "tres_per_job": ",".join(tres_per_job),
-                "partition": self._queue,
-                "current_working_directory": Path.cwd().as_posix(),
-                "user_id": str(os.getuid()),
-                "group_id": str(os.getgid()),
-                "environment": [f"{k}={v}" for k, v in os.environ.items()],
+        for idx, task in enumerate(tasks):
+            # Figure out the requested resources
+            tres_per_job = []
+            if isinstance(task.spec, Job):
+                tres_per_job += [
+                    f"cpu={int(task.spec.requested_cores)}",
+                    f"mem={int(task.spec.requested_memory)}",
+                    *[f"license/{k}={v}" for k, v in task.spec.requested_licenses.items()],
+                    *[f"gres/{k}={v}" for k, v in task.spec.requested_features.items()],
+                ]
+
+            # Submit the payload to Slurm
+            stdout = self._stdout_dirx / f"{task.ident}.log"
+            data = await self._retry_post("job/submit", {
+                "job": {
+                    "name": task.ident,
+                    "script": "\n".join([
+                        "#!/bin/bash",
+                        " ".join(self.create_command(task)) + f" | tee {os.getcwd()}/task_{idx}.log",
+                        "",
+                    ]),
+                    "tres_per_job": ",".join(tres_per_job),
+                    "partition": self._queue,
+                    "current_working_directory": Path.cwd().as_posix(),
+                    "user_id": str(os.getuid()),
+                    "group_id": str(os.getgid()),
+                    "environment": [f"{k}={v}" for k, v in os.environ.items()],
+                    "standard_output": stdout.as_posix(),
+                    "standard_error": stdout.as_posix(),
+                }
             })
 
-        # Submit the entire payload to Slurm
-        data = await self._retry_post("job/submit", payload)
-        self._job_ids.append(job_id := data["result"]["job_id"])
-        await self.logger.info(f"Scheduled Slurm job {job_id}")
+            # Check for an invalid request
+            err_codes = {
+                x.get("error_number", 0) for x in data.get("errors", []) if
+                (x.get("error_number", 0) != 0)
+            }
+            if err_codes.intersection({ SlurmErrorCodes.INVALID_TRES_SPEC }):
+                raise SchedulerError(
+                    f"Gator generated an unsupported resource request to Slurm "
+                    f"({data['errors'][0]['error']}): {tres_per_job}"
+                )
+            elif len(err_codes) > 0:
+                raise SchedulerError(
+                    "Gator received unexpected error(s) when submitting a job "
+                    "to Slurm: " +
+                    ", ".join(f"{x['error']} ({x['error_number']})" for x in data["errors"])
+                )
+
+            # Track the job ID
+            self._job_ids.append(job_id := data["result"]["job_id"])
+            await self.logger.debug(f"Scheduled Slurm job {job_id}")
 
     async def wait_for_all(self):
         for job_id in self._job_ids:
             while True:
                 states = []
                 data = await self._retry_get(f"job/{job_id}")
-                print(data)
                 for job in data["jobs"]:
                     states += job["job_state"]
                 if len([x for x in states if x.lower() in ("pending", "running")]) == 0:
