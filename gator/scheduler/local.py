@@ -14,6 +14,7 @@
 
 import asyncio
 from typing import Dict, List, Optional
+from pathlib import Path
 
 import websockets.exceptions
 
@@ -28,6 +29,7 @@ class LocalScheduler(BaseScheduler):
 
     def __init__(
         self,
+        tracking: Path,
         parent: str,
         interval: int = 5,
         quiet: bool = True,
@@ -35,7 +37,7 @@ class LocalScheduler(BaseScheduler):
         options: Optional[Dict[str, str]] = None,
         limits: Optional[MessageLimits] = None,
     ) -> None:
-        super().__init__(parent, interval, quiet, logger, options, limits)
+        super().__init__(tracking, parent, interval, quiet, logger, options, limits)
         self.launch_task = None
         self.update_lock = asyncio.Lock()
         self.launched_processes = {}
@@ -102,7 +104,7 @@ class LocalScheduler(BaseScheduler):
                     # Launch jobs
                     self.slots[task.ident] = granted
                     self.launched_processes[task.ident] = await asyncio.create_subprocess_shell(
-                        self.create_command(task, {"concurrency": granted}),
+                        " ".join(self.create_command(task, {"concurrency": granted})),
                         stdin=asyncio.subprocess.DEVNULL,
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.STDOUT,

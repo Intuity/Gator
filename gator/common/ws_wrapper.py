@@ -17,9 +17,10 @@ import atexit
 import dataclasses
 import itertools
 import json
-from typing import Any, Dict, Optional, Union
+from typing import Any, ClassVar, Dict, Optional, Union
 
 import websockets
+import websockets.exceptions
 
 from .ws_router import WebsocketRouter
 
@@ -36,6 +37,8 @@ class WebsocketWrapperError(Exception):
 
 
 class WebsocketWrapper(WebsocketRouter):
+    WS_WRAPPERS: ClassVar[list["WebsocketWrapper"]] = []
+
     def __init__(self, ws: Optional[websockets.WebSocketClientProtocol] = None) -> None:
         super().__init__()
         self.ws = ws
@@ -44,6 +47,7 @@ class WebsocketWrapper(WebsocketRouter):
         self.__next_request_id = itertools.count()
         self.__request_lock = asyncio.Lock()
         self.__pending = {}
+        WebsocketWrapper.WS_WRAPPERS.append(self)
 
     @property
     def linked(self):
@@ -62,6 +66,14 @@ class WebsocketWrapper(WebsocketRouter):
             self.__monitor_task.cancel()
             await self.__monitor_task
             self.__monitor_task = None
+
+    async def stop_ws(self) -> None:
+        await self.stop_monitor()
+
+    @classmethod
+    async def stop_all(cls) -> None:
+        for ws in cls.WS_WRAPPERS:
+            await ws.stop_ws()
 
     async def send(self, data: Union[str, dict]) -> None:
         await self.ws.send(data if isinstance(data, str) else json.dumps(data))
@@ -90,6 +102,8 @@ class WebsocketWrapper(WebsocketRouter):
                     raise WebsocketWrapperError(f"Failed to decode message: {raw}") from e
         except asyncio.CancelledError:
             pass
+        except websockets.exceptions.ConnectionClosedError:
+            print("WEBSOCKET CLOSED UNEXPECTEDLY")
 
     def __getattr__(self, key: str) -> Any:
         # Attempt to resolve

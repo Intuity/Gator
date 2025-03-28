@@ -58,7 +58,7 @@ class WebsocketServer(WebsocketRouter):
             # Attempt to get the hostname (fully qualified)
             hostname = socket.getfqdn()
             if not hostname:
-                raise Exception("Blank hostname returned from socket.gethostname()")
+                raise Exception("Blank hostname returned from socket.getfqdn()")
             # Get all known IP addresses for this host (note this can raise an
             # exception if the host is unresolvable)
             _, _, ipaddrs = socket.gethostbyname_ex(hostname)

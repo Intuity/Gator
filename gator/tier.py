@@ -85,6 +85,7 @@ class Tier(BaseLayer):
         # Create a scheduler
         try:
             self.scheduler = self.sched_cls(
+                tracking=self.tracking,
                 parent=await self.server.get_address(),
                 quiet=not self.all_msg,
                 logger=self.logger,

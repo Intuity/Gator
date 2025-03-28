@@ -14,7 +14,10 @@
 
 import asyncio
 import math
+import os
+import platform
 import signal
+import socket
 from functools import partial
 from pathlib import Path
 from typing import Dict, Optional, Type, Union
@@ -70,6 +73,12 @@ async def launch(
         forward=all_msg,
     )
     logger.set_console(console)
+    # Log the machine's details
+    uname = platform.uname()
+    await logger.info(
+        f"Running on {socket.getfqdn()} as PID {os.getpid()} under {os.getcwd()} "
+        f"(architecture: {uname.processor}, OS: {uname.system} {uname.release})"
+    )
     # Work out where the spec is coming from
     # - From server (nested call)
     if spec is None and client.linked and ident:

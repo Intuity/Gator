@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase, SpecError
-from .resource import Cores, License, Memory
+from .resource import Cores, License, Memory, Feature
 
 
 @dataclass
@@ -30,7 +30,7 @@ class Job(SpecBase):
     cwd: Optional[str] = None
     command: Optional[str] = None
     args: Optional[List[str]] = field(default_factory=list)
-    resources: Optional[List[Union[Cores, License, Memory]]] = field(default_factory=list)
+    resources: Optional[List[Union[Cores, License, Memory, Feature]]] = field(default_factory=list)
     on_done: Optional[List[str]] = field(default_factory=list)
     on_fail: Optional[List[str]] = field(default_factory=list)
     on_pass: Optional[List[str]] = field(default_factory=list)
@@ -61,6 +61,11 @@ class Job(SpecBase):
         """Return a summary of all of the licenses requested"""
         return {x.name: x.count for x in self.resources if isinstance(x, License)}
 
+    @functools.cached_property
+    def requested_features(self) -> Dict[str, int]:
+        """Return a summary of all of the features requested"""
+        return {x.name: x.count for x in self.resources if isinstance(x, Feature)}
+
     def check(self) -> None:
         if self.ident is not None and not isinstance(self.ident, str):
             raise SpecError(self, "ident", "ident must be a string")
@@ -80,11 +85,11 @@ class Job(SpecBase):
             raise SpecError(self, "args", "Arguments must be strings or integers")
         if not isinstance(self.resources, list):
             raise SpecError(self, "resources", "Resources must be a list")
-        if set(map(type, self.resources)).difference({Cores, Memory, License}):
+        if set(map(type, self.resources)).difference({Cores, Memory, License, Feature}):
             raise SpecError(
                 self,
                 "resources",
-                "Resources must be !Cores, !Memory, or !License",
+                "Resources must be !Cores, !Memory, !License, or !Feature",
             )
         type_count = Counter(type(x) for x in self.resources)
         if type_count[Cores] > 1:
@@ -99,6 +104,15 @@ class Job(SpecBase):
                     self,
                     "resources",
                     f"More than one entry for license '{name}'",
+                )
+        # NOTE: Any number of features may be specified
+        feat_name_count = Counter(x.name for x in self.resources if isinstance(x, Feature))
+        for name, count in feat_name_count.items():
+            if count > 1:
+                raise SpecError(
+                    self,
+                    "resources",
+                    f"More than one entry for feature '{name}'",
                 )
         for condition in ("on_done", "on_fail", "on_pass"):
             value = getattr(self, condition)

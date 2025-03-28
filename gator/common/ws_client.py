@@ -49,10 +49,13 @@ class WebsocketClient(WebsocketWrapper):
         # For chaining
         return self
 
+    async def stop_ws(self):
+        await self.stop()
+        await super().stop_ws()
+
     async def stop(self) -> None:
         if self.ws is not None:
             await self.ws.close()
-            await self.stop_monitor()
             self.ws = None
 
     async def __aenter__(self):
