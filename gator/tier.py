@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import os
 from collections import defaultdict
 from copy import copy, deepcopy
 from datetime import datetime
@@ -471,9 +472,12 @@ class Tier(BaseLayer):
                 Logger.error(f"Unexpected job object type {type(job).__name__}")
                 continue
             # Propagate environment variables from parent to child
-            merged = copy(self.spec.env)
-            merged.update(job.env)
-            job.env = merged
+            env = {}
+            if self.spec.extend_env:
+                env.update(os.environ)
+            env.update(self.spec.env)
+            env.update(job.env)
+            job.env = env
             # Propagate working directory from parent to child
             job.cwd = job.cwd or self.spec.cwd
             # Vary behaviour depending if this a job array or not

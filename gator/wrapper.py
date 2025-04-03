@@ -26,7 +26,7 @@ import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
-from .common.layer import BaseLayer, MetricResponse
+from .common.layer import BaseLayer, MetricResponse, UsageResponse
 from .common.summary import Summary
 from .common.types import Attribute, JobResult, LogSeverity, ProcStat
 
@@ -104,6 +104,14 @@ class Wrapper(BaseLayer):
         self.metrics.set_own(name, value)
         # Return success
         return {"result": "success"}
+
+    async def __handle_usage(self, cpu_perc: float, memory: float) -> UsageResponse:
+        """
+        Handle additional resource usage information being reported from a child.
+
+        Example: { "cpu_perc": 0.4, "memory": 1234.2 }
+        """
+
 
     async def __monitor_stdio(
         self,
@@ -205,7 +213,13 @@ class Wrapper(BaseLayer):
         Launch the process and pipe STDIN, STDOUT, and STDERR with line buffering
         """
         # Overlay any custom variables on the environment
-        env = {str(k): str(v) for k, v in (self.spec.env or os.environ).items()}
+        env = {}
+        if self.spec.extend_env:
+            env.update(os.environ)
+        env.update(self.spec.env)
+        if "PYTHONPATH" in env:
+            env["PYTHONPATH"] += ":"
+        env["PYTHONPATH"] = env.get("PYTHONPATH", "") + Path(__file__).parent.parent.as_posix()
         env["GATOR_PARENT"] = await self.server.get_address()
         env["PYTHONUNBUFFERED"] = "1"
         # Determine the working directory

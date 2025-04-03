@@ -26,6 +26,7 @@ class Job(SpecBase):
     yaml_tag = "!Job"
 
     ident: Optional[str] = None
+    extend_env: bool = True
     env: Optional[Dict[str, str]] = field(default_factory=dict)
     cwd: Optional[str] = None
     command: Optional[str] = None
@@ -69,6 +70,8 @@ class Job(SpecBase):
     def check(self) -> None:
         if self.ident is not None and not isinstance(self.ident, str):
             raise SpecError(self, "ident", "ident must be a string")
+        if not isinstance(self.extend_env, bool):
+            raise SpecError(self, "extend_env", "Environment extend must be boolean")
         if not isinstance(self.env, dict):
             raise SpecError(self, "env", "Environment must be a dictionary")
         if set(map(type, self.env.keys())).difference({str}):
@@ -129,6 +132,7 @@ class JobArray(SpecBase):
     ident: Optional[str] = None
     repeats: Optional[int] = 1
     jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    extend_env: bool = True
     env: Optional[Dict[str, str]] = field(default_factory=dict)
     cwd: Optional[str] = None
     on_fail: Optional[List[str]] = field(default_factory=list)
@@ -166,6 +170,8 @@ class JobArray(SpecBase):
                 "jobs",
                 f"Duplicated keys for jobs: {', '.join(duplicated)}",
             )
+        if not isinstance(self.extend_env, bool):
+            raise SpecError(self, "extend_env", "Environment extend must be boolean")
         if not isinstance(self.env, dict):
             raise SpecError(self, "env", "Environment must be a dictionary")
         if set(map(type, self.env.keys())).difference({str}):

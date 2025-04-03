@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
+import platform
+from dataclasses import dataclass, field
 
 from .common import SpecBase, SpecError
 
@@ -41,7 +42,7 @@ class Cores(SpecBase):
     yaml_tag = "!Cores"
 
     count: int
-    arch: str | None
+    arch: str | None = field(default_factory=lambda: ARCH_ALIASES[platform.uname().machine])
 
     def check(self) -> None:
         if not isinstance(self.count, int):

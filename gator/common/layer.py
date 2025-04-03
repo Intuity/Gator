@@ -79,6 +79,10 @@ class MetricResponseError(TypedDict):
 MetricResponse = Union[MetricResponseSuccess, MetricResponseError]
 
 
+class UsageResponse(TypedDict):
+    result: Literal["success"]
+
+
 class BaseDatabase(Database):
     async def push_metric(self, metric: Metric):
         pass
