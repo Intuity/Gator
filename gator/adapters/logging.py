@@ -32,7 +32,7 @@ class GatorHandler(logging.Handler):
 
     def __init__(self, ws_address: str | None = None):
         super().__init__()
-        self._ws_address = ws_address or os.environ.get("GATOR_PARENT", None)
+        self._ws_address = ws_address or GatorHandler.get_parent_address()
         assert self._ws_address, (
             "Websocket address for parent process is not set and could not be "
             "determined from the environment"
@@ -43,6 +43,10 @@ class GatorHandler(logging.Handler):
         self._ws_thread = Thread(target=self._manage_ws, daemon=True)
         self._ws_thread.start()
         atexit.register(self._teardown)
+
+    @staticmethod
+    def get_parent_address() -> str | None:
+        return os.environ.get("GATOR_PARENT", None)
 
     def _manage_ws(self):
         try:
