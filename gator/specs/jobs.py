@@ -197,6 +197,7 @@ class JobGroup(SpecBase):
 
     ident: Optional[str] = None
     jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    extend_env: bool = True
     env: Optional[Dict[str, str]] = field(default_factory=dict)
     cwd: Optional[str] = None
     on_fail: Optional[List[str]] = field(default_factory=list)
@@ -232,6 +233,8 @@ class JobGroup(SpecBase):
                 "jobs",
                 f"Duplicated keys for jobs: {', '.join(duplicated)}",
             )
+        if not isinstance(self.extend_env, bool):
+            raise SpecError(self, "extend_env", "Environment extend must be boolean")
         if not isinstance(self.env, dict):
             raise SpecError(self, "env", "Environment must be a dictionary")
         if set(map(type, self.env.keys())).difference({str}):
