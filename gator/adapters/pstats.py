@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 from datetime import datetime
 
 from .parent import Parent
 
 
-class GatorHandler(logging.Handler):
+class ProcessStats:
     """
-    Custom handler for Python logging to redirect messages via Gator's logging
-    API such that severities are correctly recorded.
+    Custom process statistics gathering for operations that Gator cannot normally
+    track, for example launched Docker containers.
 
     :param ws_address: Optional websocket address for the parent tier, otherwise
                        it will be read from the GATOR_PARENT environment variable
@@ -30,15 +29,11 @@ class GatorHandler(logging.Handler):
     def __init__(self, ws_address: str | None = None):
         super().__init__()
         self._parent = Parent(ws_address)
-        self._do_log("INFO", "Log fowarding via GatorHandler")
 
-    def _do_log(self, severity: str, message: str):
+    def record(self, cpu_perc: float, memory: float):
         self._parent.post(
-            "log",
+            "extra_usage",
             timestamp=datetime.now().timestamp(),
-            severity=severity,
-            message=message,
+            cpu_perc=cpu_perc,
+            memory=memory,
         )
-
-    def emit(self, record: logging.LogRecord):
-        self._do_log(record.levelname, record.getMessage())

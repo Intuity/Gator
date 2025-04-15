@@ -45,6 +45,7 @@ class Wrapper(BaseLayer):
         self.plotting = plotting
         self.summary = summary
         self.proc = None
+        self.extra_usage = None
         # Capture forwarded messages from the wrapped job
         if self.logger:
             self.logger.capture_all = True
@@ -53,6 +54,7 @@ class Wrapper(BaseLayer):
         await self.setup(*args, **kwargs)
         # Register endpoint for metrics
         self.server.add_route("metric", self.__handle_metric)
+        self.server.add_route("extra_usage", self.__handle_extra_usage)
         # Register additional data types
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
@@ -105,13 +107,13 @@ class Wrapper(BaseLayer):
         # Return success
         return {"result": "success"}
 
-    async def __handle_usage(self, cpu_perc: float, memory: float) -> UsageResponse:
+    async def __handle_extra_usage(self, timestamp: int, cpu_perc: float, memory: float) -> UsageResponse:
         """
         Handle additional resource usage information being reported from a child.
 
-        Example: { "cpu_perc": 0.4, "memory": 1234.2 }
+        Example: { "timestamp": 12345678, "cpu_perc": 0.4, "memory": 1234.2 }
         """
-
+        self.extra_usage = (timestamp, cpu_perc, memory)
 
     async def __monitor_stdio(
         self,
@@ -175,6 +177,11 @@ class Wrapper(BaseLayer):
                         vms += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
+                    # Take account of 'extra' usage reported by the process
+                    if self.extra_usage is not None:
+                        _ts, ex_cpu_perc, ex_memory = self.extra_usage
+                        cpu_perc += ex_cpu_perc
+                        rss += ex_memory
                     # Push statistics to the database
                     await self.db.push_procstat(
                         ProcStat(
