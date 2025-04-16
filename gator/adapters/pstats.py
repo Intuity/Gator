@@ -37,3 +37,6 @@ class ProcessStats:
             cpu_perc=cpu_perc,
             memory=memory,
         )
+
+    def teardown(self):
+        self._parent._teardown()
