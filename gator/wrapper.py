@@ -114,6 +114,11 @@ class Wrapper(BaseLayer):
         Example: { "timestamp": 12345678, "cpu_perc": 0.4, "memory": 1234.2 }
         """
         self.extra_usage = (timestamp, cpu_perc, memory)
+        await self.logger.debug(
+            f"Process reported extra usage - CPU: {cpu_perc:.01%}%, Memory: {memory} MB"
+        )
+        # Return success
+        return {"result": "success"}
 
     async def __monitor_stdio(
         self,
@@ -159,7 +164,6 @@ class Wrapper(BaseLayer):
             try:
                 # Capture statistics
                 with ps.oneshot():
-                    await self.logger.debug(f"Capturing statistics for {proc.pid}")
                     nproc = 1
                     cpu_perc = ps.cpu_percent()
                     mem_stat = ps.memory_info()
@@ -182,6 +186,9 @@ class Wrapper(BaseLayer):
                         _ts, ex_cpu_perc, ex_memory = self.extra_usage
                         cpu_perc += ex_cpu_perc
                         rss += ex_memory
+                    await self.logger.debug(
+                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01%}%, Memory: {rss} MB"
+                    )
                     # Push statistics to the database
                     await self.db.push_procstat(
                         ProcStat(
