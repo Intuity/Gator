@@ -168,7 +168,7 @@ class Logger:
                     LogEntry(severity=severity, message=message, timestamp=timestamp)
                 )
             # Tee to file if configured
-            if not forwarded and self.__log_fh is not None:
+            if self.__log_fh is not None:
                 date = datetime.now().strftime(r"%H:%M:%S")
                 self.__log_fh.write(f"[{date}] [{severity.name:<7s}] {message}\n")
 
