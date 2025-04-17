@@ -115,7 +115,7 @@ class Wrapper(BaseLayer):
         """
         self.extra_usage = (timestamp, cpu_perc, memory)
         await self.logger.debug(
-            f"Process reported extra usage - CPU: {cpu_perc:.01%}%, Memory: {memory} MB"
+            f"Process reported extra usage - CPU: {cpu_perc:.01%}, Memory: {memory} MB"
         )
         # Return success
         return {"result": "success"}
@@ -181,13 +181,16 @@ class Wrapper(BaseLayer):
                         vms += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
+                    # Convert RSS and VMS into MB
+                    rss_mb = rss / (1024 * 1024)
+                    vms_mb = vms / (1024 * 1024)
                     # Take account of 'extra' usage reported by the process
                     if self.extra_usage is not None:
                         _ts, ex_cpu_perc, ex_memory = self.extra_usage
                         cpu_perc += ex_cpu_perc
-                        rss += ex_memory
+                        rss_mb += ex_memory
                     await self.logger.debug(
-                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01%}%, Memory: {rss} MB"
+                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01%}, Memory: {rss} MB"
                     )
                     # Push statistics to the database
                     await self.db.push_procstat(
@@ -195,20 +198,21 @@ class Wrapper(BaseLayer):
                             timestamp=datetime.now(),
                             nproc=nproc,
                             cpu=cpu_perc,
-                            mem=rss,
-                            vmem=vms,
+                            mem=rss_mb,
+                            vmem=vms_mb,
                         )
                     )
                     # Check if exceeding the limits
-                    now_exceeding = (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)) or (
-                        memory_mb > 0 and (rss / 1e6) > memory_mb
+                    now_exceeding = any(
+                        (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)),
+                        (memory_mb > 0 and rss_mb > memory_mb),
                     )
                     if now_exceeding and not exceeding:
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "
                             f"{cpu_cores} CPU cores and {memory_mb} MB of RAM - "
                             f"current usage is {cpu_perc / 100:.01f} CPU cores and "
-                            f"{rss / 1E6:0.1f} MB of RAM"
+                            f"{rss_mb:0.1f} MB of RAM"
                         )
                     exceeding = now_exceeding
             except psutil.NoSuchProcess:
