@@ -56,7 +56,6 @@ async def launch(
     # Glyph only used when progress bar visible
     del glyph
     # Set the hub URL
-    print(f"SETTING HUB URL {hub}")
     HubAPI.url = hub
     # Set the default tracking path
     tracking = Path.cwd() if tracking is None else tracking
