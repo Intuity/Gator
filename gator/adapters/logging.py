@@ -30,15 +30,16 @@ class GatorHandler(logging.Handler):
     def __init__(self, ws_address: str | None = None):
         super().__init__()
         self._parent = Parent(ws_address)
-        self._do_log("INFO", "Log fowarding via GatorHandler")
+        self._do_log("INFO", "Log fowarding via GatorHandler", "root")
 
-    def _do_log(self, severity: str, message: str):
+    def _do_log(self, severity: str, message: str, hierarchy: str):
         self._parent.post(
             "log",
             timestamp=datetime.now().timestamp(),
+            hierarchy=hierarchy,
             severity=severity,
             message=message,
         )
 
     def emit(self, record: logging.LogRecord):
-        self._do_log(record.levelname, record.getMessage())
+        self._do_log(record.levelname, record.getMessage(), record.name)

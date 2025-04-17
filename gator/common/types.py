@@ -73,6 +73,7 @@ class LogEntry(Base):
 
     severity: LogSeverity = LogSeverity.INFO
     message: str = ""
+    hierarchy: str = ""
     timestamp: datetime = dataclasses.field(default_factory=datetime.now)
 
 

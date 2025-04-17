@@ -137,7 +137,7 @@ class Wrapper(BaseLayer):
                     log_fh.write(line)
                 clean = line.rstrip()
                 if len(clean) > 0:
-                    await self.logger.log(severity, clean)
+                    await self.logger.log(severity, clean, "stdio")
 
         t_stdout = asyncio.create_task(_monitor(stdout, LogSeverity.INFO))
         t_stderr = asyncio.create_task(_monitor(stderr, LogSeverity.ERROR))
