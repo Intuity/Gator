@@ -115,7 +115,7 @@ class Wrapper(BaseLayer):
         """
         self.extra_usage = (timestamp, cpu_perc, memory)
         await self.logger.debug(
-            f"Process reported extra usage - CPU: {cpu_perc:.01%}, Memory: {memory} MB"
+            f"Process reported extra usage - CPU: {cpu_perc:.01f}%, Memory: {memory:.01f} MB"
         )
         # Return success
         return {"result": "success"}
