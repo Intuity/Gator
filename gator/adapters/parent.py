@@ -100,11 +100,9 @@ class Parent:
         self._teardown_evt.set()
 
     def _teardown_at_exit(self):
-        print("TEARDOWN ON EXIT")
         self._teardown()
 
     def _teardown(self):
-        print("TOLD TO TEARDOWN")
         self._tx_q.put(TeardownMarker())
         if not self._teardown_evt.wait(timeout=10):
             print(
