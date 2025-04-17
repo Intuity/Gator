@@ -107,7 +107,7 @@ class Wrapper(BaseLayer):
         # Return success
         return {"result": "success"}
 
-    async def __handle_extra_usage(self, timestamp: int, cpu_perc: float, memory: float) -> UsageResponse:
+    async def __handle_extra_usage(self, timestamp: int, cpu_perc: float, memory: float, **_) -> UsageResponse:
         """
         Handle additional resource usage information being reported from a child.
 
