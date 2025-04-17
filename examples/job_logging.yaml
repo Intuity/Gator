@@ -8,4 +8,4 @@
     - examples/log_test.py
   resources:
     - !Cores [1]
-    - !Memory [10, MB]
+    - !Memory [30, MB]

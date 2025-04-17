@@ -14,6 +14,7 @@
 
 import atexit
 import json
+import logging
 import os
 import sys
 from queue import SimpleQueue
@@ -46,7 +47,7 @@ class Parent:
         self._teardown_evt = Event()
         self._ws_thread = Thread(target=self._manage_ws, daemon=True)
         self._ws_thread.start()
-        atexit.register(self._teardown)
+        atexit.register(self._teardown_at_exit)
 
     @staticmethod
     def get_parent_address() -> str | None:
@@ -63,6 +64,7 @@ class Parent:
         return self._rx_q.get()
 
     def _manage_ws(self):
+        idx = 0
         def _receiver(ws, rx_q: SimpleQueue[dict[str, str]]):
             try:
                 for packet in ws:
@@ -71,7 +73,12 @@ class Parent:
                 pass
         rx_thread = None
         try:
-            with connect(f"ws://{self._ws_address}") as ws:
+            with connect(
+                f"ws://{self._ws_address}",
+                logger=(logger := logging.getLogger("gator_ws")),
+            ) as ws:
+                # Disable log propagation to avoid recursive forwarding
+                logger.propagate = False
                 # Setup a receiving thread
                 rx_thread = Thread(target=_receiver, daemon=True, args=(ws, self._rx_q))
                 rx_thread.start()
@@ -82,7 +89,9 @@ class Parent:
                     if isinstance(packet, TeardownMarker):
                         break
                     # Otherwise log the message
+                    # print(f"WEBSOCKET SEND PACKET {idx}: {packet.get('payload', {}).get('message', '')}")
                     ws.send(json.dumps(packet))
+                    idx += 1
         except ConnectionClosed:
             pass
         # Wait for the receiver thread to end
@@ -90,7 +99,12 @@ class Parent:
         # Set the teardown event to signify a clean exit
         self._teardown_evt.set()
 
+    def _teardown_at_exit(self):
+        print("TEARDOWN ON EXIT")
+        self._teardown()
+
     def _teardown(self):
+        print("TOLD TO TEARDOWN")
         self._tx_q.put(TeardownMarker())
         if not self._teardown_evt.wait(timeout=10):
             print(
