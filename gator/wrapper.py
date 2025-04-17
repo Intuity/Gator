@@ -203,10 +203,10 @@ class Wrapper(BaseLayer):
                         )
                     )
                     # Check if exceeding the limits
-                    now_exceeding = any(
+                    now_exceeding = any((
                         (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)),
                         (memory_mb > 0 and rss_mb > memory_mb),
-                    )
+                    ))
                     if now_exceeding and not exceeding:
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "
