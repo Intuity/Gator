@@ -185,7 +185,7 @@ class Logger:
             # Tee to file if configured
             if self.__log_fh is not None:
                 date = datetime.now().strftime(r"%H:%M:%S")
-                self.__log_fh.write(f"[{date}] [{short_hier}][{severity.name:<7s}] {message}\n")
+                self.__log_fh.write(f"[{date}] {severity.name:<7s}  {short_hier}  {message}\n")
 
     async def debug(
         self,
