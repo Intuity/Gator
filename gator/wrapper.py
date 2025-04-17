@@ -190,7 +190,7 @@ class Wrapper(BaseLayer):
                         cpu_perc += ex_cpu_perc
                         rss_mb += ex_memory
                     await self.logger.debug(
-                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01f}%, Memory: {rss_mb} MB"
+                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01f}%, Memory: {rss_mb:.01f} MB"
                     )
                     # Push statistics to the database
                     await self.db.push_procstat(
@@ -211,7 +211,7 @@ class Wrapper(BaseLayer):
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "
                             f"{cpu_cores} CPU cores and {memory_mb} MB of RAM - "
-                            f"current usage is {cpu_perc / 100:.01f} CPU cores and "
+                            f"current usage is {cpu_perc:.01f}% CPU and "
                             f"{rss_mb:0.1f} MB of RAM"
                         )
                     exceeding = now_exceeding
