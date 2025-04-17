@@ -190,7 +190,7 @@ class Wrapper(BaseLayer):
                         cpu_perc += ex_cpu_perc
                         rss_mb += ex_memory
                     await self.logger.debug(
-                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01%}, Memory: {rss} MB"
+                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01f}%, Memory: {rss_mb} MB"
                     )
                     # Push statistics to the database
                     await self.db.push_procstat(
