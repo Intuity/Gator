@@ -116,7 +116,7 @@ class TestWrapper:
                 ("started", None),
                 ("cmd", "echo hi"),
                 ("cwd", tmp_path.as_posix()),
-                ("host", socket.gethostname()),
+                ("host", socket.getfqdn()),
                 ("req_cores", "2"),
                 ("req_memory", "1500.0"),
                 ("req_licenses", "A=1,B=3"),

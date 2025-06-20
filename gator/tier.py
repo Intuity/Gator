@@ -488,7 +488,7 @@ class Tier(BaseLayer):
                 child_dir = base_trk_dir
                 if is_jarr:
                     job_cp = deepcopy(job)
-                    job_cp.env["GATOR_ARRAY_INDEX"] = idx_jarr
+                    job_cp.env["GATOR_ARRAY_INDEX"] = str(idx_jarr)
                     child_id += f"_{idx_jarr}"
                     child_dir = base_trk_dir / str(idx_jarr)
                 else:
