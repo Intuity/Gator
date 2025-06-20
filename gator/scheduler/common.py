@@ -103,11 +103,13 @@ class BaseScheduler:
         full_opts = self.options.copy()
         full_opts.update(options or {})
 
-        return list(itertools.chain(
-            self.base_command,
-            ["--id", child.ident, "--tracking", child.tracking.as_posix()],
-            *(["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()),
-        ))
+        return list(
+            itertools.chain(
+                self.base_command,
+                ["--id", child.ident, "--tracking", child.tracking.as_posix()],
+                *(["--sched-arg", f"{k}={v}"] for k, v in full_opts.items()),
+            )
+        )
 
     @abc.abstractmethod
     async def launch(self, tasks: List[Child]) -> None:

@@ -25,23 +25,23 @@ import aiohttp
 
 from ..common.child import Child
 from ..common.logger import Logger, MessageLimits
-from .common import BaseScheduler, SchedulerError
 from ..specs.jobs import Job
+from .common import BaseScheduler, SchedulerError
 
 
 class SlurmErrorCodes(IntEnum):
     """Enumerates common Slurm error codes"""
+
     INVALID_TRES_SPEC: int = 2115
     """Invalid Trackable RESource (TRES) specification"""
     SLURMDB_CONN_FAIL: int = 7000
     """Unable to connect to database (slurmdb connection failure)"""
 
 
-
 class SlurmScheduler(BaseScheduler):
     """Executes tasks via a Slurm cluster"""
 
-    RETRY_ON_ERROR : ClassVar[set[int]] = {
+    RETRY_ON_ERROR: ClassVar[set[int]] = {
         SlurmErrorCodes.SLURMDB_CONN_FAIL,
     }
 
@@ -56,15 +56,15 @@ class SlurmScheduler(BaseScheduler):
         limits: Optional[MessageLimits] = None,
     ) -> None:
         super().__init__(tracking, parent, interval, quiet, logger, options, limits)
-        self._username : str = getpass.getuser()
-        self._api_root : str = self.get_option("api_root", "http://127.0.0.1:6820/")
-        self._api_version : str | None = None
-        self._token : str | None = None
-        self._expiry : datetime | None = None
-        self._interval : int = int(self.get_option("jwt_interval", 60))
-        self._queue : str = self.get_option("queue", "generalq")
-        self._job_ids : list[int] = []
-        self._stdout_dirx : Path = self.tracking / "slurm"
+        self._username: str = getpass.getuser()
+        self._api_root: str = self.get_option("api_root", "http://127.0.0.1:6820/")
+        self._api_version: str | None = None
+        self._token: str | None = None
+        self._expiry: datetime | None = None
+        self._interval: int = int(self.get_option("jwt_interval", 60))
+        self._queue: str = self.get_option("queue", "generalq")
+        self._job_ids: list[int] = []
+        self._stdout_dirx: Path = self.tracking / "slurm"
         self._stdout_dirx.mkdir(exist_ok=True, parents=True)
 
     @property
@@ -102,7 +102,7 @@ class SlurmScheduler(BaseScheduler):
             headers={
                 "X-SLURM-USER-NAME": self._username,
                 "X-SLURM-USER-TOKEN": self.token,
-            }
+            },
         )
 
     async def _retry_post(
@@ -133,9 +133,7 @@ class SlurmScheduler(BaseScheduler):
                     # If no known error, return the data
                     return data
         else:
-            raise SchedulerError(
-                f"Post request to {route} failed {retries} times: {data}"
-            )
+            raise SchedulerError(f"Post request to {route} failed {retries} times: {data}")
 
     async def _retry_get(
         self,
@@ -164,9 +162,7 @@ class SlurmScheduler(BaseScheduler):
                     # If no known error, return the data
                     return data
         else:
-            raise SchedulerError(
-                f"Post request to {route} failed {retries} times: {data}"
-            )
+            raise SchedulerError(f"Post request to {route} failed {retries} times: {data}")
 
     async def launch(self, tasks: List[Child]) -> None:
         # Figure out the active API version of Slurm REST interface
@@ -184,7 +180,7 @@ class SlurmScheduler(BaseScheduler):
         await self.logger.debug(f"Slurm REST latency {ping}")
 
         # For each task...
-        for idx, task in enumerate(tasks):
+        for task in tasks:
             # Figure out the requested resources
             tres_per_job = []
             if isinstance(task.spec, Job):
@@ -197,31 +193,37 @@ class SlurmScheduler(BaseScheduler):
 
             # Submit the payload to Slurm
             stdout = self._stdout_dirx / f"{task.ident}.log"
-            data = await self._retry_post("job/submit", {
-                "job": {
-                    "name": task.ident,
-                    "script": "\n".join([
-                        "#!/bin/bash",
-                        " ".join(self.create_command(task)),
-                        "",
-                    ]),
-                    "tres_per_job": ",".join(tres_per_job),
-                    "partition": self._queue,
-                    "current_working_directory": Path.cwd().as_posix(),
-                    "user_id": str(os.getuid()),
-                    "group_id": str(os.getgid()),
-                    "environment": [f"{k}={v}" for k, v in os.environ.items()],
-                    "standard_output": stdout.as_posix(),
-                    "standard_error": stdout.as_posix(),
-                }
-            })
+            data = await self._retry_post(
+                "job/submit",
+                {
+                    "job": {
+                        "name": task.ident,
+                        "script": "\n".join(
+                            [
+                                "#!/bin/bash",
+                                " ".join(self.create_command(task)),
+                                "",
+                            ]
+                        ),
+                        "tres_per_job": ",".join(tres_per_job),
+                        "partition": self._queue,
+                        "current_working_directory": Path.cwd().as_posix(),
+                        "user_id": str(os.getuid()),
+                        "group_id": str(os.getgid()),
+                        "environment": [f"{k}={v}" for k, v in os.environ.items()],
+                        "standard_output": stdout.as_posix(),
+                        "standard_error": stdout.as_posix(),
+                    }
+                },
+            )
 
             # Check for an invalid request
             err_codes = {
-                x.get("error_number", 0) for x in data.get("errors", []) if
-                (x.get("error_number", 0) != 0)
+                x.get("error_number", 0)
+                for x in data.get("errors", [])
+                if (x.get("error_number", 0) != 0)
             }
-            if err_codes.intersection({ SlurmErrorCodes.INVALID_TRES_SPEC }):
+            if err_codes.intersection({SlurmErrorCodes.INVALID_TRES_SPEC}):
                 raise SchedulerError(
                     f"Gator generated an unsupported resource request to Slurm "
                     f"({data['errors'][0]['error']}): {tres_per_job}"
@@ -229,8 +231,8 @@ class SlurmScheduler(BaseScheduler):
             elif len(err_codes) > 0:
                 raise SchedulerError(
                     "Gator received unexpected error(s) when submitting a job "
-                    "to Slurm: " +
-                    ", ".join(f"{x['error']} ({x['error_number']})" for x in data["errors"])
+                    "to Slurm: "
+                    + ", ".join(f"{x['error']} ({x['error_number']})" for x in data["errors"])
                 )
 
             # Track the job ID

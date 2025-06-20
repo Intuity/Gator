@@ -16,7 +16,6 @@ import asyncio
 import atexit
 import dataclasses
 import io
-import textwrap
 import typing
 from collections import defaultdict
 from datetime import datetime
@@ -165,11 +164,16 @@ class Logger:
         # Generate a truncated version of the hierarchy
         short_hier = f"{hierarchy:{Logger.HIER_WIDTH}s}"
         if len(short_hier) > Logger.HIER_WIDTH:
-            short_hier = short_hier[:Logger.HIER_BALANCE] + "..." + short_hier[-Logger.HIER_BALANCE:]
+            short_hier = "...".join(
+                short_hier[: Logger.HIER_BALANCE],
+                short_hier[-Logger.HIER_BALANCE :],
+            )
         # If a console is attached, log locally
         if self.__console and severity >= self.verbosity:
             prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
-            self.__console.log(f"{prefix}{severity.name:<7s}{suffix}  {escape(short_hier)}  {escape(message)}")
+            self.__console.log(
+                f"{prefix}{severity.name:<7s}{suffix}  {escape(short_hier)}  " f"{escape(message)}"
+            )
         # Normally don't capture forwarded messages
         if not forwarded or self.capture_all:
             # Record to the database

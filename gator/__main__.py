@@ -55,7 +55,7 @@ from .specs.common import SpecError
 @click.option(
     "--scheduler",
     default="local",
-    type=click.Choice(("local","slurm"), case_sensitive=False),
+    type=click.Choice(("local", "slurm"), case_sensitive=False),
     help="Select the scheduler to use for launching jobs",
     show_default=True,
 )

@@ -76,7 +76,7 @@ async def launch(
     # Log the machine's details
     uname = platform.uname()
     await logger.info(
-        f"Running on {socket.getfqdn()} as PID {os.getpid()} under {os.getcwd()} "
+        f"Running on {socket.getfqdn()} as PID {os.getpid()} under {Path.cwd()} "
         f"(architecture: {uname.processor}, OS: {uname.system} {uname.release})"
     )
     # Work out where the spec is coming from

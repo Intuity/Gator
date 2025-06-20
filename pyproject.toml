@@ -30,6 +30,9 @@ Werkzeug = "2.3.7"
 piccolo = { extras = ["orjson", "postgres", "uvloop"], version = "^0.111.1" }
 aiohttp = "^3.11.13"
 
+[tool.poetry.group.dev]
+optional = true
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3.1"
 pytest-cov = "^4.0.0"
@@ -41,6 +44,7 @@ pytest-asyncio = "^0.21.0"
 ruff = "^0.6.8"
 mkdocstrings = { extras = ["python"], version = "^0.28.2" }
 griffe = "^1.6.0"
+pre-commit = "^4.2.0"
 
 [tool.poetry.scripts]
 gator = "gator.__main__:main"

@@ -20,8 +20,8 @@ import sys
 from queue import SimpleQueue
 from threading import Event, Thread
 
-from websockets.sync.client import connect
 from websockets.exceptions import ConnectionClosed
+from websockets.sync.client import connect
 
 
 class TeardownMarker:
@@ -54,23 +54,27 @@ class Parent:
         return os.environ.get("GATOR_PARENT", None)
 
     def post(self, action, **payload):
-        self._tx_q.put({
-            "action": action,
-            "posted": True,
-            "payload": payload,
-        })
+        self._tx_q.put(
+            {
+                "action": action,
+                "posted": True,
+                "payload": payload,
+            }
+        )
 
     def receive(self) -> dict[str, str]:
         return self._rx_q.get()
 
     def _manage_ws(self):
         idx = 0
+
         def _receiver(ws, rx_q: SimpleQueue[dict[str, str]]):
             try:
                 for packet in ws:
                     rx_q.put(json.loads(packet))
             except ConnectionClosed:
                 pass
+
         rx_thread = None
         try:
             with connect(
@@ -89,7 +93,6 @@ class Parent:
                     if isinstance(packet, TeardownMarker):
                         break
                     # Otherwise log the message
-                    # print(f"WEBSOCKET SEND PACKET {idx}: {packet.get('payload', {}).get('message', '')}")
                     ws.send(json.dumps(packet))
                     idx += 1
         except ConnectionClosed:

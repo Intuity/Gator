@@ -18,7 +18,7 @@ import yaml
 
 from .common import Dumper, Loader, SpecBase
 from .jobs import Job, JobArray, JobGroup
-from .resource import Cores, License, Memory, Feature
+from .resource import Cores, Feature, License, Memory
 
 assert all((Job, JobArray, JobGroup, Cores, License, Memory, Feature))
 

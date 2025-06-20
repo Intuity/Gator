@@ -3,7 +3,6 @@ from time import sleep
 
 from gator.adapters.logging import GatorHandler
 
-
 if __name__ == "__main__":
     logging.basicConfig(
         level="NOTSET",

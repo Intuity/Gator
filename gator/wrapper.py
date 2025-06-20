@@ -107,7 +107,9 @@ class Wrapper(BaseLayer):
         # Return success
         return {"result": "success"}
 
-    async def __handle_extra_usage(self, timestamp: int, cpu_perc: float, memory: float, **_) -> UsageResponse:
+    async def __handle_extra_usage(
+        self, timestamp: int, cpu_perc: float, memory: float, **_
+    ) -> UsageResponse:
         """
         Handle additional resource usage information being reported from a child.
 
@@ -190,7 +192,8 @@ class Wrapper(BaseLayer):
                         cpu_perc += ex_cpu_perc
                         rss_mb += ex_memory
                     await self.logger.debug(
-                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01f}%, Memory: {rss_mb:.01f} MB"
+                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01f}%, "
+                        f"Memory: {rss_mb:.01f} MB"
                     )
                     # Push statistics to the database
                     await self.db.push_procstat(
@@ -203,10 +206,12 @@ class Wrapper(BaseLayer):
                         )
                     )
                     # Check if exceeding the limits
-                    now_exceeding = any((
-                        (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)),
-                        (memory_mb > 0 and rss_mb > memory_mb),
-                    ))
+                    now_exceeding = any(
+                        (
+                            (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)),
+                            (memory_mb > 0 and rss_mb > memory_mb),
+                        )
+                    )
                     if now_exceeding and not exceeding:
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "

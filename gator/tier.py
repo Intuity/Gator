@@ -15,7 +15,7 @@
 import asyncio
 import os
 from collections import defaultdict
-from copy import copy, deepcopy
+from copy import deepcopy
 from datetime import datetime
 from typing import Dict, List, Optional, Type
 

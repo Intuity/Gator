@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 
 from .common import SpecBase, SpecError
 
-
 ARCH_ALIASES = {
     # x86
     "x86": "x86_64",
@@ -39,6 +38,7 @@ class Cores(SpecBase):
     Specifies the count and optionally the architecture of the CPU cores to
     execute on
     """
+
     yaml_tag = "!Cores"
 
     count: int
@@ -56,13 +56,16 @@ class Cores(SpecBase):
                 raise SpecError(self, "arch", "Architecture must be a string")
             self.arch = self.arch.lower().strip()
             if self.arch not in ARCH_ALIASES:
-                raise SpecError(self, "arch", f"Architecture must be one of {', '.join(ARCH_ALIASES)}")
+                raise SpecError(
+                    self, "arch", f"Architecture must be one of {', '.join(ARCH_ALIASES)}"
+                )
             self.arch = ARCH_ALIASES[self.arch]
 
 
 @dataclass
 class Memory(SpecBase):
     """Specifies the quantity of memory (RAM) required for the job to execute"""
+
     yaml_tag = "!Memory"
 
     size: int
@@ -92,6 +95,7 @@ class License(SpecBase):
     Specifies a floating license required for a job to run, if the license is
     node-locked then a !Feature should be used instead.
     """
+
     yaml_tag = "!License"
 
     name: str
@@ -114,6 +118,7 @@ class Feature(SpecBase):
     Specifies a feature of a machine required for a job to run, this can be used
     for describing node-locked licenses or accelerators.
     """
+
     yaml_tag = "!Feature"
 
     name: str

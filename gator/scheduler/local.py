@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import asyncio
-from typing import Dict, List, Optional
 from pathlib import Path
+from typing import Dict, List, Optional
 
 import websockets.exceptions
 

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase, SpecError
-from .resource import Cores, License, Memory, Feature
+from .resource import Cores, Feature, License, Memory
 
 
 @dataclass
