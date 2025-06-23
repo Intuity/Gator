@@ -28,7 +28,6 @@ quart = "^0.18.4"
 # This is a secondary dependency but needs to be specified. https://stackoverflow.com/a/77214086
 Werkzeug = "2.3.7"
 piccolo = { extras = ["orjson", "postgres", "uvloop"], version = "^0.111.1" }
-aiohttp = "^3.11.13"
 
 [tool.poetry.group.dev]
 optional = true
