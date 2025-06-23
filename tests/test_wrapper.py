@@ -83,7 +83,6 @@ class TestWrapper:
         assert not wrp.quiet
         assert not wrp.all_msg
         assert wrp.heartbeat_cb is None
-        assert not wrp.plotting
         assert not wrp.summary
         assert wrp.proc is None
         assert not wrp.complete
@@ -258,35 +257,6 @@ class TestWrapper:
         assert wrp.complete
         assert wrp.terminated
         assert wrp.code == 255
-
-    async def test_wrapper_plotting(self, tmp_path) -> None:
-        """Check a plot is drawn if requested"""
-        # Mock datetime to always return one value
-        self.mk_wrp_dt.now.side_effect = None
-        self.mk_wrp_dt.now.return_value = datetime.fromtimestamp(12345)
-        # Define a job specification
-        job = Job("test", cwd=tmp_path.as_posix(), command="echo", args=["hi"])
-        # Mock procstats returned by DB
-        self.mk_db.get_procstat.return_value = [
-            ProcStat(db_uid=0, nproc=1, cpu=0.1, mem=11 * (1024**3))
-        ] * 5
-        # Create a wrapper
-        trk_dir = tmp_path / "tracking"
-        plt_path = tmp_path / "plot.png"
-        wrp = Wrapper(
-            spec=job,
-            client=self.client,
-            tracking=trk_dir,
-            logger=self.logger,
-            interval=1,
-            plotting=plt_path,
-        )
-        # Check no plot exists
-        assert not plt_path.exists()
-        # Run the job
-        await wrp.launch()
-        # Check plot has been written out
-        assert plt_path.exists()
 
     async def test_wrapper_summary(self, tmp_path, mocker) -> None:
         """Check that a process summary table is produced"""

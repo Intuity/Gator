@@ -17,12 +17,10 @@ import os
 import shlex
 import socket
 import subprocess
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 import expandvars
-import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
@@ -34,15 +32,13 @@ from .common.types import Attribute, JobResult, LogSeverity, ProcStat
 class Wrapper(BaseLayer):
     """Wraps a single process and tracks logging & process statistics"""
 
-    def __init__(self, *args, plotting: bool = False, summary: bool = False, **kwargs) -> None:
+    def __init__(self, *args, summary: bool = False, **kwargs) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
-        :param plotting: Plot the resource usage once the job completes.
         :param summary:  Display a tabulated summary of resource usage
         """
         super().__init__(*args, **kwargs)
-        self.plotting = plotting
         self.summary = summary
         self.proc = None
         self.extra_usage = None
@@ -330,21 +326,6 @@ class Wrapper(BaseLayer):
         pid = await self.db.get_attribute(name="pid")
         started_at = datetime.fromtimestamp(self.started)
         stopped_at = datetime.fromtimestamp(self.stopped)
-        # If plotting enabled, draw the plot
-        if self.plotting:
-            dates = []
-            series = defaultdict(list)
-            for entry in data:
-                dates.append(entry.timestamp)
-                series["Processes"].append(entry.nproc)
-                series["CPU %"].append(entry.cpu)
-                series["Memory (MB)"].append(entry.mem / (1024**3))
-                series["VMemory (MB)"].append(entry.vmem / (1024**3))
-            fig = pg.Figure()
-            for key, vals in series.items():
-                fig.add_trace(pg.Scatter(x=dates, y=vals, mode="lines", name=key))
-            fig.update_layout(title=f"Resource Usage for {pid[0].value}", xaxis_title="Time")
-            fig.write_image(self.plotting.as_posix(), format="png")
         # Summarise process usage
         if self.summary:
             max_nproc = max(x.nproc for x in data) if data else 0

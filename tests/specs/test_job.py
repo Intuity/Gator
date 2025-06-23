@@ -12,18 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import platform
+
 import pytest
 
 from gator.specs import Spec
 from gator.specs.common import SpecError
 from gator.specs.jobs import Job
-from gator.specs.resource import Cores, License, Memory
+from gator.specs.resource import ARCH_ALIASES, Cores, Feature, License, Memory
 
 
 def test_spec_job_positional():
     """A job should preserve all positional arguments provided to it"""
     job = Job(
         "id_123",
+        True,
         {"key_a": 2345, "key_b": False},
         "/path/to/working/dir",
         "echo",
@@ -96,13 +99,16 @@ def test_spec_job_parse(tmp_path):
         "  ident: id_123\n"
         "  env:\n"
         "    key_a: 2345\n"
-        "    key_b: False\n"
+        "    key_b: hello\n"
         "  cwd: /path/to/working/dir\n"
+        "  extend_env: true\n"
         "  command: echo\n"
         "  args:\n"
         "    - String to print\n"
         "  resources:\n"
-        "    - !Cores [3]\n"
+        "    - !Cores\n"
+        "      arch: x86\n"
+        "      count: 3\n"
         "    - !License [A, 2]\n"
         "    - !Memory [1, GB]\n"
         "  on_done:\n"
@@ -113,13 +119,15 @@ def test_spec_job_parse(tmp_path):
         "    - job_2\n"
     )
     job = Spec.parse(spec_file)
+    job.check()
     assert isinstance(job, Job)
     assert job.ident == "id_123"
-    assert job.env == {"key_a": 2345, "key_b": False}
+    assert job.env == {"key_a": 2345, "key_b": "hello"}
     assert job.cwd == "/path/to/working/dir"
     assert job.command == "echo"
     assert job.args == ["String to print"]
     assert isinstance(job.resources[0], Cores)
+    assert job.resources[0].arch == "x86_64"
     assert job.resources[0].count == 3
     assert job.requested_cores == 3
     assert isinstance(job.resources[1], License)
@@ -204,6 +212,7 @@ def test_spec_job_dump():
         "env:\n"
         "  key_a: 2345\n"
         "  key_b: false\n"
+        "extend_env: true\n"
         "ident: id_123\n"
         "on_done:\n"
         "- job_0\n"
@@ -213,6 +222,7 @@ def test_spec_job_dump():
         "- job_2\n"
         "resources:\n"
         "- !Cores\n"
+        "  arch: " + ARCH_ALIASES[platform.uname().machine] + "\n"
         "  count: 3\n"
         "- !License\n"
         "  count: 2\n"
@@ -284,7 +294,7 @@ def test_spec_job_bad_fields():
     # Check bad resources (non-YAML tags)
     with pytest.raises(SpecError) as exc:
         Job(resources=["hello", 2]).check()
-    assert str(exc.value) == "Resources must be !Cores, !Memory, or !License"
+    assert str(exc.value) == "Resources must be !Cores, !Memory, !License, or !Feature"
     assert exc.value.field == "resources"
     # Check duplicate entries for !Cores
     with pytest.raises(SpecError) as exc:
@@ -300,6 +310,11 @@ def test_spec_job_bad_fields():
     with pytest.raises(SpecError) as exc:
         Job(resources=[Cores(2), License("A"), License("B"), License("B")]).check()
     assert str(exc.value) == "More than one entry for license 'B'"
+    assert exc.value.field == "resources"
+    # Check duplicate entries of a particular feature
+    with pytest.raises(SpecError) as exc:
+        Job(resources=[Cores(2), Feature("A"), Feature("B"), Feature("B")]).check()
+    assert str(exc.value) == "More than one entry for feature 'B'"
     assert exc.value.field == "resources"
     # Check on done/fail/pass
     for field in ("on_done", "on_fail", "on_pass"):

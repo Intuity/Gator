@@ -94,6 +94,8 @@ class Job(SpecBase):
                 "resources",
                 "Resources must be !Cores, !Memory, !License, or !Feature",
             )
+        for resource in self.resources:
+            resource.check()
         type_count = Counter(type(x) for x in self.resources)
         if type_count[Cores] > 1:
             raise SpecError(self, "resources", "More than one !Cores resource request")

@@ -68,7 +68,7 @@ class Memory(SpecBase):
 
     yaml_tag = "!Memory"
 
-    size: int
+    size: int | float
     unit: str = "MB"
 
     @property
@@ -77,8 +77,8 @@ class Memory(SpecBase):
         return self.size * mapping
 
     def check(self) -> None:
-        if not isinstance(self.size, int):
-            raise SpecError(self, "size", "Size must be an integer")
+        if not isinstance(self.size, (int, float)):
+            raise SpecError(self, "size", "Size must be an int or float")
         if self.size < 0:
             # NOTE: Zero is valid - if a job doesn't consume much resource then
             #       it may be desirable to run it without blocking others
