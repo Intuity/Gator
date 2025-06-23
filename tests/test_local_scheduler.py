@@ -40,7 +40,13 @@ class TestLocalScheduler:
     async def test_local_scheduling(self, mocker, tmp_path):
         """Launch a number of tasks"""
         # Create an scheduler
-        sched = LocalScheduler(parent="test:1234", interval=7, quiet=False, logger=self.logger)
+        sched = LocalScheduler(
+            tracking=tmp_path / "tracking",
+            parent="test:1234",
+            interval=7,
+            quiet=False,
+            logger=self.logger,
+        )
         assert sched.parent == "test:1234"
         assert sched.interval == 7
         assert sched.quiet is False

@@ -1,0 +1,11 @@
+!Job
+  ident: test_job
+  env:
+    test_key_a: hey
+    test_key_b: you
+  command: python3
+  args:
+    - examples/log_test.py
+  resources:
+    - !Cores [1]
+    - !Memory [30, MB]

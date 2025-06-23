@@ -58,7 +58,7 @@ class WebsocketServer(WebsocketRouter):
             # Attempt to get the hostname (fully qualified)
             hostname = socket.getfqdn()
             if not hostname:
-                raise Exception("Blank hostname returned from socket.gethostname()")
+                raise Exception("Blank hostname returned from socket.getfqdn()")
             # Get all known IP addresses for this host (note this can raise an
             # exception if the host is unresolvable)
             _, _, ipaddrs = socket.gethostbyname_ex(hostname)
@@ -83,6 +83,7 @@ class WebsocketServer(WebsocketRouter):
         timestamp: Optional[str] = None,
         severity: str = "INFO",
         message: str = "N/A",
+        hierarchy: str = "root",
         **_kwargs,
     ) -> None:
         """
@@ -97,7 +98,13 @@ class WebsocketServer(WebsocketRouter):
             timestamp = datetime.fromtimestamp(int(timestamp))
         severity = getattr(LogSeverity, severity.strip().upper(), LogSeverity.INFO)
         # Log the message
-        await self.logger.log(severity, message.strip(), timestamp=timestamp, forwarded=True)
+        await self.logger.log(
+            severity,
+            message.strip(),
+            hierarchy,
+            timestamp=timestamp,
+            forwarded=True,
+        )
 
     # ==========================================================================
     # Server

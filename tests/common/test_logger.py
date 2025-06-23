@@ -49,6 +49,9 @@ def logger_linked(logger_local) -> Logger:
 
 
 class TestLogger:
+    # Root hierarchy string
+    ROOT_STR = f"{'root':{Logger.HIER_WIDTH}s}"
+
     @pytest.mark.asyncio
     async def test_unlinked(self, logger):
         """Local logging goes to the console"""
@@ -75,32 +78,36 @@ class TestLogger:
         # Raw
         await logger.log(LogSeverity.INFO, "Testing info")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger._Logger__console.log.assert_called_with(
+            "[bold]INFO   [/bold]  " + TestLogger.ROOT_STR + "  Testing info"
+        )
         logger._Logger__console.log.reset_mock()
         # Debug
         await logger.debug("Testing debug")
         assert not logger.ws_cli.log.called
         logger._Logger__console.log.assert_called_with(
-            "[bold cyan][DEBUG  ][/bold cyan] Testing debug"
+            "[bold cyan]DEBUG  [/bold cyan]  " + TestLogger.ROOT_STR + "  Testing debug"
         )
         logger._Logger__console.log.reset_mock()
         # Info
         await logger.info("Testing info")
         assert not logger.ws_cli.log.called
-        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger._Logger__console.log.assert_called_with(
+            "[bold]INFO   [/bold]  " + TestLogger.ROOT_STR + "  Testing info"
+        )
         logger._Logger__console.log.reset_mock()
         # Warning
         await logger.warning("Testing warning")
         assert not logger.ws_cli.log.called
         logger._Logger__console.log.assert_called_with(
-            "[bold yellow][WARNING][/bold yellow] Testing warning"
+            "[bold yellow]WARNING[/bold yellow]  " + TestLogger.ROOT_STR + "  Testing warning"
         )
         logger._Logger__console.log.reset_mock()
         # Error
         await logger.error("Testing error")
         assert not logger.ws_cli.log.called
         logger._Logger__console.log.assert_called_with(
-            "[bold red][ERROR  ][/bold red] Testing error"
+            "[bold red]ERROR  [/bold red]  " + TestLogger.ROOT_STR + "  Testing error"
         )
         logger._Logger__console.log.reset_mock()
 
@@ -112,42 +119,48 @@ class TestLogger:
         # Raw
         await logger.log(LogSeverity.INFO, "Testing info")
         logger.ws_cli.log.assert_called_with(
-            timestamp=1234, severity="INFO", message="Testing info", posted=True
+            timestamp=1234, hierarchy="root", severity="INFO", message="Testing info", posted=True
         )
-        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger._Logger__console.log.assert_called_with(
+            "[bold]INFO   [/bold]  " + TestLogger.ROOT_STR + "  Testing info"
+        )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Debug
         await logger.debug("Testing debug")
         logger.ws_cli.log.assert_called_with(
             timestamp=1234,
+            hierarchy="root",
             severity="DEBUG",
             message="Testing debug",
             posted=True,
         )
         logger._Logger__console.log.assert_called_with(
-            "[bold cyan][DEBUG  ][/bold cyan] Testing debug"
+            "[bold cyan]DEBUG  [/bold cyan]  " + TestLogger.ROOT_STR + "  Testing debug"
         )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Info
         await logger.info("Testing info")
         logger.ws_cli.log.assert_called_with(
-            timestamp=1234, severity="INFO", message="Testing info", posted=True
+            timestamp=1234, hierarchy="root", severity="INFO", message="Testing info", posted=True
         )
-        logger._Logger__console.log.assert_called_with("[bold][INFO   ][/bold] Testing info")
+        logger._Logger__console.log.assert_called_with(
+            "[bold]INFO   [/bold]  " + TestLogger.ROOT_STR + "  Testing info"
+        )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
         # Warning
         await logger.warning("Testing warning")
         logger.ws_cli.log.assert_called_with(
             timestamp=1234,
+            hierarchy="root",
             severity="WARNING",
             message="Testing warning",
             posted=True,
         )
         logger._Logger__console.log.assert_called_with(
-            "[bold yellow][WARNING][/bold yellow] Testing warning"
+            "[bold yellow]WARNING[/bold yellow]  " + TestLogger.ROOT_STR + "  Testing warning"
         )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
@@ -155,12 +168,13 @@ class TestLogger:
         await logger.error("Testing error")
         logger.ws_cli.log.assert_called_with(
             timestamp=1234,
+            hierarchy="root",
             severity="ERROR",
             message="Testing error",
             posted=True,
         )
         logger._Logger__console.log.assert_called_with(
-            "[bold red][ERROR  ][/bold red] Testing error"
+            "[bold red]ERROR  [/bold red]  " + TestLogger.ROOT_STR + "  Testing error"
         )
         logger.ws_cli.log.reset_mock()
         logger._Logger__console.log.reset_mock()
@@ -177,6 +191,7 @@ class TestLogger:
         runner.invoke(gator.common.logger.logger, ["This is a test"])
         ws_cli.log.assert_called_with(
             timestamp=1234,
+            hierarchy="root",
             severity="INFO",
             message="This is a test",
             posted=True,
@@ -189,6 +204,7 @@ class TestLogger:
         )
         ws_cli.log.assert_called_with(
             timestamp=1234,
+            hierarchy="root",
             severity="DEBUG",
             message="This is a debug test",
             posted=True,
@@ -201,6 +217,7 @@ class TestLogger:
         )
         ws_cli.log.assert_called_with(
             timestamp=1234,
+            hierarchy="root",
             severity="INFO",
             message="This is an info test",
             posted=True,
@@ -213,6 +230,7 @@ class TestLogger:
         )
         ws_cli.log.assert_called_with(
             timestamp=1234,
+            hierarchy="root",
             severity="WARNING",
             message="This is a warning test",
             posted=True,
@@ -225,6 +243,7 @@ class TestLogger:
         )
         ws_cli.log.assert_called_with(
             timestamp=1234,
+            hierarchy="root",
             severity="ERROR",
             message="This is an error test",
             posted=True,

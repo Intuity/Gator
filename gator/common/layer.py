@@ -79,6 +79,10 @@ class MetricResponseError(TypedDict):
 MetricResponse = Union[MetricResponseSuccess, MetricResponseError]
 
 
+class UsageResponse(TypedDict):
+    result: Literal["success"]
+
+
 class BaseDatabase(Database):
     async def push_metric(self, metric: Metric):
         pass
@@ -308,7 +312,7 @@ class BaseLayer:
             self.path = result["path"]
         # Otherwise, register with the parent
         else:
-            self.__hub_uid = await HubAPI.register(
+            self.__hub_uid, hub_url = await HubAPI.register(
                 ident=self.ident,
                 url=server_address,
                 layer=type(self).__name__.lower(),
@@ -317,7 +321,7 @@ class BaseLayer:
             if self.__hub_uid is not None:
                 self.uidx = self.root = int(self.__hub_uid)
                 self.path = []
-                await self.logger.info(f"Registered with hub with ID {self.__hub_uid}")
+                await self.logger.info(f"Registered with hub with ID {self.__hub_uid}: {hub_url}")
             else:
                 self.uidx = self.root = 0
                 self.path = []
@@ -443,6 +447,7 @@ class BaseLayer:
                 uid=x.db_uid,
                 severity=int(x.severity),
                 message=x.message,
+                hierarchy=x.hierarchy,
                 timestamp=int(x.timestamp.timestamp()),
             )
             for x in msgs

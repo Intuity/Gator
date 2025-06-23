@@ -17,16 +17,14 @@ import os
 import shlex
 import socket
 import subprocess
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 import expandvars
-import plotly.graph_objects as pg
 import psutil
 from tabulate import tabulate
 
-from .common.layer import BaseLayer, MetricResponse
+from .common.layer import BaseLayer, MetricResponse, UsageResponse
 from .common.summary import Summary
 from .common.types import Attribute, JobResult, LogSeverity, ProcStat
 
@@ -34,17 +32,16 @@ from .common.types import Attribute, JobResult, LogSeverity, ProcStat
 class Wrapper(BaseLayer):
     """Wraps a single process and tracks logging & process statistics"""
 
-    def __init__(self, *args, plotting: bool = False, summary: bool = False, **kwargs) -> None:
+    def __init__(self, *args, summary: bool = False, **kwargs) -> None:
         """
         Initialise the wrapper, launch it and monitor it until completion.
 
-        :param plotting: Plot the resource usage once the job completes.
         :param summary:  Display a tabulated summary of resource usage
         """
         super().__init__(*args, **kwargs)
-        self.plotting = plotting
         self.summary = summary
         self.proc = None
+        self.extra_usage = None
         # Capture forwarded messages from the wrapped job
         if self.logger:
             self.logger.capture_all = True
@@ -53,6 +50,7 @@ class Wrapper(BaseLayer):
         await self.setup(*args, **kwargs)
         # Register endpoint for metrics
         self.server.add_route("metric", self.__handle_metric)
+        self.server.add_route("extra_usage", self.__handle_extra_usage)
         # Register additional data types
         await self.db.register(Attribute)
         await self.db.register(ProcStat)
@@ -105,6 +103,21 @@ class Wrapper(BaseLayer):
         # Return success
         return {"result": "success"}
 
+    async def __handle_extra_usage(
+        self, timestamp: int, cpu_perc: float, memory: float, **_
+    ) -> UsageResponse:
+        """
+        Handle additional resource usage information being reported from a child.
+
+        Example: { "timestamp": 12345678, "cpu_perc": 0.4, "memory": 1234.2 }
+        """
+        self.extra_usage = (timestamp, cpu_perc, memory)
+        await self.logger.debug(
+            f"Process reported extra usage - CPU: {cpu_perc:.01f}%, Memory: {memory:.01f} MB"
+        )
+        # Return success
+        return {"result": "success"}
+
     async def __monitor_stdio(
         self,
         proc: asyncio.subprocess.Process,
@@ -122,7 +135,7 @@ class Wrapper(BaseLayer):
                     log_fh.write(line)
                 clean = line.rstrip()
                 if len(clean) > 0:
-                    await self.logger.log(severity, clean)
+                    await self.logger.log(severity, clean, "stdio")
 
         t_stdout = asyncio.create_task(_monitor(stdout, LogSeverity.INFO))
         t_stderr = asyncio.create_task(_monitor(stderr, LogSeverity.ERROR))
@@ -149,7 +162,6 @@ class Wrapper(BaseLayer):
             try:
                 # Capture statistics
                 with ps.oneshot():
-                    await self.logger.debug(f"Capturing statistics for {proc.pid}")
                     nproc = 1
                     cpu_perc = ps.cpu_percent()
                     mem_stat = ps.memory_info()
@@ -167,26 +179,41 @@ class Wrapper(BaseLayer):
                         vms += c_mem_stat.vms
                         # if io_count is not None:
                         #     io_count += ps.io_counters() if hasattr(ps, "io_counters") else None
+                    # Convert RSS and VMS into MB
+                    rss_mb = rss / (1024 * 1024)
+                    vms_mb = vms / (1024 * 1024)
+                    # Take account of 'extra' usage reported by the process
+                    if self.extra_usage is not None:
+                        _ts, ex_cpu_perc, ex_memory = self.extra_usage
+                        cpu_perc += ex_cpu_perc
+                        rss_mb += ex_memory
+                    await self.logger.debug(
+                        f"Resource usage of {proc.pid} - CPU: {cpu_perc:.01f}%, "
+                        f"Memory: {rss_mb:.01f} MB"
+                    )
                     # Push statistics to the database
                     await self.db.push_procstat(
                         ProcStat(
                             timestamp=datetime.now(),
                             nproc=nproc,
                             cpu=cpu_perc,
-                            mem=rss,
-                            vmem=vms,
+                            mem=rss_mb,
+                            vmem=vms_mb,
                         )
                     )
                     # Check if exceeding the limits
-                    now_exceeding = (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)) or (
-                        memory_mb > 0 and (rss / 1e6) > memory_mb
+                    now_exceeding = any(
+                        (
+                            (cpu_cores > 0 and cpu_perc > (100 * cpu_cores)),
+                            (memory_mb > 0 and rss_mb > memory_mb),
+                        )
                     )
                     if now_exceeding and not exceeding:
                         await self.logger.warning(
                             f"Job has exceed it's requested resources of "
                             f"{cpu_cores} CPU cores and {memory_mb} MB of RAM - "
-                            f"current usage is {cpu_perc / 100:.01f} CPU cores and "
-                            f"{rss / 1E6:0.1f} MB of RAM"
+                            f"current usage is {cpu_perc:.01f}% CPU and "
+                            f"{rss_mb:0.1f} MB of RAM"
                         )
                     exceeding = now_exceeding
             except psutil.NoSuchProcess:
@@ -205,7 +232,13 @@ class Wrapper(BaseLayer):
         Launch the process and pipe STDIN, STDOUT, and STDERR with line buffering
         """
         # Overlay any custom variables on the environment
-        env = {str(k): str(v) for k, v in (self.spec.env or os.environ).items()}
+        env = {}
+        if self.spec.extend_env:
+            env.update(os.environ)
+        env.update(self.spec.env)
+        if "PYTHONPATH" in env:
+            env["PYTHONPATH"] += ":"
+        env["PYTHONPATH"] = env.get("PYTHONPATH", "") + Path(__file__).parent.parent.as_posix()
         env["GATOR_PARENT"] = await self.server.get_address()
         env["PYTHONUNBUFFERED"] = "1"
         # Determine the working directory
@@ -236,7 +269,7 @@ class Wrapper(BaseLayer):
         # Setup initial attributes
         await self.db.push_attribute(Attribute(name="cmd", value=full_cmd))
         await self.db.push_attribute(Attribute(name="cwd", value=working_dir.as_posix()))
-        await self.db.push_attribute(Attribute(name="host", value=socket.gethostname()))
+        await self.db.push_attribute(Attribute(name="host", value=socket.getfqdn()))
         await self.db.push_attribute(Attribute(name="req_cores", value=str(cpu_cores)))
         await self.db.push_attribute(Attribute(name="req_memory", value=str(memory_mb)))
         await self.db.push_attribute(
@@ -293,21 +326,6 @@ class Wrapper(BaseLayer):
         pid = await self.db.get_attribute(name="pid")
         started_at = datetime.fromtimestamp(self.started)
         stopped_at = datetime.fromtimestamp(self.stopped)
-        # If plotting enabled, draw the plot
-        if self.plotting:
-            dates = []
-            series = defaultdict(list)
-            for entry in data:
-                dates.append(entry.timestamp)
-                series["Processes"].append(entry.nproc)
-                series["CPU %"].append(entry.cpu)
-                series["Memory (MB)"].append(entry.mem / (1024**3))
-                series["VMemory (MB)"].append(entry.vmem / (1024**3))
-            fig = pg.Figure()
-            for key, vals in series.items():
-                fig.add_trace(pg.Scatter(x=dates, y=vals, mode="lines", name=key))
-            fig.update_layout(title=f"Resource Usage for {pid[0].value}", xaxis_title="Time")
-            fig.write_image(self.plotting.as_posix(), format="png")
         # Summarise process usage
         if self.summary:
             max_nproc = max(x.nproc for x in data) if data else 0

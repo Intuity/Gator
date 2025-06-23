@@ -171,6 +171,7 @@ class _DBClient:
                 uid=cast(int, x.db_uid),
                 severity=int(x.severity),
                 message=x.message,
+                hierarchy=x.hierarchy,
                 timestamp=int(x.timestamp.timestamp()),
             )
             for x in msgs

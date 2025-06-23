@@ -339,13 +339,13 @@ class TestTier:
         script_a = tmp_path / "a.sh"
         script_b = tmp_path / "b.sh"
         script_c = tmp_path / "c.sh"
-        script_a.write_text(f"touch {touch_a.as_posix()}\nsleep 30\n")
-        script_b.write_text(f"touch {touch_b.as_posix()}\nsleep 30\n")
-        script_c.write_text(f"touch {touch_c.as_posix()}\nsleep 30\n")
+        script_a.write_text(f"touch {touch_a.as_posix()}\nsleep 5\n")
+        script_b.write_text(f"touch {touch_b.as_posix()}\nsleep 5\n")
+        script_c.write_text(f"touch {touch_c.as_posix()}\nsleep 5\n")
         # Define job specification
-        job_a = Job("a", command="sh", args=[script_a.as_posix()])
-        job_b = Job("b", command="sh", args=[script_b.as_posix()])
-        job_c = Job("c", command="sh", args=[script_c.as_posix()])
+        job_a = Job("a", command="bash", args=[script_a.as_posix()])
+        job_b = Job("b", command="bash", args=[script_b.as_posix()])
+        job_c = Job("c", command="bash", args=[script_c.as_posix()])
         grp_low = JobGroup("low", jobs=[job_a])
         grp_mid = JobGroup("mid", jobs=[job_b, grp_low])
         grp_top = JobGroup("top", jobs=[job_c, grp_mid])
@@ -382,5 +382,7 @@ class TestTier:
         }
         # Stop the jobs
         await tier.stop()
+        # Disconnect the websocket client
+        await ws_cli.stop()
         # Wait for the jobs to stop
         await t_launch

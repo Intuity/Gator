@@ -15,6 +15,7 @@
 import abc
 import functools
 import itertools
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
 from ..common.child import Child
@@ -30,6 +31,7 @@ class BaseScheduler:
 
     def __init__(
         self,
+        tracking: Path,
         parent: str,
         interval: int = 5,
         quiet: bool = True,
@@ -37,6 +39,7 @@ class BaseScheduler:
         options: Optional[Dict[str, str]] = None,
         limits: Optional[MessageLimits] = None,
     ) -> None:
+        self.tracking = tracking
         self.parent = parent
         self.interval = interval
         self.quiet = quiet
@@ -88,7 +91,7 @@ class BaseScheduler:
         ]
         return cmd
 
-    def create_command(self, child: Child, options: Optional[Dict[str, str]] = None) -> str:
+    def create_command(self, child: Child, options: Optional[Dict[str, str]] = None) -> List[str]:
         """
         Build a command for launching a job on the compute infrastructure using
         details from the child object.
@@ -100,7 +103,7 @@ class BaseScheduler:
         full_opts = self.options.copy()
         full_opts.update(options or {})
 
-        return " ".join(
+        return list(
             itertools.chain(
                 self.base_command,
                 ["--id", child.ident, "--tracking", child.tracking.as_posix()],

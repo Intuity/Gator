@@ -41,6 +41,8 @@ class MessageLimits:
 
 
 class Logger:
+    HIER_WIDTH: typing.ClassVar[int] = 23
+    HIER_BALANCE: typing.ClassVar[int] = (HIER_WIDTH - 3) // 2
     FORMAT: typing.ClassVar[Dict[LogSeverity, Tuple[str, str]]] = {
         LogSeverity.DEBUG: ("[bold cyan]", "[/bold cyan]"),
         LogSeverity.INFO: ("[bold]", "[/bold]"),
@@ -119,6 +121,7 @@ class Logger:
         self,
         severity: LogSeverity,
         message: str,
+        hierarchy: str = "root",
         forward: Optional[bool] = None,
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
@@ -129,6 +132,7 @@ class Logger:
 
         :param severity:    Severity level of the logged message
         :param message:     Text of the message being logged
+        :param hierarchy:   Optional logging hierarchy
         :param forward:     Whether to forward the message onto the parent layer,
                             if this is not provided then it will default to the
                             logger's forward parameter (set during construction)
@@ -152,79 +156,102 @@ class Logger:
         if forward and self.ws_cli.linked and severity >= self.verbosity:
             await self.ws_cli.log(
                 timestamp=int(timestamp.timestamp()),
+                hierarchy=hierarchy,
                 severity=severity.name,
                 message=message,
                 posted=True,
             )
+        # Generate a truncated version of the hierarchy
+        short_hier = f"{hierarchy:{Logger.HIER_WIDTH}s}"
+        if len(short_hier) > Logger.HIER_WIDTH:
+            short_hier = "...".join(
+                short_hier[: Logger.HIER_BALANCE],
+                short_hier[-Logger.HIER_BALANCE :],
+            )
         # If a console is attached, log locally
         if self.__console and severity >= self.verbosity:
             prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
-            self.__console.log(f"{prefix}[{severity.name:<7s}]{suffix} {escape(message)}")
+            self.__console.log(
+                f"{prefix}{severity.name:<7s}{suffix}  {escape(short_hier)}  " f"{escape(message)}"
+            )
         # Normally don't capture forwarded messages
         if not forwarded or self.capture_all:
             # Record to the database
             if self.__database is not None:
                 await self.__database.push_logentry(
-                    LogEntry(severity=severity, message=message, timestamp=timestamp)
+                    LogEntry(
+                        hierarchy=hierarchy,
+                        severity=severity,
+                        message=message,
+                        timestamp=timestamp,
+                    )
                 )
             # Tee to file if configured
-            if not forwarded and self.__log_fh is not None:
+            if self.__log_fh is not None:
                 date = datetime.now().strftime(r"%H:%M:%S")
-                self.__log_fh.write(f"[{date}] [{severity.name:<7s}] {message}\n")
+                self.__log_fh.write(f"[{date}] {severity.name:<7s}  {short_hier}  {message}\n")
 
     async def debug(
         self,
         message: str,
+        hierarchy: str = "root",
         forward: Optional[bool] = None,
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(LogSeverity.DEBUG, message, forward, timestamp, forwarded)
+        await self.log(LogSeverity.DEBUG, message, hierarchy, forward, timestamp, forwarded)
 
     async def info(
         self,
         message: str,
+        hierarchy: str = "root",
         forward: Optional[bool] = None,
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(LogSeverity.INFO, message, forward, timestamp, forwarded)
+        await self.log(LogSeverity.INFO, message, hierarchy, forward, timestamp, forwarded)
 
     async def warning(
         self,
         message: str,
+        hierarchy: str = "root",
         forward: Optional[bool] = None,
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(LogSeverity.WARNING, message, forward, timestamp, forwarded)
+        await self.log(LogSeverity.WARNING, message, hierarchy, forward, timestamp, forwarded)
 
     async def error(
         self,
         message: str,
+        hierarchy: str = "root",
         forward: Optional[bool] = None,
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(LogSeverity.ERROR, message, forward, timestamp, forwarded)
+        await self.log(LogSeverity.ERROR, message, hierarchy, forward, timestamp, forwarded)
 
     async def critical(
         self,
         message: str,
+        hierarchy: str = "root",
         forward: Optional[bool] = None,
         timestamp: Optional[datetime] = None,
         forwarded: bool = False,
     ) -> None:
-        await self.log(LogSeverity.CRITICAL, message, forward, timestamp, forwarded)
+        await self.log(LogSeverity.CRITICAL, message, hierarchy, forward, timestamp, forwarded)
 
 
 @click.command()
+@click.option("-H", "--hierarchy", type=str, default="root", help="Log hierarchy")
 @click.option("-s", "--severity", type=str, default="INFO", help="Severity level")
 @click.argument("message")
-def logger(severity, message):
+def logger(hierarchy, severity, message):
     asyncio.run(
         Logger(verbosity=LogSeverity.DEBUG).log(
-            severity=getattr(LogSeverity, severity.upper()), message=message
+            severity=getattr(LogSeverity, severity.upper()),
+            message=message,
+            hierarchy=hierarchy,
         )
     )
 

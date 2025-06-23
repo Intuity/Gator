@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
 from .common import SpecBase, SpecError
-from .resource import Cores, License, Memory
+from .resource import Cores, Feature, License, Memory
 
 
 @dataclass
@@ -26,11 +26,12 @@ class Job(SpecBase):
     yaml_tag = "!Job"
 
     ident: Optional[str] = None
+    extend_env: bool = True
     env: Optional[Dict[str, str]] = field(default_factory=dict)
     cwd: Optional[str] = None
     command: Optional[str] = None
     args: Optional[List[str]] = field(default_factory=list)
-    resources: Optional[List[Union[Cores, License, Memory]]] = field(default_factory=list)
+    resources: Optional[List[Union[Cores, License, Memory, Feature]]] = field(default_factory=list)
     on_done: Optional[List[str]] = field(default_factory=list)
     on_fail: Optional[List[str]] = field(default_factory=list)
     on_pass: Optional[List[str]] = field(default_factory=list)
@@ -61,9 +62,16 @@ class Job(SpecBase):
         """Return a summary of all of the licenses requested"""
         return {x.name: x.count for x in self.resources if isinstance(x, License)}
 
+    @functools.cached_property
+    def requested_features(self) -> Dict[str, int]:
+        """Return a summary of all of the features requested"""
+        return {x.name: x.count for x in self.resources if isinstance(x, Feature)}
+
     def check(self) -> None:
         if self.ident is not None and not isinstance(self.ident, str):
             raise SpecError(self, "ident", "ident must be a string")
+        if not isinstance(self.extend_env, bool):
+            raise SpecError(self, "extend_env", "Environment extend must be boolean")
         if not isinstance(self.env, dict):
             raise SpecError(self, "env", "Environment must be a dictionary")
         if set(map(type, self.env.keys())).difference({str}):
@@ -80,12 +88,14 @@ class Job(SpecBase):
             raise SpecError(self, "args", "Arguments must be strings or integers")
         if not isinstance(self.resources, list):
             raise SpecError(self, "resources", "Resources must be a list")
-        if set(map(type, self.resources)).difference({Cores, Memory, License}):
+        if set(map(type, self.resources)).difference({Cores, Memory, License, Feature}):
             raise SpecError(
                 self,
                 "resources",
-                "Resources must be !Cores, !Memory, or !License",
+                "Resources must be !Cores, !Memory, !License, or !Feature",
             )
+        for resource in self.resources:
+            resource.check()
         type_count = Counter(type(x) for x in self.resources)
         if type_count[Cores] > 1:
             raise SpecError(self, "resources", "More than one !Cores resource request")
@@ -99,6 +109,15 @@ class Job(SpecBase):
                     self,
                     "resources",
                     f"More than one entry for license '{name}'",
+                )
+        # NOTE: Any number of features may be specified
+        feat_name_count = Counter(x.name for x in self.resources if isinstance(x, Feature))
+        for name, count in feat_name_count.items():
+            if count > 1:
+                raise SpecError(
+                    self,
+                    "resources",
+                    f"More than one entry for feature '{name}'",
                 )
         for condition in ("on_done", "on_fail", "on_pass"):
             value = getattr(self, condition)
@@ -115,6 +134,7 @@ class JobArray(SpecBase):
     ident: Optional[str] = None
     repeats: Optional[int] = 1
     jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    extend_env: bool = True
     env: Optional[Dict[str, str]] = field(default_factory=dict)
     cwd: Optional[str] = None
     on_fail: Optional[List[str]] = field(default_factory=list)
@@ -152,6 +172,8 @@ class JobArray(SpecBase):
                 "jobs",
                 f"Duplicated keys for jobs: {', '.join(duplicated)}",
             )
+        if not isinstance(self.extend_env, bool):
+            raise SpecError(self, "extend_env", "Environment extend must be boolean")
         if not isinstance(self.env, dict):
             raise SpecError(self, "env", "Environment must be a dictionary")
         if set(map(type, self.env.keys())).difference({str}):
@@ -177,6 +199,7 @@ class JobGroup(SpecBase):
 
     ident: Optional[str] = None
     jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    extend_env: bool = True
     env: Optional[Dict[str, str]] = field(default_factory=dict)
     cwd: Optional[str] = None
     on_fail: Optional[List[str]] = field(default_factory=list)
@@ -212,6 +235,8 @@ class JobGroup(SpecBase):
                 "jobs",
                 f"Duplicated keys for jobs: {', '.join(duplicated)}",
             )
+        if not isinstance(self.extend_env, bool):
+            raise SpecError(self, "extend_env", "Environment extend must be boolean")
         if not isinstance(self.env, dict):
             raise SpecError(self, "env", "Environment must be a dictionary")
         if set(map(type, self.env.keys())).difference({str}):

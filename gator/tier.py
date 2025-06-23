@@ -13,8 +13,9 @@
 # limitations under the License.
 
 import asyncio
+import os
 from collections import defaultdict
-from copy import copy, deepcopy
+from copy import deepcopy
 from datetime import datetime
 from typing import Dict, List, Optional, Type
 
@@ -85,6 +86,7 @@ class Tier(BaseLayer):
         # Create a scheduler
         try:
             self.scheduler = self.sched_cls(
+                tracking=self.tracking,
                 parent=await self.server.get_address(),
                 quiet=not self.all_msg,
                 logger=self.logger,
@@ -470,9 +472,12 @@ class Tier(BaseLayer):
                 Logger.error(f"Unexpected job object type {type(job).__name__}")
                 continue
             # Propagate environment variables from parent to child
-            merged = copy(self.spec.env)
-            merged.update(job.env)
-            job.env = merged
+            env = {}
+            if self.spec.extend_env:
+                env.update(os.environ)
+            env.update(self.spec.env)
+            env.update(job.env)
+            job.env = env
             # Propagate working directory from parent to child
             job.cwd = job.cwd or self.spec.cwd
             # Vary behaviour depending if this a job array or not
@@ -483,7 +488,7 @@ class Tier(BaseLayer):
                 child_dir = base_trk_dir
                 if is_jarr:
                     job_cp = deepcopy(job)
-                    job_cp.env["GATOR_ARRAY_INDEX"] = idx_jarr
+                    job_cp.env["GATOR_ARRAY_INDEX"] = str(idx_jarr)
                     child_id += f"_{idx_jarr}"
                     child_dir = base_trk_dir / str(idx_jarr)
                 else:
