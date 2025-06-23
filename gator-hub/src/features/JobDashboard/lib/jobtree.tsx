@@ -13,7 +13,7 @@ export type JobNode = TreeNode<Job>;
  * Splits strings into alpha and numeric portions before comparison
  * and tries to treat the numeric portions as numbers.
  */
-function naturalCompare(a: String | Number, b: String | Number) {
+function naturalCompare(a: String | Number | bigint, b: String | Number | bigint) {
     const num_regex = /(\d+\.?\d*)/g
     const aParts = a.toString().split(num_regex);
     const bParts = b.toString().split(num_regex);
