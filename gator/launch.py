@@ -52,6 +52,7 @@ async def launch(
     sched_opts: Optional[Dict[str, str]] = None,
     glyph: Optional[str] = None,
     limits: Optional[MessageLimits] = None,
+    internal: bool = False,
 ) -> Summary:
     # Glyph only used when progress bar visible
     del glyph
@@ -98,9 +99,14 @@ async def launch(
         spec.ident = ident
     # Check the spec object
     spec.check()
-    # If a JobArray or JobGroup is provided, launch a tier
-    if isinstance(spec, (JobArray, JobGroup)):
-        top = Tier(
+    # If this is an internal executor instance, we expect to have been given
+    # only a single job to execute and we launch a wrapper to run it.
+    if internal:
+        if not isinstance(spec, Job):
+            raise Exception("Internal instances may only be given one job to run.")
+
+        # Launch a wrapper to actually run the job on the current machine
+        top = Wrapper(
             spec=spec,
             client=client,
             logger=logger,
@@ -109,24 +115,41 @@ async def launch(
             quiet=quiet and not all_msg,
             all_msg=all_msg,
             heartbeat_cb=heartbeat_cb,
-            scheduler=scheduler,
-            sched_opts=sched_opts,
             limits=limits,
         )
-    # If a Job is provided, launch a wrapper
-    elif isinstance(spec, Job):
-        top = Wrapper(
-            spec=spec,
-            client=client,
-            logger=logger,
-            tracking=tracking,
-            interval=interval,
-            quiet=quiet and not all_msg,
-            limits=limits,
-        )
-    # Unsupported forms
     else:
-        raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
+        # If a JobArray, JobGroup or Job is provided, launch a tier
+        if isinstance(spec, JobArray | JobGroup):
+            top = Tier(
+                spec=spec,
+                client=client,
+                logger=logger,
+                tracking=tracking,
+                interval=interval,
+                quiet=quiet and not all_msg,
+                all_msg=all_msg,
+                heartbeat_cb=heartbeat_cb,
+                scheduler=scheduler,
+                sched_opts=sched_opts,
+                limits=limits,
+            )
+        elif isinstance(spec, Job):
+            top = Tier(
+                spec=JobArray(jobs=[spec]),
+                client=client,
+                logger=logger,
+                tracking=tracking,
+                interval=interval,
+                quiet=quiet and not all_msg,
+                all_msg=all_msg,
+                heartbeat_cb=heartbeat_cb,
+                scheduler=scheduler,
+                sched_opts=sched_opts,
+                limits=limits,
+            )
+        # Unsupported forms
+        else:
+            raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
 
     # Setup signal handler to capture CTRL+C events
     def _handler(sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]):
