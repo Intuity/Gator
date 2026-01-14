@@ -105,3 +105,35 @@ class TestLocalScheduler:
         await sched.wait_for_all()
         # Check all monitors were fired up
         as_mon.assert_has_calls([call(f"T{x}", y) for x, y in zip(range(10), procs)])
+
+    async def test_local_scheduler_default_launch(self, mocker, tmp_path):
+        """Check that launch() without `internal` flag uses Tier/scheduler for a single Job"""
+        from gator.launch import launch
+        from gator.specs import JobArray
+
+        # Patch Console to avoid output during test
+        mocker.patch("gator.launch.Console")
+        # Mock the Tier class to verify it's instantiated
+        mk_tier_cls = mocker.patch("gator.launch.Tier")
+        mk_tier = MagicMock()
+        mk_tier.launch = AsyncMock()
+        mk_tier.summarise = AsyncMock()
+        mk_tier.is_root = True
+        mk_tier_cls.return_value = mk_tier
+        # Define a job specification
+        job = Job("test_scheduler", cwd=tmp_path.as_posix(), command="echo", args=["scheduler"])
+        # Call launch without internal flag (defaults to False)
+        trk_dir = tmp_path / "tracking"
+        await launch(spec=job, tracking=trk_dir, scheduler=LocalScheduler)
+        # Verify Tier was instantiated
+        mk_tier_cls.assert_called_once()
+        call_kwargs = mk_tier_cls.call_args.kwargs
+        # The single Job should be wrapped in a JobArray
+        assert isinstance(call_kwargs["spec"], JobArray)
+        assert len(call_kwargs["spec"].jobs) == 1
+        assert call_kwargs["spec"].jobs[0] is job
+        assert call_kwargs["tracking"] == trk_dir
+        assert call_kwargs["scheduler"] is LocalScheduler
+        # Verify Tier.launch() was called
+        mk_tier.launch.assert_called_once()
+        mk_tier.summarise.assert_called_once()

@@ -41,7 +41,7 @@ async def launch(
     ident: Optional[str] = None,
     hub: Optional[str] = None,
     parent: Optional[str] = None,
-    spec: Optional[Union[Spec, Path]] = None,
+    spec: Optional[Union[SpecBase, Spec, Path]] = None,
     tracking: Optional[Path] = None,
     interval: int = 5,
     quiet: bool = False,
