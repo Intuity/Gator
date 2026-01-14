@@ -69,7 +69,7 @@ class SlurmScheduler(BaseScheduler):
 
     @property
     def expired(self) -> bool:
-        return (self._expiry is None) or (self._expiry >= datetime.now())
+        return (self._expiry is None) or (self._expiry <= datetime.now())
 
     @property
     def token(self) -> str:

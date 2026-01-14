@@ -47,7 +47,7 @@ A simple specification may look like this:
   - !JobArray
       ident     : counting
       on_pass:
-        - say_hi
+        - inner
       repeats: 4
       jobs   :
       - !Job
