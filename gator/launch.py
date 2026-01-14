@@ -105,6 +105,7 @@ async def launch(
             client=client,
             logger=logger,
             tracking=tracking,
+            interval=interval,
             quiet=quiet and not all_msg,
             all_msg=all_msg,
             heartbeat_cb=heartbeat_cb,
