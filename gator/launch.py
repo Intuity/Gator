@@ -99,14 +99,11 @@ async def launch(
         spec.ident = ident
     # Check the spec object
     spec.check()
-    # If this is an internal executor instance, we expect to have been given
-    # only a single job to execute and we launch a wrapper to run it.
-    if internal:
-        if not isinstance(spec, Job):
-            raise Exception("Internal instances may only be given one job to run.")
 
-        # Launch a wrapper to actually run the job on the current machine
-        top = Wrapper(
+    # Whether or not this is an `internal` instance, if we've been given an
+    # array or group to execute, we must use the scheduler to run the tasks.
+    if isinstance(spec, JobArray | JobGroup):
+        top = Tier(
             spec=spec,
             client=client,
             logger=logger,
@@ -115,12 +112,19 @@ async def launch(
             quiet=quiet and not all_msg,
             all_msg=all_msg,
             heartbeat_cb=heartbeat_cb,
+            scheduler=scheduler,
+            sched_opts=sched_opts,
             limits=limits,
         )
-    else:
-        # If a JobArray, JobGroup or Job is provided, launch a tier
-        if isinstance(spec, JobArray | JobGroup):
-            top = Tier(
+    elif isinstance(spec, Job):
+        # If we have been given only a single job to execute, and we're an
+        # internal instance, then we launch a wrapper to run it.
+        #
+        # Otherwise, the user must've called Gator directly with just a single
+        # job in the top-level of the spec, but we still want to use the
+        # scheduler so we wrap it in a dummy Tier with a dummy JobArray.
+        if internal:
+            top = Wrapper(
                 spec=spec,
                 client=client,
                 logger=logger,
@@ -129,11 +133,9 @@ async def launch(
                 quiet=quiet and not all_msg,
                 all_msg=all_msg,
                 heartbeat_cb=heartbeat_cb,
-                scheduler=scheduler,
-                sched_opts=sched_opts,
                 limits=limits,
             )
-        elif isinstance(spec, Job):
+        else:
             top = Tier(
                 spec=JobArray(jobs=[spec]),
                 client=client,
@@ -147,9 +149,9 @@ async def launch(
                 sched_opts=sched_opts,
                 limits=limits,
             )
-        # Unsupported forms
-        else:
-            raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
+    # Unsupported forms
+    else:
+        raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
 
     # Setup signal handler to capture CTRL+C events
     def _handler(sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]):

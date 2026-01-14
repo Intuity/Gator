@@ -89,6 +89,7 @@ class TestLocalScheduler:
                 call(
                     f"python3 -m gator --limit-error=0 --limit-critical=0"
                     " --parent test:1234 --interval 7 --scheduler local --all-msg "
+                    "--internal "
                     f"--id T{x} --tracking {(tmp_path / f'T{x}').as_posix()}"
                     " --sched-arg concurrency=1",
                     stdin=subprocess.DEVNULL,
