@@ -20,7 +20,7 @@ import signal
 import socket
 from functools import partial
 from pathlib import Path
-from typing import Dict, Optional, Type, Union
+from typing import Dict, Optional, Type, Union, cast
 
 from rich.console import Console
 
@@ -32,6 +32,7 @@ from .common.ws_client import WebsocketClient
 from .hub.api import HubAPI
 from .scheduler import LocalScheduler
 from .specs import Job, JobArray, JobGroup, Spec
+from .specs.common import SpecBase
 from .tier import Tier
 from .wrapper import Wrapper
 
@@ -82,29 +83,57 @@ async def launch(
     )
     # Work out where the spec is coming from
     # - From server (nested call)
+    parsed_spec: SpecBase
     if spec is None and client.linked and ident:
         raw_spec = await client.spec(ident=ident)
-        spec = Spec.parse_str(raw_spec.get("spec", ""))
+        parsed_spec = Spec.parse_str(raw_spec.get("spec", ""))
     # - Passed in directly (when used as a library
     elif spec is not None and isinstance(spec, (Job, JobArray, JobGroup)):
-        pass
+        parsed_spec = cast(SpecBase, spec)
     # - Passed as a file path
     elif spec is not None and isinstance(spec, (Path, str)):
-        spec = Spec.parse(Path(spec))
+        parsed_spec = Spec.parse(Path(spec))
     # - Unknown
     else:
         raise Exception("No specification file provided and no parent server to query")
+
+    # Hint for the type checker and a safety during debugging
+    assert isinstance(parsed_spec, Job | JobArray | JobGroup), \
+        ("Expected specification to be a Job, JobArray or JobGroup, received "
+         f"{type(parsed_spec).__name__}."
+        )
+
     # If an ident has been provided, override whatever the spec gives
     if ident is not None:
-        spec.ident = ident
-    # Check the spec object
-    spec.check()
+        parsed_spec.ident = ident
 
-    # Whether or not this is an `internal` instance, if we've been given an
-    # array or group to execute, we must use the scheduler to run the tasks.
-    if isinstance(spec, JobArray | JobGroup):
+    # Check the spec object
+    parsed_spec.check()
+
+    # When user launches a single job, wrap it up in a JobArray so we can
+    # launch it via a common mechanism (which will ensure this job launches via
+    # the specified scheduler)
+    if isinstance(parsed_spec, Job) and not internal:
+        parsed_spec = JobArray(jobs=[parsed_spec])
+
+    if isinstance(parsed_spec, Job) and internal:
+        # Internal single job - launch via the wrapper on current machine
+        # as this is the executor instance. I.e. don't use the scheduler
+        top = Wrapper(
+            spec=parsed_spec,
+            client=client,
+            logger=logger,
+            tracking=tracking,
+            interval=interval,
+            quiet=quiet and not all_msg,
+            all_msg=all_msg,
+            heartbeat_cb=heartbeat_cb,
+            limits=limits,
+        )
+    else:
+        # Non-internal single job or a multi-task job - launch via the scheduler
         top = Tier(
-            spec=spec,
+            spec=parsed_spec,
             client=client,
             logger=logger,
             tracking=tracking,
@@ -116,42 +145,6 @@ async def launch(
             sched_opts=sched_opts,
             limits=limits,
         )
-    elif isinstance(spec, Job):
-        # If we have been given only a single job to execute, and we're an
-        # internal instance, then we launch a wrapper to run it.
-        #
-        # Otherwise, the user must've called Gator directly with just a single
-        # job in the top-level of the spec, but we still want to use the
-        # scheduler so we wrap it in a dummy Tier with a dummy JobArray.
-        if internal:
-            top = Wrapper(
-                spec=spec,
-                client=client,
-                logger=logger,
-                tracking=tracking,
-                interval=interval,
-                quiet=quiet and not all_msg,
-                all_msg=all_msg,
-                heartbeat_cb=heartbeat_cb,
-                limits=limits,
-            )
-        else:
-            top = Tier(
-                spec=JobArray(jobs=[spec]),
-                client=client,
-                logger=logger,
-                tracking=tracking,
-                interval=interval,
-                quiet=quiet and not all_msg,
-                all_msg=all_msg,
-                heartbeat_cb=heartbeat_cb,
-                scheduler=scheduler,
-                sched_opts=sched_opts,
-                limits=limits,
-            )
-    # Unsupported forms
-    else:
-        raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
 
     # Setup signal handler to capture CTRL+C events
     def _handler(sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]):
