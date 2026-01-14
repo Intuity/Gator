@@ -23,7 +23,7 @@ from gator.common.child import Child
 from gator.common.logger import Logger
 from gator.common.ws_client import WebsocketClient
 from gator.scheduler import LocalScheduler
-from gator.specs.jobs import Job, JobArray
+from gator.specs.jobs import Job
 
 
 @pytest.mark.asyncio
@@ -141,7 +141,7 @@ class TestLocalScheduler:
     async def test_local_scheduler_jobarray_internal_launch(self, mocker, tmp_path):
         """Check that launch() with JobArray and `internal=True` still uses Tier/scheduler"""
         from gator.launch import launch
-        from gator.specs import JobArray
+        from gator.specs import JobArray, JobGroup
 
         # Patch Console to avoid output during test
         mocker.patch("gator.launch.Console")
@@ -175,7 +175,7 @@ class TestLocalScheduler:
     async def test_local_scheduler_jobgroup_internal_launch(self, mocker, tmp_path):
         """Check that launch() with JobGroup and `internal=True` still uses Tier/scheduler"""
         from gator.launch import launch
-        from gator.specs import JobGroup
+        from gator.specs import JobArray, JobGroup
 
         # Patch Console to avoid output during test
         mocker.patch("gator.launch.Console")

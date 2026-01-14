@@ -116,7 +116,7 @@ async def launch(
     if isinstance(parsed_spec, Job) and not internal:
         parsed_spec = JobArray(jobs=[parsed_spec])
 
-    if isinstance(parsed_spec, Job) and internal:
+    if isinstance(parsed_spec, Job):
         # Internal single job - launch via the wrapper on current machine
         # as this is the executor instance. I.e. don't use the scheduler
         top = Wrapper(
