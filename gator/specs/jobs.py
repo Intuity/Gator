@@ -15,7 +15,7 @@
 import functools
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
+from typing import Union
 
 from .common import SpecBase, SpecError
 from .resource import Cores, Feature, License, Memory
@@ -25,16 +25,16 @@ from .resource import Cores, Feature, License, Memory
 class Job(SpecBase):
     yaml_tag = "!Job"
 
-    ident: Optional[str] = None
+    ident: str | None = None
     extend_env: bool = True
-    env: Optional[Dict[str, str]] = field(default_factory=dict)
-    cwd: Optional[str] = None
-    command: Optional[str] = None
-    args: Optional[List[str]] = field(default_factory=list)
-    resources: Optional[List[Union[Cores, License, Memory, Feature]]] = field(default_factory=list)
-    on_done: Optional[List[str]] = field(default_factory=list)
-    on_fail: Optional[List[str]] = field(default_factory=list)
-    on_pass: Optional[List[str]] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+    cwd: str | None = None
+    command: str | None = None
+    args: list[str] = field(default_factory=list)
+    resources: list[Cores | License | Memory | Feature] = field(default_factory=list)
+    on_done: list[str] = field(default_factory=list)
+    on_fail: list[str] = field(default_factory=list)
+    on_pass: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
@@ -58,12 +58,12 @@ class Job(SpecBase):
             return 0
 
     @functools.cached_property
-    def requested_licenses(self) -> Dict[str, int]:
+    def requested_licenses(self) -> dict[str, int]:
         """Return a summary of all of the licenses requested"""
         return {x.name: x.count for x in self.resources if isinstance(x, License)}
 
     @functools.cached_property
-    def requested_features(self) -> Dict[str, int]:
+    def requested_features(self) -> dict[str, int]:
         """Return a summary of all of the features requested"""
         return {x.name: x.count for x in self.resources if isinstance(x, Feature)}
 
@@ -131,15 +131,15 @@ class Job(SpecBase):
 class JobArray(SpecBase):
     yaml_tag = "!JobArray"
 
-    ident: Optional[str] = None
-    repeats: Optional[int] = 1
-    jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    ident: str | None = None
+    repeats: int = 1
+    jobs: list[Union[Job, "JobArray", "JobGroup"]] = field(default_factory=list)
     extend_env: bool = True
-    env: Optional[Dict[str, str]] = field(default_factory=dict)
-    cwd: Optional[str] = None
-    on_fail: Optional[List[str]] = field(default_factory=list)
-    on_pass: Optional[List[str]] = field(default_factory=list)
-    on_done: Optional[List[str]] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+    cwd: str | None = None
+    on_fail: list[str] = field(default_factory=list)
+    on_pass: list[str] = field(default_factory=list)
+    on_done: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
@@ -165,7 +165,7 @@ class JobArray(SpecBase):
                 "Expecting a list of only Job, JobArray, and JobGroup",
             )
         id_count = Counter(x.ident for x in self.jobs)
-        duplicated = [k for k, v in id_count.items() if v > 1]
+        duplicated = [str(k) for k, v in id_count.items() if v > 1]
         if duplicated:
             raise SpecError(
                 self,
@@ -197,14 +197,14 @@ class JobArray(SpecBase):
 class JobGroup(SpecBase):
     yaml_tag = "!JobGroup"
 
-    ident: Optional[str] = None
-    jobs: Optional[List[Union[Job, "JobArray", "JobGroup"]]] = field(default_factory=list)
+    ident: str | None = None
+    jobs: list[Union[Job, "JobArray", "JobGroup"]] | None = field(default_factory=list)
     extend_env: bool = True
-    env: Optional[Dict[str, str]] = field(default_factory=dict)
-    cwd: Optional[str] = None
-    on_fail: Optional[List[str]] = field(default_factory=list)
-    on_pass: Optional[List[str]] = field(default_factory=list)
-    on_done: Optional[List[str]] = field(default_factory=list)
+    env: dict[str, str] | None = field(default_factory=dict)
+    cwd: str | None = None
+    on_fail: list[str] | None = field(default_factory=list)
+    on_pass: list[str] | None = field(default_factory=list)
+    on_done: list[str] | None = field(default_factory=list)
 
     def __post_init__(self):
         self.cwd = self.cwd or (self.yaml_path.parent.as_posix() if self.yaml_path else None)
@@ -212,7 +212,7 @@ class JobGroup(SpecBase):
     @functools.cached_property
     def expected_jobs(self) -> int:
         expected = 0
-        for job in self.jobs:
+        for job in self.jobs or []:
             expected += 1 if isinstance(job, Job) else job.expected_jobs
         return expected
 
@@ -228,7 +228,7 @@ class JobGroup(SpecBase):
                 "Expecting a list of only Job, JobArray, and JobGroup",
             )
         id_count = Counter(x.ident for x in self.jobs)
-        duplicated = [k for k, v in id_count.items() if v > 1]
+        duplicated = [str(k) for k, v in id_count.items() if v > 1]
         if duplicated:
             raise SpecError(
                 self,

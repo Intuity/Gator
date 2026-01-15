@@ -29,7 +29,7 @@ from gator.specs.jobs import Job
 @pytest.mark.asyncio
 class TestLocalScheduler:
     @pytest_asyncio.fixture(autouse=True)
-    async def setup_teardown(self, mocker) -> None:
+    async def setup_teardown(self, mocker):
         # Create websocket client and logger
         self.client = WebsocketClient()
         self.client.ws_event.set()
@@ -61,8 +61,8 @@ class TestLocalScheduler:
         )
         as_mon = mocker.patch.object(
             sched,
-            "_LocalScheduler__monitor",
-            new=AsyncMock(wraps=sched._LocalScheduler__monitor),
+            "_monitor",
+            new=AsyncMock(wraps=sched._monitor),
         )
         procs = []
 
@@ -81,6 +81,7 @@ class TestLocalScheduler:
         )
 
         # Wait for all to be launched
+        assert sched.launch_task is not None
         await sched.launch_task
 
         # Check for launch calls

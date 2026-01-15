@@ -29,7 +29,7 @@ from gator.tier import Tier
 @pytest.mark.asyncio
 class TestTier:
     @pytest_asyncio.fixture(autouse=True)
-    async def setup_teardown(self, mocker) -> None:
+    async def setup_teardown(self, mocker):
         # Patch database
         self.mk_db_cls = mocker.patch("gator.common.layer.Database", new=MagicMock())
         self.mk_db = MagicMock()
@@ -216,7 +216,7 @@ class TestTier:
         touch_b = tmp_path / "touch.c"
         # Define jobs
         job_a = Job("a", command="touch", args=[touch_a.as_posix()])
-        job_s = Job("s", command="sleep", args=[60], on_pass=["a"])
+        job_s = Job("s", command="sleep", args=["60"], on_pass=["a"])
         job_b = Job("b", command="touch", args=[touch_b.as_posix()], on_pass=["s"])
         group = JobGroup("grp", jobs=[job_a, job_s, job_b])
         # Create a tier
@@ -249,9 +249,9 @@ class TestTier:
         # Patch the logger
         mk_log = mocker.patch.object(self.logger, "error", new=AsyncMock())
         # Define jobs
-        job_a = Job("a", command="sleep", args=[1])
-        job_b = Job("b", command="sleep", args=[1], on_done=["a"])
-        job_c = Job("c", command="sleep", args=[1], on_done=["a", "x"])
+        job_a = Job("a", command="sleep", args=["1"])
+        job_b = Job("b", command="sleep", args=["1"], on_done=["a"])
+        job_c = Job("c", command="sleep", args=["1"], on_done=["a", "x"])
         group = JobGroup("grp", jobs=[job_a, job_b, job_c])
         # Create a tier
         trk_dir = tmp_path / "tracking"
@@ -274,9 +274,9 @@ class TestTier:
         # Patch the logger
         mk_log = mocker.patch.object(self.logger, "error", new=AsyncMock())
         # Define jobs
-        job_a = Job("a", command="sleep", args=[1])
-        job_b = Job("b", command="sleep", args=[1], on_done=["a"])
-        job_c = Job("c", command="sleep", args=[1], on_done=["a", "c"])
+        job_a = Job("a", command="sleep", args=["1"])
+        job_b = Job("b", command="sleep", args=["1"], on_done=["a"])
+        job_c = Job("c", command="sleep", args=["1"], on_done=["a", "c"])
         group = JobGroup("grp", jobs=[job_a, job_b, job_c])
         # Create a tier
         trk_dir = tmp_path / "tracking"
@@ -357,7 +357,7 @@ class TestTier:
             tracking=trk_dir,
             logger=self.logger,
             # Need enough concurrency to start leaf jobs in parallel
-            sched_opts={"concurrency": 3},
+            sched_opts={"concurrency": "3"},
         )
         # Let the tier start
         t_launch = asyncio.create_task(tier.launch())

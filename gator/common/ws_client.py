@@ -15,7 +15,6 @@
 import asyncio
 import atexit
 import os
-from typing import Optional
 
 import websockets
 
@@ -23,7 +22,7 @@ from .ws_wrapper import WebsocketWrapper
 
 
 class WebsocketClient(WebsocketWrapper):
-    def __init__(self, address: Optional[str] = None):
+    def __init__(self, address: str | None = None):
         super().__init__()
         if address is None and "GATOR_PARENT" in os.environ:
             address = os.environ["GATOR_PARENT"]

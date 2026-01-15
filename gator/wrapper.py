@@ -27,6 +27,7 @@ from tabulate import tabulate
 from .common.layer import BaseLayer, MetricResponse, UsageResponse
 from .common.summary import Summary
 from .common.types import Attribute, JobResult, LogSeverity, ProcStat
+from .specs.jobs import Job
 
 
 class Wrapper(BaseLayer):
@@ -80,6 +81,7 @@ class Wrapper(BaseLayer):
                 pass
 
     async def summarise(self) -> Summary:
+        assert isinstance(self.spec.ident, str)
         summary = await super().summarise()
         if self.result is JobResult.FAILURE:
             summary.failed_ids = [[self.spec.ident]]
@@ -121,8 +123,8 @@ class Wrapper(BaseLayer):
     async def __monitor_stdio(
         self,
         proc: asyncio.subprocess.Process,
-        stdout: asyncio.subprocess.PIPE,
-        stderr: asyncio.subprocess.PIPE,
+        stdout: asyncio.StreamReader | None,
+        stderr: asyncio.StreamReader | None,
     ) -> None:
         log_fh = (self.tracking / f"raw_{proc.pid}.log").open("w", encoding="utf-8", buffering=1)
         log_lk = asyncio.Lock()
@@ -231,11 +233,14 @@ class Wrapper(BaseLayer):
         """
         Launch the process and pipe STDIN, STDOUT, and STDERR with line buffering
         """
+        # Type checker assistance
+        assert isinstance(self.spec, Job)
         # Overlay any custom variables on the environment
         env = {}
         if self.spec.extend_env:
             env.update(os.environ)
-        env.update(self.spec.env)
+        if isinstance(self.spec.env, dict):
+            env.update(self.spec.env)
         if "PYTHONPATH" in env:
             env["PYTHONPATH"] += ":"
         env["PYTHONPATH"] = env.get("PYTHONPATH", "") + Path(__file__).parent.parent.as_posix()
@@ -245,16 +250,14 @@ class Wrapper(BaseLayer):
         working_dir = Path((self.spec.cwd if self.spec else None) or Path.cwd())
         # Expand variables in the command
         command = expandvars.expand(self.spec.command, environ=env)
-        args = [expandvars.expand(str(arg), environ=env) for arg in self.spec.args]
+        args = [expandvars.expand(str(arg), environ=env) for arg in (self.spec.args or [])]
         full_cmd = shlex.join((command, *args))
         # Ensure the tracking directory exists
         self.tracking.mkdir(parents=True, exist_ok=True)
         # Pickup CPU and RAM resource requirements
         cpu_cores = self.spec.requested_cores
         memory_mb = self.spec.requested_memory
-        await self.logger.debug(
-            f"Task requests {cpu_cores} CPU cores and " f"{memory_mb} MB of RAM"
-        )
+        await self.logger.debug(f"Task requests {cpu_cores} CPU cores and {memory_mb} MB of RAM")
         # Pickup license requests
         licenses = self.spec.requested_licenses
         if licenses:
@@ -324,8 +327,8 @@ class Wrapper(BaseLayer):
         # Pull data back from resource tracking
         data = await self.db.get_procstat(sql_order_by=("timestamp", True))
         pid = await self.db.get_attribute(name="pid")
-        started_at = datetime.fromtimestamp(self.started)
-        stopped_at = datetime.fromtimestamp(self.stopped)
+        started_at = datetime.fromtimestamp(self.started) if self.started else datetime.now()
+        stopped_at = datetime.fromtimestamp(self.stopped) if self.stopped else datetime.now()
         # Summarise process usage
         if self.summary:
             max_nproc = max(x.nproc for x in data) if data else 0

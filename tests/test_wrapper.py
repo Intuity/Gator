@@ -30,7 +30,7 @@ from gator.wrapper import Wrapper
 @pytest.mark.asyncio
 class TestWrapper:
     @pytest_asyncio.fixture(autouse=True)
-    async def setup_teardown(self, mocker) -> None:
+    async def setup_teardown(self, mocker):
         # Patch database
         self.mk_db_cls = mocker.patch("gator.common.layer.Database", new=MagicMock())
         self.mk_db = MagicMock()
@@ -159,7 +159,7 @@ class TestWrapper:
         self.mk_wrp_dt.now.side_effect = None
         self.mk_wrp_dt.now.return_value = datetime.fromtimestamp(12345)
         # Define a job specification
-        job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[5])
+        job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=["5"])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
         wrp = Wrapper(
@@ -190,7 +190,7 @@ class TestWrapper:
             script = tmp_path / f"script_{idx}.sh"
             lines = ["sleep 2"]
             if idx > 0:
-                inner = tmp_path / f"script_{idx-1}.sh"
+                inner = tmp_path / f"script_{idx - 1}.sh"
                 lines.append(f"sh {inner.as_posix()}")
             script.write_text("\n".join(lines) + "\n")
             script.chmod(0o777)
@@ -225,7 +225,7 @@ class TestWrapper:
     async def test_wrapper_terminate(self, tmp_path) -> None:
         """Terminate a long running job partway through"""
         # Define a job specification
-        job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[60])
+        job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=["60"])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
         wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
@@ -269,8 +269,8 @@ class TestWrapper:
         ]
 
         # Mock attributes returned by the DB
-        def _get_attr(name) -> Attribute:
-            values = {"pid": "1000", "started": "123", "stopped": 234}
+        def _get_attr(name) -> list[Attribute]:
+            values = {"pid": "1000", "started": "123", "stopped": "234"}
             return [Attribute(name=name, value=values.get(name, "0"))]
 
         self.mk_db.get_attribute.side_effect = _get_attr
@@ -302,7 +302,7 @@ class TestWrapper:
     async def test_wrapper_metric(self, tmp_path, mocker) -> None:
         """Check that metrics can be recorded and aggregated"""
         # Define a job specification
-        job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=[60])
+        job = Job("test", cwd=tmp_path.as_posix(), command="sleep", args=["60"])
         # Create a wrapper
         trk_dir = tmp_path / "tracking"
         wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)

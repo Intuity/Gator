@@ -30,7 +30,8 @@ import asyncio
 import json
 import sys
 from collections import namedtuple
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 Route = namedtuple("Route", ("handler", "is_async"))
 
@@ -41,8 +42,8 @@ class WebsocketRouterError(Exception):
 
 class WebsocketRouter:
     def __init__(self) -> None:
-        self.__routes: Dict[str, Route] = {}
-        self.fallback: Optional[Callable] = None
+        self.__routes: dict[str, Route] = {}
+        self.fallback: Callable | None = None
 
     def add_route(self, action: str, handler: Callable) -> None:
         """
@@ -56,7 +57,7 @@ class WebsocketRouter:
         #       Python issue 40573 for more details
         self.__routes[action] = Route(handler, asyncio.iscoroutinefunction(handler))
 
-    async def route(self, ws: Any, data: Dict[str, Any]) -> None:
+    async def route(self, ws: Any, data: dict[str, Any]) -> None:
         # Check for a supported action
         action = data.get("action", None)
         posted = data.get("posted", False)

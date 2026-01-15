@@ -14,15 +14,12 @@
 
 import asyncio
 import os
+from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
-    Awaitable,
-    Callable,
-    DefaultDict,
-    Dict,
-    List,
     Literal,
     NoReturn,
     Optional,
@@ -62,9 +59,9 @@ class SpecResponse(TypedDict):
     spec: str
 
 
-GetTreeResponse = Dict[str, Union[str, "GetTreeResponse"]]
+GetTreeResponse = dict[str, Union[str, "GetTreeResponse"]]
 
-HeartbeatCb = Optional[Callable[["BaseLayer", Summary], Union[None, Awaitable[None]]]]
+HeartbeatCb = Optional[Callable[["BaseLayer", Summary], None | Awaitable[None]]]
 
 
 class MetricResponseSuccess(TypedDict):
@@ -127,8 +124,8 @@ class Metrics:
     """
 
     def __init__(self):
-        self.raw_metrics: Dict[MetricScope, Dict[str, int]] = DefaultDict(dict)
-        self.metrics: Dict[MetricScope, Dict[str, Metric]] = DefaultDict(dict)
+        self.raw_metrics: dict[MetricScope, dict[str, int]] = defaultdict(dict)
+        self.metrics: dict[MetricScope, dict[str, Metric]] = defaultdict(dict)
 
     def set(self, scope: MetricScope, name: str, value: int):
         """
@@ -148,9 +145,7 @@ class Metrics:
         """
         return self.set(Metric.Scope.GROUP, name, value)
 
-    def get(
-        self, scope: MetricScope, name: str, default: _TDefault = NoReturn
-    ) -> Union[int, _TDefault]:
+    def get(self, scope: MetricScope, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
         """
         Get metric for given scope
         """
@@ -159,31 +154,31 @@ class Metrics:
             raise KeyError(f"No metric named `{name}` in scope `{scope}`")
         return value
 
-    def get_own(self, name: str, default: _TDefault = NoReturn) -> Union[int, _TDefault]:
+    def get_own(self, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
         """
         Get metric for own scope
         """
         return self.get(Metric.Scope.OWN, name, default=default)
 
-    def get_group(self, name: str, default: _TDefault = NoReturn) -> Union[int, _TDefault]:
+    def get_group(self, name: str, default: _TDefault = NoReturn) -> int | _TDefault:
         """
         Get metric for group scope
         """
         return self.get(Metric.Scope.GROUP, name, default=default)
 
-    def dump(self, scope: MetricScope) -> Dict[str, int]:
+    def dump(self, scope: MetricScope) -> dict[str, int]:
         """
         Dump given scope to dict
         """
         return self.raw_metrics[scope].copy()
 
-    def dump_own(self) -> Dict[str, int]:
+    def dump_own(self) -> dict[str, int]:
         """
         Dump own scope to dict
         """
         return self.dump(Metric.Scope.OWN)
 
-    def dump_group(self) -> Dict[str, int]:
+    def dump_group(self) -> dict[str, int]:
         """
         Dump group scope to dict
         """
@@ -208,14 +203,14 @@ class BaseLayer:
 
     def __init__(
         self,
-        spec: Union[Job, JobArray, JobGroup],
+        spec: Job | JobArray | JobGroup,
         logger: Logger,
-        client: Optional[WebsocketClient] = None,
-        tracking: Optional[Path] = None,
+        client: WebsocketClient | None = None,
+        tracking: Path | None = None,
         interval: int = 5,
         quiet: bool = False,
         all_msg: bool = False,
-        heartbeat_cb: Optional[HeartbeatCb] = None,
+        heartbeat_cb: HeartbeatCb | None = None,
         limits: MessageLimits = None,
     ) -> None:
         # Capture initialisation variables
@@ -232,18 +227,13 @@ class BaseLayer:
         self.limits = limits or MessageLimits()
         # Check spec object
         self.spec.check()
-        # Create empty pointers in advance
-        self.code = 0
-        self.__hub_uid = None
-        self.__hb_event = None
-        self.__hb_task = None
         # State
         self.complete = False
         self.terminated = False
         self.metrics = Metrics()
-        self.started: Optional[float] = None
-        self.updated: Optional[float] = None
-        self.stopped: Optional[float] = None
+        self.started: float | None = None
+        self.updated: float | None = None
+        self.stopped: float | None = None
         self.result: JobResult = JobResult.UNKNOWN
 
     @property
@@ -276,7 +266,7 @@ class BaseLayer:
     def db(self, value: Database):
         setattr(self, "__db", value)
 
-    async def setup(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
+    async def setup(self, *args: list[Any], **kwargs: dict[str, Any]) -> None:
         # Set initial metrics
         self.metrics.set_own("sub_total", 1)
         self.metrics.set_own("sub_active", 1)
@@ -334,7 +324,7 @@ class BaseLayer:
         self.__hb_event = asyncio.Event()
         self.__hb_task = asyncio.create_task(self.__heartbeat_loop(self.__hb_event))
 
-    async def teardown(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
+    async def teardown(self, *args: list[Any], **kwargs: dict[str, Any]) -> None:
         # Stop the heartbeat process
         self.__hb_event.set()
         await asyncio.wait_for(self.__hb_task, timeout=(2 * self.interval))
@@ -436,7 +426,7 @@ class BaseLayer:
     async def get_messages(
         self, ws: WebsocketWrapper, after: int = 0, limit: int = 10
     ) -> ApiMessagesResponse:
-        msgs: List[LogEntry] = await self.db.get_logentry(
+        msgs: list[LogEntry] = await self.db.get_logentry(
             sql_order_by=("db_uid", True),
             sql_limit=limit,
             db_uid=Query(gt=after),
@@ -455,7 +445,7 @@ class BaseLayer:
         return {"messages": messages, "total": total, "status": JobState.STARTED}
 
     async def resolve(
-        self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0, **_
+        self, root_path: list[str], nest_path: list[str] | None = None, depth: int = 0, **_
     ) -> ApiJob:
         del root_path, nest_path, depth
         return ApiJob(

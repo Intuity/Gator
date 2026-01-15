@@ -184,7 +184,7 @@ def test_spec_job_group_bad_fields():
     """Bad field values should be flagged"""
     # Check ident
     with pytest.raises(SpecError) as exc:
-        JobGroup(ident=123).check()
+        JobGroup(ident=123).check()  # ty: ignore[invalid-argument-type]
     assert str(exc.value) == "ident must be a string"
     assert exc.value.field == "ident"
     # Check jobs (non-list)
@@ -236,6 +236,6 @@ def test_spec_job_group_bad_fields():
         assert exc.value.field == field
     # Check recursion of check into child
     with pytest.raises(SpecError) as exc:
-        JobGroup(jobs=[Job(ident="hi"), Job(ident=123)]).check()
+        JobGroup(jobs=[Job(ident="hi"), Job(ident=123)]).check()  # ty: ignore[invalid-argument-type]
     assert str(exc.value) == "ident must be a string"
     assert exc.value.field == "ident"

@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import DefaultDict, Dict, List, Optional, Union, cast
+from typing import cast
 
 from .child import Child
 from .db import Database, Query
@@ -58,9 +59,9 @@ class _DBClient:
         self.db = db
 
     async def resolve(
-        self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0
+        self, root_path: list[str], nest_path: list[str] | None = None, depth: int = 0
     ) -> ApiJob:
-        children: List[ChildEntry] = []
+        children: list[ChildEntry] = []
         if self.db.has_table(ChildEntry):
             children = await self.db.get_childentry()
         elif resolve_path := (root_path or nest_path):
@@ -92,8 +93,8 @@ class _DBClient:
         stop = stopped_attr[0].value if stopped_attr else None
         result = JobResult(int(result_attr[0].value)) if result_attr else JobResult.UNKNOWN
 
-        metrics: Dict[str, int] = {}
-        child_metrics: Dict[str, Dict[str, int]] = DefaultDict(dict)
+        metrics: dict[str, int] = {}
+        child_metrics: dict[str, dict[str, int]] = defaultdict(dict)
         for metric in await self.db.get_metric():
             if metric.scope == Metric.Scope.GROUP:
                 metrics[metric.name] = metric.value
@@ -103,7 +104,7 @@ class _DBClient:
                 child_metrics[metric.scope][metric.name] = metric.value
 
         # Resolve nested path
-        child_jobs: List[ApiJob] = []
+        child_jobs: list[ApiJob] = []
         if nest_path:
             resolve_ident = nest_path[0]
             for child in children:
@@ -160,7 +161,7 @@ class _DBClient:
         )
 
     async def get_messages(self, after: int = 0, limit: int = 10) -> ApiMessagesResponse:
-        msgs: List[LogEntry] = await self.db.get_logentry(
+        msgs: list[LogEntry] = await self.db.get_logentry(
             sql_order_by=("db_uid", True),
             sql_limit=limit,
             db_uid=Query(gt=after),
@@ -183,11 +184,11 @@ class _DBClient:
 
 
 class _WSClient:
-    def __init__(self, ws: Union[WebsocketClient, WebsocketWrapper]):
+    def __init__(self, ws: WebsocketClient | WebsocketWrapper):
         self.ws = ws
 
     async def resolve(
-        self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0
+        self, root_path: list[str], nest_path: list[str] | None = None, depth: int = 0
     ) -> ApiJob:
         return await self.ws.resolve(root_path=root_path, nest_path=nest_path, depth=depth)
 
@@ -199,7 +200,7 @@ class _WSClient:
 
 
 @asynccontextmanager
-async def database_client(path: Union[str, Path]):
+async def database_client(path: str | Path):
     path = Path(path)
     if not path.exists():
         raise RuntimeError("No Exist")

@@ -17,7 +17,7 @@ import atexit
 import dataclasses
 import itertools
 import json
-from typing import Any, ClassVar, Dict, Optional, Union
+from typing import Any, ClassVar
 
 import websockets
 import websockets.exceptions
@@ -29,7 +29,7 @@ from .ws_router import WebsocketRouter
 class WebsocketWrapperPending:
     req_id: int
     event: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
-    response: Optional[Dict] = None
+    response: dict | None = None
 
 
 class WebsocketWrapperError(Exception):
@@ -39,7 +39,7 @@ class WebsocketWrapperError(Exception):
 class WebsocketWrapper(WebsocketRouter):
     WS_WRAPPERS: ClassVar[list["WebsocketWrapper"]] = []
 
-    def __init__(self, ws: Optional[websockets.WebSocketClientProtocol] = None) -> None:
+    def __init__(self, ws: websockets.WebSocketClientProtocol | None = None) -> None:
         super().__init__()
         self.ws = ws
         self.ws_event = asyncio.Event()
@@ -75,7 +75,7 @@ class WebsocketWrapper(WebsocketRouter):
         for ws in cls.WS_WRAPPERS:
             await ws.stop_ws()
 
-    async def send(self, data: Union[str, dict]) -> None:
+    async def send(self, data: str | dict) -> None:
         await self.ws.send(data if isinstance(data, str) else json.dumps(data))
 
     async def measure_latency(self) -> float:
@@ -113,8 +113,8 @@ class WebsocketWrapper(WebsocketRouter):
             pass
 
         async def _shim(
-            posted: bool = False, **kwargs: Dict[str, Union[str, int]]
-        ) -> Dict[str, Union[str, int]]:
+            posted: bool = False, **kwargs: dict[str, str | int]
+        ) -> dict[str, str | int]:
             # Wait until server is available
             await self.ws_event.wait()
             if not self.ws:
@@ -147,7 +147,7 @@ class WebsocketWrapper(WebsocketRouter):
                 # Check for result
                 if pending.response.get("result", "error") != "success":
                     raise WebsocketWrapperError(
-                        f"Server responded with an " f"error for '{key}': {pending.response}"
+                        f"Server responded with an error for '{key}': {pending.response}"
                     )
                 # Return response
                 return pending.response.get("payload", {})

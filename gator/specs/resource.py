@@ -73,8 +73,8 @@ class Memory(SpecBase):
 
     @property
     def in_megabytes(self) -> int:
-        mapping = {"KB": 0.1, "MB": 1, "GB": 1e3, "TB": 1e6}.get(self.unit.strip().upper())
-        return self.size * mapping
+        mapping = {"KB": 0.1, "MB": 1, "GB": 1e3, "TB": 1e6}.get(self.unit.strip().upper(), 1)
+        return int(self.size * mapping)
 
     def check(self) -> None:
         if not isinstance(self.size, (int, float)):

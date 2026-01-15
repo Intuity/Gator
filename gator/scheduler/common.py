@@ -16,7 +16,7 @@ import abc
 import functools
 import itertools
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Any
 
 from ..common.child import Child
 from ..common.logger import Logger, MessageLimits
@@ -33,11 +33,11 @@ class BaseScheduler:
         self,
         tracking: Path,
         parent: str,
+        logger: Logger,
         interval: int = 5,
         quiet: bool = True,
-        logger: Optional[Logger] = None,
-        options: Optional[Dict[str, str]] = None,
-        limits: Optional[MessageLimits] = None,
+        options: dict[str, str] | None = None,
+        limits: MessageLimits | None = None,
     ) -> None:
         self.tracking = tracking
         self.parent = parent
@@ -48,11 +48,11 @@ class BaseScheduler:
         self.options = {k.strip().lower(): v for k, v in (options or {}).items()}
         self.babysit = self.options.get("babysit", False)
 
-    def get_option(self, name: str, default: Any = None, as_type: Optional[Type] = None) -> Any:
+    def get_option(self, name: str, default: Any = None, as_type: type | None = None) -> Any:
         value = self.options.get(name, default)
         return value if as_type is None else as_type(value)
 
-    async def update_options(self, options: Dict[str, str]) -> Dict[str, str]:
+    async def update_options(self, options: dict[str, str]) -> dict[str, str]:
         """
         Update the scheduler's options. Only specified options are updated,
         and the rest are left unchanged.
@@ -69,7 +69,7 @@ class BaseScheduler:
         return type(self).__name__.lower().replace("scheduler", "")
 
     @functools.cached_property
-    def base_command(self) -> List[str]:
+    def base_command(self) -> list[str]:
         cmd = []
         if self.babysit:
             cmd += ["python3", "-m", "gator.babysitter"]
@@ -91,7 +91,7 @@ class BaseScheduler:
         ]
         return cmd
 
-    def create_command(self, child: Child, options: Optional[Dict[str, str]] = None) -> List[str]:
+    def create_command(self, child: Child, options: dict[str, str] | None = None) -> list[str]:
         """
         Build a command for launching a job on the compute infrastructure using
         details from the child object.
@@ -112,7 +112,7 @@ class BaseScheduler:
         )
 
     @abc.abstractmethod
-    async def launch(self, tasks: List[Child]) -> None:
+    async def launch(self, tasks: list[Child]) -> None:
         """
         Launch all given tasks onto the compute infrastructure, this function is
         asynchronous but should return as soon as all tasks are launched (i.e.

@@ -89,12 +89,12 @@ class TestDatabase:
         # Check for queries
         sqlite._execute.assert_any_call(
             sqlite._conn.execute,
-            "INSERT INTO TestObj (key_a, key_b) " "VALUES (?, ?)",
+            "INSERT INTO TestObj (key_a, key_b) VALUES (?, ?)",
             ["hello", 1234],
         )
         sqlite._execute.assert_any_call(
             sqlite._conn.execute,
-            "INSERT INTO TestObj (key_a, key_b) " "VALUES (?, ?)",
+            "INSERT INTO TestObj (key_a, key_b) VALUES (?, ?)",
             ["goodbye", 2345],
         )
         # Clean-up
@@ -261,14 +261,14 @@ class TestDatabase:
         await database.update(TestObj(db_uid=123))
         sqlite._execute.assert_any_call(
             sqlite._conn.execute,
-            "UPDATE TestObj SET key_a = :key_a, " "key_b = :key_b WHERE db_uid = :db_uid",
+            "UPDATE TestObj SET key_a = :key_a, key_b = :key_b WHERE db_uid = :db_uid",
             {"db_uid": 123, "key_a": "", "key_b": 0},
         )
         # Update an object with values
         await database.update(TestObj(db_uid=123, key_a="hello", key_b=234))
         sqlite._execute.assert_any_call(
             sqlite._conn.execute,
-            "UPDATE TestObj SET key_a = :key_a, " "key_b = :key_b WHERE db_uid = :db_uid",
+            "UPDATE TestObj SET key_a = :key_a, key_b = :key_b WHERE db_uid = :db_uid",
             {"db_uid": 123, "key_a": "hello", "key_b": 234},
         )
         # Clean-up
@@ -376,12 +376,12 @@ class TestDatabase:
         # Check for queries
         sqlite._execute.assert_any_call(
             sqlite._conn.execute,
-            "INSERT INTO TestObj (key_a, key_b) " "VALUES (?, ?)",
+            "INSERT INTO TestObj (key_a, key_b) VALUES (?, ?)",
             ["hello", 1],
         )
         sqlite._execute.assert_any_call(
             sqlite._conn.execute,
-            "INSERT INTO TestObj (key_a, key_b) " "VALUES (?, ?)",
+            "INSERT INTO TestObj (key_a, key_b) VALUES (?, ?)",
             ["goodbye", 2],
         )
         # Clean-up

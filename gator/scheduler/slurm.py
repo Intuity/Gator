@@ -19,7 +19,7 @@ import subprocess
 from datetime import datetime, timedelta
 from enum import IntEnum
 from pathlib import Path
-from typing import ClassVar, Dict, List, Optional
+from typing import ClassVar
 
 import aiohttp
 
@@ -49,13 +49,13 @@ class SlurmScheduler(BaseScheduler):
         self,
         tracking: Path,
         parent: str,
+        logger: Logger,
         interval: int = 5,
         quiet: bool = True,
-        logger: Optional[Logger] = None,
-        options: Optional[Dict[str, str]] = None,
-        limits: Optional[MessageLimits] = None,
+        options: dict[str, str] | None = None,
+        limits: MessageLimits | None = None,
     ) -> None:
-        super().__init__(tracking, parent, interval, quiet, logger, options, limits)
+        super().__init__(tracking, parent, logger, interval, quiet, options, limits)
         self._username: str = getpass.getuser()
         self._api_root: str = self.get_option("api_root", "http://127.0.0.1:6820/")
         self._api_version: str | None = None
@@ -78,7 +78,7 @@ class SlurmScheduler(BaseScheduler):
                 [
                     "scontrol",
                     "token",
-                    f"lifespan={int(self._interval*1.1)}",
+                    f"lifespan={int(self._interval * 1.1)}",
                     f"username={self._username}",
                 ],
                 capture_output=True,
@@ -90,6 +90,7 @@ class SlurmScheduler(BaseScheduler):
                 raise SchedulerError(f"Failed to extract Slurm JWT from STDOUT: {stdout}")
             self._token = stdout.split("SLURM_JWT=")[1].strip()
             self._expiry = datetime.now() + timedelta(seconds=self._interval)
+        assert isinstance(self._token, str)
         return self._token
 
     def clear_token(self):
@@ -108,10 +109,11 @@ class SlurmScheduler(BaseScheduler):
     async def _retry_post(
         self,
         route: str,
-        payload: dict[str, str],
+        payload: dict[str, str | list[str]],
         retries: int = 3,
         backoff: float = 1.0,
     ) -> dict[str, str]:
+        data = {}
         for idx in range(retries):
             async with self.get_session() as session:
                 async with session.post(route, json=payload) as resp:
@@ -164,7 +166,7 @@ class SlurmScheduler(BaseScheduler):
         else:
             raise SchedulerError(f"Post request to {route} failed {retries} times: {data}")
 
-    async def launch(self, tasks: List[Child]) -> None:
+    async def launch(self, tasks: list[Child]) -> None:
         # Figure out the active API version of Slurm REST interface
         if not self._api_version:
             async with self.get_session() as session:

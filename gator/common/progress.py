@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
 
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.jupyter import JupyterMixin
@@ -47,7 +46,7 @@ class PassFailBar(JupyterMixin):
         active: int = 0,
         passed: int = 0,
         failed: int = 0,
-        width: Optional[int] = None,
+        width: int | None = None,
         fail_style: str = "red",
         pass_style: str = "green",
         active_style: str = "white",
@@ -63,18 +62,6 @@ class PassFailBar(JupyterMixin):
         self.pass_style = pass_style
         self.active_style = active_style
         self.passive_style = passive_style
-
-    def __repr__(self) -> str:
-        return f"<Bar {self.completed!r} of {self.total!r}>"
-
-    @property
-    def percentage_completed(self) -> Optional[float]:
-        """Calculate percentage complete."""
-        if self.total is None:
-            return None
-        completed = (self.completed / self.total) * 100.0
-        completed = min(100, max(0.0, completed))
-        return completed
 
     def update(self, summary: Summary) -> None:
         """Update progress with new values.
@@ -181,7 +168,12 @@ if __name__ == "__main__":  # pragma: no cover
             passed += (num_pass := random.randint(0, last_actv))
             failed += last_actv - num_pass
             last_actv = active
-            bar.update(total, active, passed, failed)
+            summary = Summary()
+            summary.metrics["sub_total"] = total
+            summary.metrics["sub_active"] = active
+            summary.metrics["sub_passed"] = passed
+            summary.metrics["sub_failed"] = failed
+            bar.update(summary)
             live.update(bar)
             time.sleep(0.25)
     console.show_cursor(True)

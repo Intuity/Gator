@@ -15,7 +15,6 @@
 import asyncio
 import os
 from pathlib import Path
-from typing import Union
 
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.live import Live
@@ -128,7 +127,7 @@ async def launch(glyph: str = "🐊 Gator", **kwargs) -> Summary:
     live.start(refresh=True)
 
     # Create an update function
-    async def _update(layer: BaseLayer, summary: Summary, /, tree: Union[Tree, None] = None):
+    async def _update(layer: BaseLayer, summary: Summary, /, tree: Tree | None = None):
         # Update the progress display
         await progress.update(layer, summary)
 

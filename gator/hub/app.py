@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, Optional, Union, cast
+from typing import cast
 
 from quart import (
     Quart,
@@ -37,7 +38,7 @@ from .tables import Completion, Metric, Registration, setup_db
 
 @asynccontextmanager
 async def registration_client(registration: Registration):
-    completion = cast(Optional[Completion], await registration.get_related(Registration.completion))
+    completion = cast(Completion | None, await registration.get_related(Registration.completion))
     db_file = completion.db_file if completion else ""
     try:
         async with resolve_client(
@@ -125,7 +126,7 @@ def setup_hub(
         return {"result": "success"}
 
     def lookup_job(func: Callable) -> Callable:
-        async def _inner(job_id: int, **kwargs) -> Dict[str, Union[str, int]]:
+        async def _inner(job_id: int, **kwargs) -> dict[str, str | int]:
             reg = await Registration.objects().get(Registration.uid == int(job_id)).first()
             return await func(reg, **kwargs)
 

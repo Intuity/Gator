@@ -22,11 +22,11 @@ if sys.version_info >= (3, 11):
     StrEnum = enum.StrEnum
 else:
 
-    class StrEnum(str, enum.Enum):
-        ...
+    class StrEnum(str, enum.Enum): ...
 
 
-from typing import Dict, List, Optional, Sequence, TypedDict, Union
+from collections.abc import Sequence
+from typing import TypedDict, Union
 
 from .db import Base
 
@@ -64,7 +64,7 @@ class Attribute(Base):
     """General purpose attribute"""
 
     name: str = ""
-    value: str = ""
+    value: str | int = ""
 
 
 @dataclasses.dataclass
@@ -82,7 +82,7 @@ class ProcStat(Base):
     """Process resource usage object"""
 
     nproc: int = 0
-    cpu: int = 0
+    cpu: float = 0
     mem: int = 0
     vmem: int = 0
     timestamp: datetime = dataclasses.field(default_factory=datetime.now)
@@ -114,14 +114,14 @@ class ChildEntry(Base):
     ident: str = ""
     server_url: str = ""
     db_file: str = ""
-    started: Optional[float] = None
-    updated: Optional[float] = None
-    stopped: Optional[float] = None
+    started: float | None = None
+    updated: float | None = None
+    stopped: float | None = None
     result: JobResult = JobResult.UNKNOWN
     expected_children: int = 0
 
 
-Metrics = Dict[str, int]
+Metrics = dict[str, int]
 
 
 class ApiResolvable(TypedDict):
@@ -144,7 +144,7 @@ class ApiMessage(TypedDict):
 class ApiMessagesResponse(TypedDict):
     "Root jobs API response"
 
-    messages: List[ApiMessage]
+    messages: list[ApiMessage]
     total: int
     status: JobState
 
@@ -154,18 +154,18 @@ class ApiJob(TypedDict):
 
     uidx: int
     root: int
-    path: List[str]
+    path: list[str]
     ident: str
     status: JobState
     metrics: Metrics
     server_url: str
     db_file: str
-    owner: Optional[str]
-    started: Optional[float]
-    updated: Optional[float]
-    stopped: Optional[float]
+    owner: str | None
+    started: float | None
+    updated: float | None
+    stopped: float | None
     result: JobResult
-    children: List["ApiJob"]
+    children: list["ApiJob"]
     expected_children: int
 
 

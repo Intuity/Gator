@@ -15,7 +15,6 @@
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Union
 
 from ..specs import Job, JobArray, JobGroup
 from .summary import Summary
@@ -25,10 +24,10 @@ from .ws_wrapper import WebsocketWrapper
 
 @dataclass
 class Child:
-    spec: Union[Job, JobArray, JobGroup]
+    spec: Job | JobArray | JobGroup
     ident: str
     entry: ChildEntry
-    tracking: Optional[Path] = None
+    tracking: Path
     state: JobState = JobState.PENDING
     exitcode: int = 0
 
@@ -39,4 +38,4 @@ class Child:
     e_complete: asyncio.Event = field(default_factory=asyncio.Event)
 
     # Socket
-    ws: Optional[WebsocketWrapper] = None
+    ws: WebsocketWrapper | None = None

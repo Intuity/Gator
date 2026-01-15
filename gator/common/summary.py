@@ -13,19 +13,19 @@
 # limitations under the License.
 
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional, TypedDict, cast
+from typing import Optional, TypedDict, cast
 
 
 class SummaryDict(TypedDict):
-    metrics: Dict[str, int]
-    failed_ids: List[List[str]]
+    metrics: dict[str, int]
+    failed_ids: list[list[str]]
 
 
 @dataclass
 class Summary:
-    metrics: Dict[str, int] = field(default_factory=dict)
-    failed_ids: List[List[str]] = field(default_factory=list)
-    running_ids: List[List[str]] = field(default_factory=list)
+    metrics: dict[str, int] = field(default_factory=dict)
+    failed_ids: list[list[str]] = field(default_factory=list)
+    running_ids: list[list[str]] = field(default_factory=list)
 
     def from_dict(self, data: SummaryDict) -> "Summary":
         return type(self)(**data)
@@ -33,11 +33,14 @@ class Summary:
     def as_dict(self) -> SummaryDict:
         return cast(SummaryDict, asdict(self))
 
-    def contextualised(self, context: str) -> "Summary":
-        new_summary = type(self)(**asdict(self))
-        new_summary.failed_ids = [[context, *x] for x in self.failed_ids]
-        new_summary.running_ids = [[context, *x] for x in self.running_ids]
-        return new_summary
+    def contextualised(self, context: str | None) -> "Summary":
+        if context is None:
+            return self
+        else:
+            new_summary = type(self)(**asdict(self))
+            new_summary.failed_ids = [[context, *x] for x in self.failed_ids]
+            new_summary.running_ids = [[context, *x] for x in self.running_ids]
+            return new_summary
 
     def merged(
         self: "Summary", *summaries: "Summary", base: Optional["Summary"] = None

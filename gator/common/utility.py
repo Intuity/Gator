@@ -16,7 +16,8 @@ import asyncio
 import functools
 import os
 import pwd
-from typing import Awaitable, Callable, TypeVar, Union, overload
+from collections.abc import Awaitable, Callable
+from typing import TypeVar, overload
 
 
 @functools.lru_cache
@@ -33,16 +34,14 @@ try:
 
     @overload
     def as_couroutine(
-        fn: Callable[_P, Union[_R, Awaitable[_R]]],
-    ) -> Callable[_P, Awaitable[_R]]:
-        ...
+        fn: Callable[_P, _R | Awaitable[_R]],
+    ) -> Callable[_P, Awaitable[_R]]: ...
 except ImportError:
 
     @overload
     def as_couroutine(
-        fn: Callable[..., Union[_R, Awaitable[_R]]],
-    ) -> Callable[..., Awaitable[_R]]:
-        ...
+        fn: Callable[..., _R | Awaitable[_R]],
+    ) -> Callable[..., Awaitable[_R]]: ...
 
 
 def as_couroutine(fn):

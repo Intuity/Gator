@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Optional
+from typing import Any, ClassVar
 
 import yaml
 
@@ -30,9 +30,9 @@ class SpecBase(yaml.YAMLObject):
     yaml_tag = "!unset"
     yaml_loader = Loader
     yaml_dumper = Dumper
-    _current_yaml_path: ClassVar[Optional[Path]] = None
+    _current_yaml_path: ClassVar[Path | None] = None
 
-    yaml_path: Optional[Path] = field(
+    yaml_path: Path | None = field(
         default_factory=lambda: SpecBase._current_yaml_path,
         init=False,
         repr=False,
@@ -48,7 +48,7 @@ class SpecBase(yaml.YAMLObject):
         cls._current_yaml_path = None
         return inst
 
-    def __getstate__(self) -> Dict[str, Any]:
+    def __getstate__(self) -> dict[str, Any]:
         state = {}
         for dc_field in fields(self):
             if dc_field.name == "yaml_path":

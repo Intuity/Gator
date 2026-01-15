@@ -14,7 +14,6 @@
 
 import asyncio
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import websockets.exceptions
 
@@ -31,17 +30,17 @@ class LocalScheduler(BaseScheduler):
         self,
         tracking: Path,
         parent: str,
+        logger: Logger,
         interval: int = 5,
         quiet: bool = True,
-        logger: Optional[Logger] = None,
-        options: Optional[Dict[str, str]] = None,
-        limits: Optional[MessageLimits] = None,
+        options: dict[str, str] | None = None,
+        limits: MessageLimits | None = None,
     ) -> None:
-        super().__init__(tracking, parent, interval, quiet, logger, options, limits)
+        super().__init__(tracking, parent, logger, interval, quiet, options, limits)
         self.launch_task = None
         self.update_lock = asyncio.Lock()
         self.launched_processes = {}
-        self.launched_children: Dict[str, Child] = {}
+        self.launched_children: dict[str, Child] = {}
         self.complete = {}
         self.monitors = {}
         self.total_tasks = 0
@@ -51,7 +50,7 @@ class LocalScheduler(BaseScheduler):
         if self.concurrency < 0:
             raise SchedulerError(f"Invalid concurrency of {self.concurrency}")
 
-    async def __monitor(self, ident: str, proc: asyncio.subprocess.Process) -> None:
+    async def _monitor(self, ident: str, proc: asyncio.subprocess.Process) -> None:
         # Check to see if the process has finished, if it hasn't then wait
         if (rc := proc.returncode) is None:
             rc = await proc.wait()
@@ -71,7 +70,7 @@ class LocalScheduler(BaseScheduler):
         # Log how many concurrency slots were released
         await self.logger.debug(f"Task '{ident}' released {released} slots on completion")
 
-    async def launch(self, tasks: List[Child]) -> None:
+    async def launch(self, tasks: list[Child]) -> None:
         await self.logger.debug(f"Local scheduler using concurrency of {self.concurrency}")
         self.total_tasks += len(tasks)
 
@@ -111,7 +110,7 @@ class LocalScheduler(BaseScheduler):
                     )
                     self.launched_children[task.ident] = task
                     self.monitors[task.ident] = asyncio.create_task(
-                        self.__monitor(task.ident, self.launched_processes[task.ident])
+                        self._monitor(task.ident, self.launched_processes[task.ident])
                     )
                     # Restore any unused concurrency
                     self.concurrency += slots
@@ -126,7 +125,7 @@ class LocalScheduler(BaseScheduler):
             pass
         await asyncio.gather(*self.monitors.values())
 
-    async def update_options(self, options: Dict[str, str]) -> Dict[str, str]:
+    async def update_options(self, options: dict[str, str]) -> dict[str, str]:
         updated_options = {}
 
         if "concurrency" in options:

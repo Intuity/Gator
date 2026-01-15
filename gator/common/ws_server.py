@@ -17,7 +17,6 @@ import atexit
 import socket
 from contextlib import closing
 from datetime import datetime
-from typing import Optional
 
 import websockets
 
@@ -31,7 +30,7 @@ from .ws_wrapper import WebsocketWrapper
 class WebsocketServer(WebsocketRouter):
     """Websocket server that exposes a local server with extensible routes"""
 
-    def __init__(self, db: Database, logger: Logger, port: Optional[int] = None) -> None:
+    def __init__(self, db: Database, logger: Logger, port: int | None = None) -> None:
         super().__init__()
         # Store the database and logger pointers
         self.db = db
@@ -80,7 +79,7 @@ class WebsocketServer(WebsocketRouter):
 
     async def handle_log(
         self,
-        timestamp: Optional[str] = None,
+        timestamp: str | None = None,
         severity: str = "INFO",
         message: str = "N/A",
         hierarchy: str = "root",

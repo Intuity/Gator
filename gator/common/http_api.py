@@ -15,7 +15,7 @@
 import asyncio
 import os
 import sys
-from typing import Any, Dict
+from typing import Any
 
 import aiohttp
 
@@ -43,7 +43,7 @@ class HTTPAPI:
     async def stop(self) -> None:
         await self.session.close()
 
-    async def get(self, route: str) -> Dict[str, str]:
+    async def get(self, route: str) -> dict[str, str]:
         """
         Perform a GET request on a route supported by the parent server.
 
@@ -74,7 +74,7 @@ class HTTPAPI:
         else:
             return {}
 
-    async def post(self, route: str, **kwargs: Any) -> Dict[str, str]:
+    async def post(self, route: str, **kwargs: Any) -> dict[str, str]:
         """
         Perform a POST request on a route supported by the parent server,
         attaching a JSON encoded dictionary of the keyword arguments to the query.

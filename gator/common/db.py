@@ -16,23 +16,24 @@ import asyncio
 import atexit
 import dataclasses
 import functools
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any
 
 import aiosqlite
 
 
 @dataclasses.dataclass
 class Base:
-    db_uid: Optional[int] = None
+    db_uid: int | None = None
 
     @classmethod
     @functools.lru_cache
-    def list_fields(cls) -> List[dataclasses.field]:
+    def list_fields(cls) -> list[dataclasses.Field]:
         return [f for f in dataclasses.fields(cls) if f.name != "db_uid"]
 
-    def serialize(self, as_list: bool = False, omit: Optional[List[str]] = None) -> Dict[str, int]:
+    def serialize(self, as_list: bool = False, omit: list[str] | None = None) -> list[int] | dict[str, int]:
         omit = omit or []
         if as_list:
             return [getattr(self, f.name) for f in self.list_fields() if f.name not in omit]
@@ -42,8 +43,8 @@ class Base:
     @classmethod
     def deserialize(
         cls,
-        values: Union[Dict[str, int], List[int]],
-        omit: Optional[List[str]] = None,
+        values: dict[str, int] | list[int],
+        omit: list[str] | None = None,
     ) -> "Base":
         inst = cls()
         omit = omit or []
@@ -69,12 +70,12 @@ class Query:
     $> SELECT * FROM X WHERE attr >= :gte AND attr < :lt
     """
 
-    exact: Optional[Any] = None
-    like: Optional[str] = None
-    gt: Optional[int] = None
-    gte: Optional[int] = None
-    lt: Optional[int] = None
-    lte: Optional[int] = None
+    exact: Any = None
+    like: Any = None
+    gt: Any = None
+    gte: Any = None
+    lt: Any = None
+    lte: Any = None
 
 
 class DatabaseError(Exception):
@@ -97,8 +98,7 @@ class Database:
         # Track which dataclasses are register
         self.registered = []
         self.tables = []
-        # Placeholder for the database instance
-        self.__db = None
+        self._db : aiosqlite.Connection
         # Record transforms
         self.__transforms = {}
         self.define_transform(int, "INTEGER")
@@ -107,30 +107,30 @@ class Database:
     async def start(self) -> None:
         mode_param = "?mode=ro" if self.readonly else ""
         database = f"file:{self.path.as_posix()}{mode_param}"
-        self.__db = await aiosqlite.connect(database, timeout=1)
+        self._db = await aiosqlite.connect(database, timeout=1)
+        assert isinstance(self._db, aiosqlite.Connection)
 
         def _teardown() -> None:
             asyncio.run(self.stop())
 
         atexit.register(_teardown)
-        async with self.__db.execute(
+        async with self._db.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         ) as cursor:
             result = await cursor.fetchall()
             self.tables = [x[0] for x in result]
 
     async def stop(self) -> None:
-        if self.__db is not None:
-            await self.__db.commit()
-            await self.__db.close()
-        self.__db = None
+        if hasattr(self, "_db"):
+            await self._db.commit()
+            await self._db.close()
 
     def define_transform(
         self,
         obj_type: Any,
         sql_type: str = "TEXT",
-        transform_put: Optional[Callable] = None,
-        transform_get: Optional[Callable] = None,
+        transform_put: Callable | None = None,
+        transform_get: Callable | None = None,
     ) -> None:
         """
         Define a custom transformation from a Python object to an SQL type and
@@ -149,7 +149,7 @@ class Database:
             transform_get or (lambda x: x),
         )
 
-    def get_transform(self, obj_type: Any) -> Tuple[str, Callable, Callable]:
+    def get_transform(self, obj_type: Any) -> tuple[str, Callable, Callable]:
         """
         Lookup a transform for a given object type, returning the SQLite
         column type and the transforming functions to and from the SQLite type.
@@ -171,11 +171,7 @@ class Database:
         _, to_func, _ = self.get_transform(type(obj))
         return to_func(obj)
 
-    async def register(
-        self,
-        descr: Type[dataclasses.dataclass],
-        push_callback: Optional[Callable] = None,
-    ) -> None:
+    async def register(self, descr: Any, push_callback: Callable | None = None) -> None:
         """
         Register a dataclass - this will create a matching table in the database
         and setup the required 'push_X' and 'get_X' methods.
@@ -194,7 +190,7 @@ class Database:
                 f"CREATE TABLE {descr.__name__} ("
                 f"db_uid INTEGER PRIMARY KEY AUTOINCREMENT, {', '.join(fields)})"
             )
-            await self.__db.execute(query)
+            await self._db.execute(query)
             self.tables.append(descr.__name__)
         # Setup push/get methods
         if descr not in self.registered:
@@ -212,13 +208,13 @@ class Database:
                 f"VALUES ({', '.join(['?' for _ in fnames])})"
             )
 
-            async def _push(item: descr) -> Optional[int]:
+            async def _push(item: descr) -> int | None:
                 if self.readonly:
                     raise RuntimeError("Can't push to read-only database!")
                 nonlocal sql_put, transforms_put
                 assert isinstance(item, descr), "Wrong object type"
                 values = [x(y) for x, y in zip(transforms_put, dataclasses.astuple(item)[1:])]
-                async with self.__db.execute(sql_put, values) as cursor:
+                async with self._db.execute(sql_put, values) as cursor:
                     item.db_uid = cursor.lastrowid
                 if push_callback is not None:
                     await push_callback(item)
@@ -243,7 +239,7 @@ class Database:
                     for k, x, y in zip(fnames, transforms_put, dataclasses.astuple(item)[1:])
                 }
                 params["db_uid"] = item.db_uid
-                await self.__db.execute(sql_update, params)
+                await self._db.execute(sql_update, params)
 
             setattr(self, f"update_{descr.__name__.lower()}", _update)
             # Create a 'getter' method
@@ -251,11 +247,11 @@ class Database:
             sql_base_count = f"SELECT COUNT(db_uid) FROM {descr.__name__}"
 
             async def _get(
-                sql_order_by: Optional[Tuple[str, bool]] = None,
+                sql_order_by: tuple[str, bool] | None = None,
                 sql_count: bool = False,
-                sql_limit: Optional[int] = None,
-                **kwargs: Dict[str, Union[Query, str, int]],
-            ) -> List[descr]:
+                sql_limit: int | None = None,
+                **kwargs: dict[str, Query | str | int],
+            ):
                 nonlocal sql_base_query, sql_base_count, transforms_get
                 query_str = [sql_base_query, sql_base_count][sql_count]
                 conditions = []
@@ -294,11 +290,12 @@ class Database:
                 if sql_limit is not None:
                     query_str += " LIMIT :limit"
                     parameters["limit"] = sql_limit
-                async with self.__db.execute(query_str, parameters) as cursor:
+                async with self._db.execute(query_str, parameters) as cursor:
                     if sql_count:
                         data = await cursor.fetchone()
                     else:
                         data = await cursor.fetchall()
+                assert isinstance(data, list | tuple)
                 if sql_count:
                     return data[0]
                 else:
@@ -312,7 +309,7 @@ class Database:
             # Track registration
             self.registered.append(descr)
 
-    def has_table(self, descr: Type[dataclasses.dataclass]) -> bool:
+    def has_table(self, descr: Any) -> bool:
         """Whether the db has a table for the given dataclass"""
         return descr.__name__ in self.tables
 
@@ -330,7 +327,7 @@ class Database:
         result = await getattr(self, f"update_{descr.__name__.lower()}")(item)
         return result
 
-    async def get(self, descr: Type[dataclasses.dataclass], **kwargs: Dict[str, Any]) -> Any:
+    async def get(self, descr: Any, **kwargs: dict[str, Any]) -> Any:
         if descr not in self.registered:
             await self.register(descr)
         result = await getattr(self, f"get_{descr.__name__.lower()}")(**kwargs)

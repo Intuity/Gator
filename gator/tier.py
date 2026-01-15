@@ -17,7 +17,6 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime
-from typing import Dict, List, Optional, Type
 
 from .common.child import Child
 from .common.db_client import child_client
@@ -26,7 +25,6 @@ from .common.layer import (
     GetTreeResponse,
     SpecResponse,
 )
-from .common.logger import Logger
 from .common.summary import Summary, SummaryDict
 from .common.types import (
     ApiChildren,
@@ -47,31 +45,30 @@ class Tier(BaseLayer):
     def __init__(
         self,
         *args,
-        scheduler: Type = LocalScheduler,
-        sched_opts: Optional[Dict[str, str]] = None,
+        scheduler: type = LocalScheduler,
+        sched_opts: dict[str, str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.sched_cls = scheduler
         self.sched_opts = sched_opts or {}
-        self.scheduler = None
         self.lock = asyncio.Lock()
         # Tracking for jobs in different phases
-        self.jobs_pending: Dict[str, Child] = {}
-        self.jobs_launched: Dict[str, Child] = {}
-        self.jobs_completed: Dict[str, Child] = {}
+        self.jobs_pending: dict[str, Child] = {}
+        self.jobs_launched: dict[str, Child] = {}
+        self.jobs_completed: dict[str, Child] = {}
         # Tasks for pending jobs
         self.job_tasks: list[asyncio.Task] = []
 
     @property
-    def all_children(self) -> Dict[str, Child]:
+    def all_children(self) -> dict[str, Child]:
         return {
             **self.jobs_pending,
             **self.jobs_launched,
             **self.jobs_completed,
         }
 
-    async def launch(self, *args, **kwargs) -> Summary:
+    async def launch(self, *args, **kwargs) -> Summary | None:
         await self.setup(*args, **kwargs)
         # Register server handlers for the upwards calls
         self.server.add_route("children", self.__list_children)
@@ -145,12 +142,12 @@ class Tier(BaseLayer):
                 tree[child.ident] = await child.ws.get_tree()
         return tree
 
-    async def update_scheduler_opts(self, options: Dict[str, str], **_) -> Dict[str, str]:
+    async def update_scheduler_opts(self, options: dict[str, str], **_) -> dict[str, str]:
         return await self.scheduler.update_options(options)
 
     async def __list_children(self, **_) -> ApiChildren:
         """List all of the children of this layer"""
-        children: List[ApiJob] = []
+        children: list[ApiJob] = []
         for child in self.all_children.values():
             children.append(
                 ApiJob(
@@ -174,7 +171,7 @@ class Tier(BaseLayer):
         return ApiChildren(children=children, status=JobState.STARTED)
 
     async def resolve(
-        self, root_path: List[str], nest_path: Optional[List[str]] = None, depth: int = 0, **_
+        self, root_path: list[str], nest_path: list[str] | None = None, depth: int = 0, **_
     ) -> ApiJob:
         # Tunnel down to root
         if root_path:
@@ -190,7 +187,7 @@ class Tier(BaseLayer):
         data = await super().resolve(root_path=root_path, nest_path=nest_path, depth=depth)
 
         # Resolve nested path
-        children: List[ApiJob] = []
+        children: list[ApiJob] = []
         if nest_path:
             child = self.all_children[nest_path[0]]
             async with child_client(child) as cli:
@@ -391,7 +388,7 @@ class Tier(BaseLayer):
                 await self.logger.error(f"Unknown child of {self.ident} completion '{ident}'")
                 raise Exception(f"Bad child ident {ident}")
 
-    async def __postpone(self, ident: str, wait_for: List[Child], to_launch: List[Child]) -> None:
+    async def __postpone(self, ident: str, wait_for: list[Child], to_launch: list[Child]) -> None:
         await asyncio.gather(*(x.e_complete.wait() for x in wait_for))
         # If terminated, then don't launch further jobs
         if self.terminated:
@@ -409,7 +406,7 @@ class Tier(BaseLayer):
                 (True, spec.on_pass),
                 (False, spec.on_fail),
             ):
-                for ident in dep_ids:
+                for ident in dep_ids or []:
                     if result and by_id[ident] != JobResult.SUCCESS:
                         await self.logger.warning(
                             f"Dependency '{ident}' failed so "
@@ -448,6 +445,10 @@ class Tier(BaseLayer):
             await self.scheduler.launch(to_launch)
 
     async def summarise(self) -> Summary:
+        # Type checking assistance
+        assert isinstance(self.spec, JobArray | JobGroup)
+
+        # Summarise this layer and merge all children
         data = await super().summarise()
         async with self.lock:
             for child in list(self.jobs_launched.values()) + list(self.jobs_completed.values()):
@@ -463,19 +464,27 @@ class Tier(BaseLayer):
         return data
 
     async def __launch(self):
+        # Type checking assistance
+        assert isinstance(self.spec, JobArray | JobGroup)
         # Construct each child
+        if isinstance(self.spec, JobArray):
+            assert isinstance(self.spec.repeats, int)
+            is_jarr, n_repeats = True, self.spec.repeats
+        else:
+            is_jarr, n_repeats = False, 1
         is_jarr = isinstance(self.spec, JobArray)
         grouped = defaultdict(list)
-        for idx_job, job in enumerate(self.spec.jobs):
+        for idx_job, job in enumerate(self.spec.jobs or []):
             # Sanity check
             if not isinstance(job, (Job, JobGroup, JobArray)):
-                Logger.error(f"Unexpected job object type {type(job).__name__}")
+                self.logger.error(f"Unexpected job object type {type(job).__name__}")
                 continue
             # Propagate environment variables from parent to child
             env = {}
             if self.spec.extend_env:
                 env.update(os.environ)
-            env.update(self.spec.env)
+            if isinstance(self.spec.env, dict):
+                env.update(self.spec.env)
             env.update(job.env)
             job.env = env
             # Propagate working directory from parent to child
@@ -483,7 +492,7 @@ class Tier(BaseLayer):
             # Vary behaviour depending if this a job array or not
             base_job_id = job.ident if job.ident else f"T{idx_job}"
             base_trk_dir = self.tracking / base_job_id
-            for idx_jarr in range(self.spec.repeats if is_jarr else 1):
+            for idx_jarr in range(n_repeats):
                 child_id = base_job_id
                 child_dir = base_trk_dir
                 if is_jarr:
@@ -568,8 +577,7 @@ class Tier(BaseLayer):
         async with self.lock:
             all_launched = list(self.jobs_launched.values())
         await self.logger.info(
-            f"Dependency tasks complete, waiting for "
-            f"{len(all_launched)} launched jobs to complete"
+            f"Dependency tasks complete, waiting for {len(all_launched)} launched jobs to complete"
         )
         await asyncio.gather(*(x.e_complete.wait() for x in all_launched))
         # Wait until complete

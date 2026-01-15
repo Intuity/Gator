@@ -20,7 +20,6 @@ import signal
 import socket
 from functools import partial
 from pathlib import Path
-from typing import Dict, Optional, Type, Union
 
 from rich.console import Console
 
@@ -31,27 +30,27 @@ from .common.types import LogSeverity
 from .common.ws_client import WebsocketClient
 from .hub.api import HubAPI
 from .scheduler import LocalScheduler
-from .specs import Job, JobArray, JobGroup, Spec
+from .specs import Job, JobArray, JobGroup, Spec, SpecBase
 from .tier import Tier
 from .wrapper import Wrapper
 
 
 async def launch(
-    ident: Optional[str] = None,
-    hub: Optional[str] = None,
-    parent: Optional[str] = None,
-    spec: Optional[Union[Spec, Path]] = None,
-    tracking: Optional[Path] = None,
+    ident: str | None = None,
+    hub: str | None = None,
+    parent: str | None = None,
+    spec: SpecBase | Path | None = None,
+    tracking: Path | None = None,
     interval: int = 5,
     quiet: bool = False,
     all_msg: bool = False,
     verbose: bool = False,
-    heartbeat_cb: Optional[HeartbeatCb] = None,
-    console: Optional[Console] = None,
-    scheduler: Type = LocalScheduler,
-    sched_opts: Optional[Dict[str, str]] = None,
-    glyph: Optional[str] = None,
-    limits: Optional[MessageLimits] = None,
+    heartbeat_cb: HeartbeatCb | None = None,
+    console: Console | None = None,
+    scheduler: type = LocalScheduler,
+    sched_opts: dict[str, str] | None = None,
+    glyph: str | None = None,
+    limits: MessageLimits | None = None,
 ) -> Summary:
     # Glyph only used when progress bar visible
     del glyph
@@ -93,6 +92,7 @@ async def launch(
     # - Unknown
     else:
         raise Exception("No specification file provided and no parent server to query")
+    assert isinstance(spec, Job | JobArray | JobGroup)
     # If an ident has been provided, override whatever the spec gives
     if ident is not None:
         spec.ident = ident
@@ -128,7 +128,7 @@ async def launch(
         raise Exception(f"Unsupported specification object of type {type(spec).__name__}")
 
     # Setup signal handler to capture CTRL+C events
-    def _handler(sig: signal, evt_loop: asyncio.BaseEventLoop, top: Union[Tier, Wrapper]):
+    def _handler(sig: signal.Signals, evt_loop: asyncio.BaseEventLoop, top: Tier | Wrapper):
         if top.is_root:
             evt_loop.create_task(top.stop())
 
@@ -147,7 +147,7 @@ async def launch(
             if idx == 0:
                 console.log(msg + entry)
             else:
-                console.log(f"{' '*len(msg)}{entry}")
+                console.log(f"{' ' * len(msg)}{entry}")
     # Shutdown client
     await client.stop()
     # Return summary

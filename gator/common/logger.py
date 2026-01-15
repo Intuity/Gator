@@ -20,7 +20,6 @@ import typing
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 import click
 from rich.console import Console
@@ -35,15 +34,15 @@ from .ws_client import WebsocketClient
 class MessageLimits:
     """Define maximum tolerance for different verbosities (None means infinite)"""
 
-    warning: Optional[int] = None
-    error: Optional[int] = 0
-    critical: Optional[int] = 0
+    warning: int | None = None
+    error: int | None = 0
+    critical: int | None = 0
 
 
 class Logger:
     HIER_WIDTH: typing.ClassVar[int] = 23
     HIER_BALANCE: typing.ClassVar[int] = (HIER_WIDTH - 3) // 2
-    FORMAT: typing.ClassVar[Dict[LogSeverity, Tuple[str, str]]] = {
+    FORMAT: typing.ClassVar[dict[LogSeverity, tuple[str, str]]] = {
         LogSeverity.DEBUG: ("[bold cyan]", "[/bold cyan]"),
         LogSeverity.INFO: ("[bold]", "[/bold]"),
         LogSeverity.WARNING: ("[bold yellow]", "[/bold yellow]"),
@@ -53,7 +52,7 @@ class Logger:
 
     def __init__(
         self,
-        ws_cli: Optional[WebsocketClient] = None,
+        ws_cli: WebsocketClient | None = None,
         verbosity: LogSeverity = LogSeverity.INFO,
         forward: bool = True,
         capture_all: bool = False,
@@ -66,11 +65,11 @@ class Logger:
         self.verbosity: LogSeverity = verbosity
         self.forward: bool = forward
         self.capture_all: bool = capture_all
-        self.__console: Optional[Console] = None
-        self.__database: Optional[Database] = None
-        self.__log_fh: Optional[io.TextIOWrapper] = None
+        self.__console: Console | None = None
+        self.__database: Database | None = None
+        self.__log_fh: io.TextIOWrapper | None = None
         # Retain counts of different verbosity levels
-        self.__counts: Dict[LogSeverity, int] = defaultdict(lambda: 0)
+        self.__counts: dict[LogSeverity, int] = defaultdict(lambda: 0)
 
     def set_console(self, console: Console) -> None:
         self.__console = console
@@ -122,8 +121,8 @@ class Logger:
         severity: LogSeverity,
         message: str,
         hierarchy: str = "root",
-        forward: Optional[bool] = None,
-        timestamp: Optional[datetime] = None,
+        forward: bool | None = None,
+        timestamp: datetime | None = None,
         forwarded: bool = False,
     ) -> None:
         """
@@ -172,7 +171,7 @@ class Logger:
         if self.__console and severity >= self.verbosity:
             prefix, suffix = self.FORMAT.get(severity, ("[bold]", "[/bold]"))
             self.__console.log(
-                f"{prefix}{severity.name:<7s}{suffix}  {escape(short_hier)}  " f"{escape(message)}"
+                f"{prefix}{severity.name:<7s}{suffix}  {escape(short_hier)}  {escape(message)}"
             )
         # Normally don't capture forwarded messages
         if not forwarded or self.capture_all:
@@ -195,8 +194,8 @@ class Logger:
         self,
         message: str,
         hierarchy: str = "root",
-        forward: Optional[bool] = None,
-        timestamp: Optional[datetime] = None,
+        forward: bool | None = None,
+        timestamp: datetime | None = None,
         forwarded: bool = False,
     ) -> None:
         await self.log(LogSeverity.DEBUG, message, hierarchy, forward, timestamp, forwarded)
@@ -205,8 +204,8 @@ class Logger:
         self,
         message: str,
         hierarchy: str = "root",
-        forward: Optional[bool] = None,
-        timestamp: Optional[datetime] = None,
+        forward: bool | None = None,
+        timestamp: datetime | None = None,
         forwarded: bool = False,
     ) -> None:
         await self.log(LogSeverity.INFO, message, hierarchy, forward, timestamp, forwarded)
@@ -215,8 +214,8 @@ class Logger:
         self,
         message: str,
         hierarchy: str = "root",
-        forward: Optional[bool] = None,
-        timestamp: Optional[datetime] = None,
+        forward: bool | None = None,
+        timestamp: datetime | None = None,
         forwarded: bool = False,
     ) -> None:
         await self.log(LogSeverity.WARNING, message, hierarchy, forward, timestamp, forwarded)
@@ -225,8 +224,8 @@ class Logger:
         self,
         message: str,
         hierarchy: str = "root",
-        forward: Optional[bool] = None,
-        timestamp: Optional[datetime] = None,
+        forward: bool | None = None,
+        timestamp: datetime | None = None,
         forwarded: bool = False,
     ) -> None:
         await self.log(LogSeverity.ERROR, message, hierarchy, forward, timestamp, forwarded)
@@ -235,8 +234,8 @@ class Logger:
         self,
         message: str,
         hierarchy: str = "root",
-        forward: Optional[bool] = None,
-        timestamp: Optional[datetime] = None,
+        forward: bool | None = None,
+        timestamp: datetime | None = None,
         forwarded: bool = False,
     ) -> None:
         await self.log(LogSeverity.CRITICAL, message, hierarchy, forward, timestamp, forwarded)
