@@ -62,7 +62,7 @@ def as_couroutine(fn):
 def find_command_substitutions(text: str) -> list[tuple[int, int, str]]:
     """
     Find all command substitutions $(cmd) and `cmd` in the text, handling
-    nested parentheses correctly.
+    nested parentheses and quoted strings correctly.
 
     Returns a list of (start_pos, end_pos, original_text) tuples.
     """
@@ -75,13 +75,37 @@ def find_command_substitutions(text: str) -> list[tuple[int, int, str]]:
             start = i
             i += 2
             depth = 1
+            in_single_quote = False
+            in_double_quote = False
 
-            # Find matching closing parenthesis
+            # Find matching closing parenthesis, respecting quotes
             while i < len(text) and depth > 0:
-                if text[i] == "(":
-                    depth += 1
-                elif text[i] == ")":
-                    depth -= 1
+                char = text[i]
+
+                # Handle backslash escaping (only in double quotes or outside quotes)
+                if char == "\\" and not in_single_quote and i + 1 < len(text):
+                    i += 2  # Skip the backslash and next character
+                    continue
+
+                # Handle single quotes (toggle state, but not inside double quotes)
+                if char == "'" and not in_double_quote:
+                    in_single_quote = not in_single_quote
+                    i += 1
+                    continue
+
+                # Handle double quotes (toggle state, but not inside single quotes)
+                if char == '"' and not in_single_quote:
+                    in_double_quote = not in_double_quote
+                    i += 1
+                    continue
+
+                # Only count parentheses when not inside any quotes
+                if not in_single_quote and not in_double_quote:
+                    if char == "(":
+                        depth += 1
+                    elif char == ")":
+                        depth -= 1
+
                 i += 1
 
             if depth == 0:
