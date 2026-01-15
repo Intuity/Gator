@@ -26,7 +26,7 @@ from tabulate import tabulate
 from .common.layer import BaseLayer, MetricResponse, UsageResponse
 from .common.summary import Summary
 from .common.types import Attribute, JobResult, LogSeverity, ProcStat
-from .common.utility import expand_vars_preserve_commands
+from .common.utility import expand_vars_preserve_commands, find_command_substitutions
 
 
 class Wrapper(BaseLayer):
@@ -246,6 +246,24 @@ class Wrapper(BaseLayer):
         # Expand variables in the command (but preserve shell command substitution)
         command = expand_vars_preserve_commands(self.spec.command, environ=env)
         args = [expand_vars_preserve_commands(str(arg), environ=env) for arg in self.spec.args]
+        # Check for command substitutions and warn user they won't be evaluated (unless using shell)
+        common_shells = {"sh", "bash", "zsh", "ksh", "csh", "tcsh", "fish", "dash"}
+        is_shell_command = Path(command).name in common_shells
+        if not is_shell_command:
+            detected_substitutions = []
+            for substitution in find_command_substitutions(command):
+                detected_substitutions.append(substitution[2])  # Extract original_text
+            for arg in args:
+                for substitution in find_command_substitutions(arg):
+                    detected_substitutions.append(substitution[2])  # Extract original_text
+            if detected_substitutions:
+                substitutions_list = "\n".join(f"  {sub}" for sub in detected_substitutions)
+                await self.logger.warning(
+                    "Gator only supports simple environment variable substitutions. "
+                    "Command substitutions will pass through to the command without being "
+                    "evaluated by Gator.\n"
+                    f"Detected command substitutions:\n{substitutions_list}"
+                )
         full_cmd = shlex.join((command, *args))
         # Ensure the tracking directory exists
         self.tracking.mkdir(parents=True, exist_ok=True)

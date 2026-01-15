@@ -413,3 +413,64 @@ class TestWrapper:
         # The third should contain $(hostname) - NOT (hostname)!
         assert call_args[0][2] == "echo Hello from $(hostname)"
         assert "$(hostname)" in call_args[0][2], "Command substitution should be preserved"
+
+    async def test_wrapper_command_substitution_warning(self, tmp_path) -> None:
+        """Verify that a warning is logged when command substitutions are detected in
+        non-shell commands"""
+        # Define a job specification with command substitution in a non-shell command
+        job = Job(
+            "test",
+            cwd=tmp_path.as_posix(),
+            command="echo",
+            args=["Hello from $(hostname)", "and `date`"],
+        )
+        # Create a wrapper
+        trk_dir = tmp_path / "tracking"
+        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
+
+        # Run the job
+        await wrp.launch()
+
+        # Check that a warning was logged
+        mcs = self.mk_db.push_logentry.mock_calls
+        warning_logs = [
+            x.args[0]
+            for x in mcs
+            if x.args[0].severity is LogSeverity.WARNING
+        ]
+        assert len(warning_logs) > 0, "Expected at least one warning log entry"
+
+        # Check the warning message contains the expected information
+        warning_msg = warning_logs[0].message
+        assert "Detected command substitutions:" in warning_msg
+        assert "$(hostname)" in warning_msg
+        assert "`date`" in warning_msg
+        assert "Gator only supports simple environment variable substitutions" in warning_msg
+        assert "will pass through to the command without being evaluated" in warning_msg
+
+    async def test_wrapper_command_substitution_no_warning_for_shells(self, tmp_path) -> None:
+        """Verify that NO warning is logged when command substitutions are used with
+        shell commands"""
+        # Define a job specification with command substitution using bash
+        job = Job(
+            "test",
+            cwd=tmp_path.as_posix(),
+            command="bash",
+            args=["-c", "echo Hello from $(hostname)"],
+        )
+        # Create a wrapper
+        trk_dir = tmp_path / "tracking"
+        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
+
+        # Run the job
+        await wrp.launch()
+
+        # Check that NO warning was logged about command substitutions
+        mcs = self.mk_db.push_logentry.mock_calls
+        warning_logs = [
+            x.args[0]
+            for x in mcs
+            if x.args[0].severity is LogSeverity.WARNING
+            and "Command substitution" in x.args[0].message
+        ]
+        assert len(warning_logs) == 0, "Expected no warning for shell commands with substitutions"
