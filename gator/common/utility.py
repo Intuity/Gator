@@ -16,10 +16,7 @@ import asyncio
 import functools
 import os
 import pwd
-import uuid
 from typing import Awaitable, Callable, TypeVar, Union, overload
-
-import expandvars
 
 
 @functools.lru_cache
@@ -134,45 +131,3 @@ def find_command_substitutions(text: str) -> list[tuple[int, int, str]]:
             i += 1
 
     return substitutions
-
-
-def expand_vars_preserve_commands(text: str, environ: dict) -> str:
-    """
-    Expand environment variables using expandvars, but preserve command
-    substitution syntax ($(cmd) and `cmd`) for the shell to handle later.
-
-    This prevents issues where expandvars would strip the $ from $(cmd),
-    turning it into (cmd) which is a syntax error.
-
-    Uses a placeholder approach:
-    1. Find and replace command substitutions with unique placeholders
-    2. Run expandvars on the text
-    3. Restore the command substitutions
-    """
-    # Find all command substitutions (handles nested parentheses)
-    substitutions = find_command_substitutions(text)
-
-    if not substitutions:
-        # No command substitutions, just expand normally
-        return expandvars.expand(text, environ=environ)
-
-    # Generate a unique prefix for placeholders to avoid collisions
-    unique_id = uuid.uuid4().hex[:8]
-
-    # Replace with placeholders in reverse order to maintain positions
-    placeholders = {}
-    result = text
-
-    for idx, (start, end, original) in enumerate(reversed(substitutions)):
-        placeholder = f"__GATOR_CMD_SUB_{unique_id}_{idx}__"
-        placeholders[placeholder] = original
-        result = result[:start] + placeholder + result[end:]
-
-    # Expand variables with expandvars
-    result = expandvars.expand(result, environ=environ)
-
-    # Restore command substitutions
-    for placeholder, original in placeholders.items():
-        result = result.replace(placeholder, original)
-
-    return result

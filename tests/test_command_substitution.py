@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from gator.common.utility import expand_vars_preserve_commands, find_command_substitutions
+from gator.common.utility import find_command_substitutions
 
 
-class TestCommandSubstitution:
-    """Test suite for command substitution handling in variable expansion"""
+class TestFindCommandSubstitutions:
+    """Test suite for finding command substitutions in text"""
 
     def test_find_simple_command_substitution(self):
         """Test finding simple $(cmd) patterns"""
@@ -76,112 +76,12 @@ class TestCommandSubstitution:
         # Should not find anything or handle gracefully
         assert len(subs) == 0
 
-    def test_expand_preserve_simple_command_substitution(self):
-        """Test that simple command substitutions are preserved"""
-        text = "echo Hello from $(hostname)"
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "echo Hello from $(hostname)"
-
-    def test_expand_preserve_nested_command_substitution(self):
-        """Test that nested command substitutions are preserved"""
-        text = "echo $(echo $(whoami))"
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "echo $(echo $(whoami))"
-
-    def test_expand_preserve_complex_nested(self):
-        """Test that complex nested patterns are preserved"""
-        text = "echo $(date +%Y-$(date +%m))"
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "echo $(date +%Y-$(date +%m))"
-
-    def test_expand_preserve_backticks(self):
-        """Test that backticks are preserved"""
-        text = "echo `hostname`"
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "echo `hostname`"
-
-    def test_expand_variables_without_commands(self):
-        """Test that variables are expanded when no command substitutions present"""
-        text = "echo $HOME"
-        result = expand_vars_preserve_commands(text, {"HOME": "/root"})
-        assert result == "echo /root"
-
-    def test_expand_braced_variables(self):
-        """Test that braced variables are expanded"""
-        text = "echo ${HOME}"
-        result = expand_vars_preserve_commands(text, {"HOME": "/root"})
-        assert result == "echo /root"
-
-    def test_expand_variables_with_commands(self):
-        """Test that variables are expanded but commands are preserved"""
-        text = "echo $HOME and $(hostname)"
-        result = expand_vars_preserve_commands(text, {"HOME": "/root"})
-        assert result == "echo /root and $(hostname)"
-
-    def test_expand_default_values(self):
-        """Test expandvars default value syntax ${VAR:-default}"""
-        text = "echo ${HOME:-/default}"
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "echo /default"
-
-    def test_expand_braced_with_suffix(self):
-        """Test braced variables with suffixes"""
-        text = "echo ${HOME}/subdir"
-        result = expand_vars_preserve_commands(text, {"HOME": "/root"})
-        assert result == "echo /root/subdir"
-
-    def test_expand_multiple_variables(self):
-        """Test multiple variable expansions"""
-        text = "echo $HOME$USER"
-        result = expand_vars_preserve_commands(text, {"HOME": "/root", "USER": "alice"})
-        assert result == "echo /rootalice"
-
-    def test_expand_complex_mixed(self):
-        """Test complex mix of variables and command substitutions"""
-        text = "echo $(date +%Y) in $HOME"
-        result = expand_vars_preserve_commands(text, {"HOME": "/root"})
-        assert result == "echo $(date +%Y) in /root"
-
-    def test_expand_backticks_with_variables(self):
-        """Test backticks preserved with variable expansion"""
-        text = "echo `cat /etc/hostname` and $USER"
-        result = expand_vars_preserve_commands(text, {"USER": "bob"})
-        assert result == "echo `cat /etc/hostname` and bob"
-
-    def test_empty_string(self):
-        """Test that empty strings are handled"""
-        result = expand_vars_preserve_commands("", {})
-        assert result == ""
-
-    def test_no_variables_no_commands(self):
-        """Test plain text with no variables or commands"""
-        text = "echo hello world"
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "echo hello world"
-
     def test_multiple_nested_levels(self):
         """Test deeply nested command substitutions"""
         text = "echo $(outer $(middle $(inner)))"
         subs = find_command_substitutions(text)
         assert len(subs) == 1
         assert subs[0][2] == "$(outer $(middle $(inner)))"
-
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "echo $(outer $(middle $(inner)))"
-
-    def test_command_with_special_chars(self):
-        """Test command substitution with special characters"""
-        text = "echo $(grep -E '^pattern' file.txt)"
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "echo $(grep -E '^pattern' file.txt)"
-
-    def test_placeholder_collision_resistance(self):
-        """Test that placeholder names don't collide with actual text"""
-        text = "echo __GATOR_CMD_SUB_0__ $(hostname)"
-        result = expand_vars_preserve_commands(text, {})
-        # Should preserve both the literal text and the command substitution
-        assert "$(hostname)" in result
-        assert "__GATOR_CMD_SUB_0__" in result
 
     def test_parentheses_in_double_quotes(self):
         """Test that parentheses inside double quotes are handled correctly"""
@@ -190,18 +90,12 @@ class TestCommandSubstitution:
         assert len(subs) == 1
         assert subs[0] == (0, 11, '$(echo ")")')
 
-        result = expand_vars_preserve_commands(text, {})
-        assert result == '$(echo ")")'
-
     def test_parentheses_in_single_quotes(self):
         """Test that parentheses inside single quotes are handled correctly"""
         text = "$(echo ')')"
         subs = find_command_substitutions(text)
         assert len(subs) == 1
         assert subs[0] == (0, 11, "$(echo ')')")
-
-        result = expand_vars_preserve_commands(text, {})
-        assert result == "$(echo ')')"
 
     def test_escaped_parentheses(self):
         """Test that escaped parentheses are handled correctly"""
@@ -253,20 +147,12 @@ class TestCommandSubstitution:
         assert len(subs) == 1
         assert subs[0][2] == "$(echo '$HOME')"
 
-        result = expand_vars_preserve_commands(text, {"HOME": "/root"})
-        # $HOME should NOT be expanded inside the command substitution
-        assert result == "$(echo '$HOME')"
-
     def test_dollar_in_double_quotes(self):
         """Test that $ is special in double quotes"""
         text = '$(echo "$HOME")'
         subs = find_command_substitutions(text)
         assert len(subs) == 1
         assert subs[0][2] == '$(echo "$HOME")'
-
-        result = expand_vars_preserve_commands(text, {"HOME": "/root"})
-        # The whole command substitution should be preserved
-        assert result == '$(echo "$HOME")'
 
     def test_multiple_levels_with_quotes(self):
         """Test deeply nested substitutions with quotes"""
@@ -395,3 +281,14 @@ class TestCommandSubstitution:
         subs = find_command_substitutions(text)
         assert len(subs) == 1
         assert subs[0][2] == "$(ls ~/Documents)"
+
+    def test_no_command_substitutions(self):
+        """Test text with no command substitutions"""
+        text = "echo hello world"
+        subs = find_command_substitutions(text)
+        assert len(subs) == 0
+
+    def test_empty_string(self):
+        """Test empty string"""
+        subs = find_command_substitutions("")
+        assert len(subs) == 0
