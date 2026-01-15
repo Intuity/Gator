@@ -33,7 +33,9 @@ class Base:
     def list_fields(cls) -> list[dataclasses.Field]:
         return [f for f in dataclasses.fields(cls) if f.name != "db_uid"]
 
-    def serialize(self, as_list: bool = False, omit: list[str] | None = None) -> list[int] | dict[str, int]:
+    def serialize(
+        self, as_list: bool = False, omit: list[str] | None = None
+    ) -> list[int] | dict[str, int]:
         omit = omit or []
         if as_list:
             return [getattr(self, f.name) for f in self.list_fields() if f.name not in omit]
@@ -98,7 +100,7 @@ class Database:
         # Track which dataclasses are register
         self.registered = []
         self.tables = []
-        self._db : aiosqlite.Connection
+        self._db: aiosqlite.Connection
         # Record transforms
         self.__transforms = {}
         self.define_transform(int, "INTEGER")
