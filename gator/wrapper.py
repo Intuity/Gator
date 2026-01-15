@@ -20,13 +20,13 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-import expandvars
 import psutil
 from tabulate import tabulate
 
 from .common.layer import BaseLayer, MetricResponse, UsageResponse
 from .common.summary import Summary
 from .common.types import Attribute, JobResult, LogSeverity, ProcStat
+from .common.utility import expand_vars_preserve_commands
 
 
 class Wrapper(BaseLayer):
@@ -243,9 +243,9 @@ class Wrapper(BaseLayer):
         env["PYTHONUNBUFFERED"] = "1"
         # Determine the working directory
         working_dir = Path((self.spec.cwd if self.spec else None) or Path.cwd())
-        # Expand variables in the command
-        command = expandvars.expand(self.spec.command, environ=env)
-        args = [expandvars.expand(str(arg), environ=env) for arg in self.spec.args]
+        # Expand variables in the command (but preserve shell command substitution)
+        command = expand_vars_preserve_commands(self.spec.command, environ=env)
+        args = [expand_vars_preserve_commands(str(arg), environ=env) for arg in self.spec.args]
         full_cmd = shlex.join((command, *args))
         # Ensure the tracking directory exists
         self.tracking.mkdir(parents=True, exist_ok=True)

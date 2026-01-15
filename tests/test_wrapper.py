@@ -371,3 +371,45 @@ class TestWrapper:
         await wrp.stop()
         # Wait for task to complete
         await t_wrp
+
+    async def test_wrapper_command_substitution(self, tmp_path, mocker) -> None:
+        """Verify that command substitution $(cmd) and `cmd` are preserved"""
+        # Define a job specification with command substitution
+        job = Job(
+            "test",
+            cwd=tmp_path.as_posix(),
+            command="bash",
+            args=["-c", "echo Hello from $(hostname)"],
+        )
+        # Create a wrapper
+        trk_dir = tmp_path / "tracking"
+        wrp = Wrapper(spec=job, client=self.client, tracking=trk_dir, logger=self.logger)
+
+        # Mock the subprocess creation to inspect the command
+        original_exec = mocker.patch("asyncio.create_subprocess_exec")
+        mock_proc = AsyncMock()
+        mock_proc.pid = 12345
+        mock_proc.returncode = 0
+        mock_proc.wait = AsyncMock(return_value=0)
+        mock_proc.stdout = AsyncMock()
+        mock_proc.stdout.at_eof = lambda: True
+        mock_proc.stdout.readline = AsyncMock(return_value=b"")
+        mock_proc.stderr = AsyncMock()
+        mock_proc.stderr.at_eof = lambda: True
+        mock_proc.stderr.readline = AsyncMock(return_value=b"")
+        original_exec.return_value = mock_proc
+
+        # Run the job
+        await wrp.launch()
+
+        # Verify create_subprocess_exec was called
+        assert original_exec.called
+        call_args = original_exec.call_args
+
+        # The first positional arg should be the command
+        assert call_args[0][0] == "bash"
+        # The second should be "-c"
+        assert call_args[0][1] == "-c"
+        # The third should contain $(hostname) - NOT (hostname)!
+        assert call_args[0][2] == "echo Hello from $(hostname)"
+        assert "$(hostname)" in call_args[0][2], "Command substitution should be preserved"
