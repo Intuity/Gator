@@ -112,6 +112,77 @@ class TestLogger:
         logger._Logger__console.log.reset_mock()
 
     @pytest.mark.asyncio
+    async def test_linked_no_forward(self, logger_linked):
+        """When forward=False, warnings and errors are still forwarded"""
+        logger = logger_linked
+        logger.forward = False
+        logger.verbosity = LogSeverity.DEBUG
+        # Debug should not be forwarded
+        await logger.debug("Testing debug")
+        assert not logger.ws_cli.log.called
+        logger._Logger__console.log.assert_called_with(
+            "[bold cyan]DEBUG  [/bold cyan]  " + TestLogger.ROOT_STR + "  Testing debug"
+        )
+        logger._Logger__console.log.reset_mock()
+        # Info should not be forwarded
+        await logger.info("Testing info")
+        assert not logger.ws_cli.log.called
+        logger._Logger__console.log.assert_called_with(
+            "[bold]INFO   [/bold]  " + TestLogger.ROOT_STR + "  Testing info"
+        )
+        logger._Logger__console.log.reset_mock()
+        # Warning should be forwarded (even though forward=False)
+        await logger.warning("Testing warning")
+        logger.ws_cli.log.assert_called_with(
+            timestamp=1234,
+            hierarchy="root",
+            severity="WARNING",
+            message="Testing warning",
+            posted=True,
+        )
+        logger._Logger__console.log.assert_called_with(
+            "[bold yellow]WARNING[/bold yellow]  " + TestLogger.ROOT_STR + "  Testing warning"
+        )
+        logger.ws_cli.log.reset_mock()
+        logger._Logger__console.log.reset_mock()
+        # Error should be forwarded (even though forward=False)
+        await logger.error("Testing error")
+        logger.ws_cli.log.assert_called_with(
+            timestamp=1234,
+            hierarchy="root",
+            severity="ERROR",
+            message="Testing error",
+            posted=True,
+        )
+        logger._Logger__console.log.assert_called_with(
+            "[bold red]ERROR  [/bold red]  " + TestLogger.ROOT_STR + "  Testing error"
+        )
+        logger.ws_cli.log.reset_mock()
+        logger._Logger__console.log.reset_mock()
+        # Critical should be forwarded (even though forward=False)
+        await logger.critical("Testing critical")
+        logger.ws_cli.log.assert_called_with(
+            timestamp=1234,
+            hierarchy="root",
+            severity="CRITICAL",
+            message="Testing critical",
+            posted=True,
+        )
+        logger._Logger__console.log.assert_called_with(
+            "[bold white on red]CRITICAL[/bold white on red]  "
+            + TestLogger.ROOT_STR
+            + "  Testing critical"
+        )
+        logger.ws_cli.log.reset_mock()
+        logger._Logger__console.log.reset_mock()
+        # Forwarded messages should only be forwarded when forward=True
+        await logger.warning("Forwarded warning", forwarded=True)
+        assert not logger.ws_cli.log.called
+        logger._Logger__console.log.assert_called_with(
+            "[bold yellow]WARNING[/bold yellow]  " + TestLogger.ROOT_STR + "  Forwarded warning"
+        )
+
+    @pytest.mark.asyncio
     async def test_linked(self, logger_linked):
         """Local logging goes to the console"""
         logger = logger_linked

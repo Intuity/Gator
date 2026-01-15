@@ -152,8 +152,11 @@ class Logger:
         # Generate a timestamp if required
         if timestamp is None:
             timestamp = datetime.now()
+        # Always forward warnings, errors, and critical messages from Gator itself
+        # (not forwarded from children), regardless of forward setting
+        should_forward = forward or (not forwarded and severity >= LogSeverity.WARNING)
         # If linked to parent and forwarding requested, push log upwards
-        if forward and self.ws_cli.linked and severity >= self.verbosity:
+        if should_forward and self.ws_cli.linked and severity >= self.verbosity:
             await self.ws_cli.log(
                 timestamp=int(timestamp.timestamp()),
                 hierarchy=hierarchy,
