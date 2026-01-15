@@ -98,10 +98,10 @@ async def launch(
         raise Exception("No specification file provided and no parent server to query")
 
     # Hint for the type checker and a safety during debugging
-    assert isinstance(parsed_spec, Job | JobArray | JobGroup), \
-        ("Expected specification to be a Job, JobArray or JobGroup, received "
-         f"{type(parsed_spec).__name__}."
-        )
+    assert isinstance(parsed_spec, Job | JobArray | JobGroup), (
+        f"Expected specification to be a Job, JobArray or JobGroup, received "
+        f"{type(parsed_spec).__name__}."
+    )
 
     # If an ident has been provided, override whatever the spec gives
     if ident is not None:
