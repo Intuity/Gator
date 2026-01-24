@@ -78,6 +78,13 @@ from .specs.common import SpecError
     default=0,
     help="Maximum number of critical messages before failure",
 )
+@click.option(
+    "--internal",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Indicates this instance of Gator is running as an internal child job.",
+)
 @click.argument("spec", type=click.Path(exists=True), required=False)
 def main(
     ident: str,
@@ -94,6 +101,7 @@ def main(
     limit_warning: Optional[int],
     limit_error: int,
     limit_critical: int,
+    internal: bool,
     spec: str,
 ) -> None:
     # Determine a tracking directory
@@ -139,6 +147,7 @@ def main(
                     error=limit_error,
                     critical=limit_critical,
                 ),
+                internal=internal
             )
         )
         if not summary.passed:
