@@ -474,3 +474,30 @@ class TestWrapper:
             and "Command substitution" in x.args[0].message
         ]
         assert len(warning_logs) == 0, "Expected no warning for shell commands with substitutions"
+        
+    async def test_wrapper_internal_launch(self, tmp_path, mocker) -> None:
+        """Check that launch() with `internal=True` uses Wrapper for a single Job"""
+        from gator.launch import launch
+
+        # Patch Console to avoid output during test
+        mocker.patch("gator.launch.Console")
+        # Mock the Wrapper class to verify it's instantiated
+        mk_wrapper_cls = mocker.patch("gator.launch.Wrapper")
+        mk_wrapper = MagicMock()
+        mk_wrapper.launch = AsyncMock()
+        mk_wrapper.summarise = AsyncMock()
+        mk_wrapper.is_root = True
+        mk_wrapper_cls.return_value = mk_wrapper
+        # Define a job specification
+        job = Job("test_internal", cwd=tmp_path.as_posix(), command="echo", args=["internal"])
+        # Call launch with internal=True
+        trk_dir = tmp_path / "tracking"
+        await launch(spec=job, tracking=trk_dir, internal=True)
+        # Verify Wrapper was instantiated with the Job (not wrapped in JobArray)
+        mk_wrapper_cls.assert_called_once()
+        call_kwargs = mk_wrapper_cls.call_args.kwargs
+        assert call_kwargs["spec"] is job
+        assert call_kwargs["tracking"] == trk_dir
+        # Verify Wrapper.launch() was called
+        mk_wrapper.launch.assert_called_once()
+        mk_wrapper.summarise.assert_called_once()
