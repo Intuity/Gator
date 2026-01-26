@@ -34,15 +34,13 @@ try:
     @overload
     def as_couroutine(
         fn: Callable[_P, Union[_R, Awaitable[_R]]],
-    ) -> Callable[_P, Awaitable[_R]]:
-        ...
+    ) -> Callable[_P, Awaitable[_R]]: ...
 except ImportError:
 
     @overload
     def as_couroutine(
         fn: Callable[..., Union[_R, Awaitable[_R]]],
-    ) -> Callable[..., Awaitable[_R]]:
-        ...
+    ) -> Callable[..., Awaitable[_R]]: ...
 
 
 def as_couroutine(fn):
@@ -56,3 +54,80 @@ def as_couroutine(fn):
         return fn(*args, **kwargs)
 
     return async_fn
+
+
+def find_command_substitutions(text: str) -> list[tuple[int, int, str]]:
+    """
+    Find all command substitutions $(cmd) and `cmd` in the text, handling
+    nested parentheses and quoted strings correctly.
+
+    Returns a list of (start_pos, end_pos, original_text) tuples.
+    """
+    substitutions = []
+    i = 0
+
+    while i < len(text):
+        # Check for $(
+        if i < len(text) - 1 and text[i : i + 2] == "$(":
+            start = i
+            i += 2
+            depth = 1
+            in_single_quote = False
+            in_double_quote = False
+
+            # Find matching closing parenthesis, respecting quotes
+            while i < len(text) and depth > 0:
+                char = text[i]
+
+                # Handle backslash escaping (only in double quotes or outside quotes)
+                if char == "\\" and not in_single_quote and i + 1 < len(text):
+                    i += 2  # Skip the backslash and next character
+                    continue
+
+                # Handle single quotes (toggle state, but not inside double quotes)
+                if char == "'" and not in_double_quote:
+                    in_single_quote = not in_single_quote
+                    i += 1
+                    continue
+
+                # Handle double quotes (toggle state, but not inside single quotes)
+                if char == '"' and not in_single_quote:
+                    in_double_quote = not in_double_quote
+                    i += 1
+                    continue
+
+                # Only count parentheses when not inside any quotes
+                if not in_single_quote and not in_double_quote:
+                    if char == "(":
+                        depth += 1
+                    elif char == ")":
+                        depth -= 1
+
+                i += 1
+
+            if depth == 0:
+                # Found matching closing paren
+                substitutions.append((start, i, text[start:i]))
+            # else: unmatched - let it through and shell will error
+
+        # Check for backticks
+        elif text[i] == "`":
+            start = i
+            i += 1
+
+            # Find closing backtick (no nesting for backticks)
+            while i < len(text) and text[i] != "`":
+                # Handle escaped backticks
+                if text[i] == "\\" and i + 1 < len(text):
+                    i += 2
+                else:
+                    i += 1
+
+            if i < len(text) and text[i] == "`":
+                i += 1
+                substitutions.append((start, i, text[start:i]))
+            # else: unmatched - let it through
+        else:
+            i += 1
+
+    return substitutions

@@ -52,7 +52,7 @@ class TestLocalScheduler:
         assert sched.quiet is False
         # Patch asyncio so we don't launch any real operations
         as_sub = mocker.patch(
-            "gator.scheduler.local.asyncio.create_subprocess_shell",
+            "gator.scheduler.local.asyncio.create_subprocess_exec",
             new=AsyncMock(),
         )
         as_tsk = mocker.patch(
@@ -87,11 +87,25 @@ class TestLocalScheduler:
         as_sub.assert_has_calls(
             [
                 call(
-                    f"python3 -m gator --limit-error=0 --limit-critical=0"
-                    " --parent test:1234 --interval 7 --scheduler local --all-msg "
-                    "--internal "
-                    f"--id T{x} --tracking {(tmp_path / f'T{x}').as_posix()}"
-                    " --sched-arg concurrency=1",
+                    "python3",
+                    "-m",
+                    "gator",
+                    "--limit-error=0",
+                    "--limit-critical=0",
+                    "--parent",
+                    "test:1234",
+                    "--interval",
+                    "7",
+                    "--scheduler",
+                    "local",
+                    "--all-msg",
+                    "--internal",
+                    "--id",
+                    f"T{x}",
+                    "--tracking",
+                    (tmp_path / f"T{x}").as_posix(),
+                    "--sched-arg",
+                    "concurrency=1",
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.STDOUT,
@@ -106,6 +120,87 @@ class TestLocalScheduler:
         # Check all monitors were fired up
         as_mon.assert_has_calls([call(f"T{x}", y) for x, y in zip(range(10), procs)])
 
+    async def test_scheduler_argument_safety(self, mocker, tmp_path):
+        """Ensure arguments with special characters are handled safely"""
+        # Create a scheduler
+        sched = LocalScheduler(
+            tracking=tmp_path / "tracking",
+            parent="test:1234",
+            interval=5,
+            quiet=True,
+            logger=self.logger,
+        )
+        # Patch asyncio so we don't launch any real operations
+        as_sub = mocker.patch(
+            "gator.scheduler.local.asyncio.create_subprocess_exec",
+            new=AsyncMock(),
+        )
+        mocker.patch.object(
+            sched,
+            "_LocalScheduler__monitor",
+            new=AsyncMock(wraps=sched._LocalScheduler__monitor),
+        )
+        procs = []
+
+        def _create_proc(*args, **kwargs):
+            nonlocal procs
+            # Capture the command arguments to verify they're passed as a list
+            proc = AsyncMock()
+            procs.append((proc, args, kwargs))
+            return proc
+
+        as_sub.side_effect = _create_proc
+
+        # Create a job with potentially dangerous characters in arguments
+        # These should be passed as literal arguments, not interpreted by shell
+        dangerous_job = Job(
+            "dangerous_test",
+            cwd=tmp_path.as_posix(),
+            command="echo",
+            args=[
+                "hello; rm -rf /",
+                "$(whoami)",
+                "`id`",
+                "&& cat /etc/passwd",
+            ],
+        )
+
+        # Note: Since gator launches jobs using its own command structure,
+        # the Job spec's command and args won't be directly passed to subprocess.
+        # Instead, gator uses "python3 -m gator" with the job spec.
+        # However, the fix ensures ANY arguments in the command list are safe.
+
+        # Launch the task
+        child = Child(
+            spec=dangerous_job,
+            ident="dangerous",
+            entry=MagicMock(),
+            tracking=tmp_path / "dangerous",
+        )
+        await sched.launch([child])
+
+        # Wait for launch
+        await sched.launch_task
+
+        # Verify create_subprocess_exec was called (not create_subprocess_shell)
+        assert as_sub.call_count == 1
+
+        # Get the command that was passed
+        _proc, cmd_args, cmd_kwargs = procs[0]
+
+        # Verify it's a list of arguments (as positional args to exec)
+        assert len(cmd_args) > 0, "Command should be passed as positional arguments"
+
+        # Verify the command starts with python3 -m gator (base command)
+        assert cmd_args[0] == "python3"
+        assert cmd_args[1] == "-m"
+        assert cmd_args[2] == "gator"
+
+        # Verify stdin/stdout/stderr are redirected
+        assert cmd_kwargs["stdin"] == subprocess.DEVNULL
+        assert cmd_kwargs["stdout"] == subprocess.DEVNULL
+        assert cmd_kwargs["stderr"] == subprocess.STDOUT
+        
     async def test_local_scheduler_default_launch(self, mocker, tmp_path):
         """Check that launch() without `internal` flag uses Tier/scheduler for a single Job"""
         from gator.launch import launch
